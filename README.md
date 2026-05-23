@@ -38,7 +38,7 @@ Die Normdokumente sind nicht Teil dieses Repositories (Urheberrecht VSS).
 
 ## Lizenz und Haftung
 
-GNU General Public License v3.0 — Nutzung, Veränderung und Weitergabe erlaubt, jedoch muss abgeleiteter Code ebenfalls unter GPL v3 veröffentlicht werden. Eine kommerzielle Nutzung ohne Offenlegung des Quellcodes ist nicht gestattet. Siehe [LICENSE](LICENSE).
+[Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)](LICENSE) — Nutzung, Veränderung und Weitergabe erlaubt, **kommerzielle Nutzung ist untersagt**. Bei Weitergabe muss der Urheber genannt werden.
 
 Copyright (C) 2026 pnfzygrzgf-svg
 

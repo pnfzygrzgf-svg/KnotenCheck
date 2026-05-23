@@ -598,7 +598,13 @@ export default function App() {
              style={{ color: '#9ca3af', textDecoration: 'underline' }}>
             GitHub
           </a>
-          {' '}· Lizenz: GNU GPL v3 — kommerzielle Nutzung ohne Offenlegung des Quellcodes nicht gestattet.
+          {' '}· Lizenz:{' '}
+          <a href="https://creativecommons.org/licenses/by-nc/4.0/"
+             target="_blank" rel="noopener noreferrer"
+             style={{ color: '#9ca3af', textDecoration: 'underline' }}>
+            CC BY-NC 4.0
+          </a>
+          {' '}— kommerzielle Nutzung untersagt.
         </p>
       </main>
     </div>
