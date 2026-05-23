@@ -426,17 +426,18 @@ function ExtendedArmCard({ name, result }: { name: string; result: StreamResult 
   )
 }
 
-function ExtendedPanel({ nodeResult, cfg }: { nodeResult: NodeResult; cfg: IntersectionConfiguration }) {
-  const armResults = cfg.arms.map((_, i) => {
-    const node = toIntersectionNode(cfg)
-    const armStream = node.streams.find(s => s.armLabel === armLabel(i) && !s.isAuxiliary)
-    return nodeResult.streamResults.find(r => r.id === armStream?.id)
-  })
+function ExtendedPanel({ nodeResult, node, cfg }: {
+  nodeResult: NodeResult; node: ReturnType<typeof toIntersectionNode>; cfg: IntersectionConfiguration
+}) {
+  // Arm-Ergebnisse über mixedLaneGroups — gleiche IDs wie im analyzeNode-Lauf
+  const armResults = node.mixedLaneGroups.map(group =>
+    nodeResult.streamResults.find(r => r.id === group.armStreamID)
+  )
 
-  const pedestrianResults = nodeResult.streamResults.filter(r => {
-    const stream = toIntersectionNode(cfg).streams.find(s => s.id === r.id)
-    return stream?.mode === 'pedestrian'
-  })
+  const pedestrianStreamIDs = new Set(
+    node.streams.filter(s => s.mode === 'pedestrian').map(s => s.id)
+  )
+  const pedestrianResults = nodeResult.streamResults.filter(r => pedestrianStreamIDs.has(r.id))
 
   const validLOS = armResults
     .filter((r): r is StreamResult => r !== undefined)
@@ -489,8 +490,9 @@ function ExtendedPanel({ nodeResult, cfg }: { nodeResult: NodeResult; cfg: Inter
   )
 }
 
-function ResultsPanel({ result, nodeResult, cfg }: {
-  result: SN640022Result; nodeResult: NodeResult; cfg: IntersectionConfiguration
+function ResultsPanel({ result, nodeResult, node, cfg }: {
+  result: SN640022Result; nodeResult: NodeResult
+  node: ReturnType<typeof toIntersectionNode>; cfg: IntersectionConfiguration
 }) {
   const [showDetails, setShowDetails] = useState(false)
   const [showExtended, setShowExtended] = useState(false)
@@ -514,7 +516,7 @@ function ResultsPanel({ result, nodeResult, cfg }: {
       </div>
 
       {showExtended
-        ? <ExtendedPanel nodeResult={nodeResult} cfg={cfg} />
+        ? <ExtendedPanel nodeResult={nodeResult} node={node} cfg={cfg} />
         : <>
       {/* Gesamtbeurteilung */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -618,9 +620,8 @@ export default function App() {
     return analyzeSN640022(v, toSNLaneFlags(cfg))
   }, [cfg])
 
-  const nodeResult = useMemo<NodeResult>(() =>
-    analyzeNode(toIntersectionNode(cfg))
-  , [cfg])
+  const intersectionNode = useMemo(() => toIntersectionNode(cfg), [cfg])
+  const nodeResult = useMemo<NodeResult>(() => analyzeNode(intersectionNode), [intersectionNode])
 
   const setArm = (i: number, arm: ArmConfiguration) =>
     setCfg(prev => { const arms = [...prev.arms]; arms[i] = arm; return { ...prev, arms } })
@@ -703,7 +704,7 @@ export default function App() {
             </div>
 
             {result
-              ? <ResultsPanel result={result} nodeResult={nodeResult} cfg={cfg} />
+              ? <ResultsPanel result={result} nodeResult={nodeResult} node={intersectionNode} cfg={cfg} />
               : <p style={{ color: '#9ca3af', textAlign: 'center', padding: 32 }}>
                   Bitte Verkehrsmengen eingeben.
                 </p>
