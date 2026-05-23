@@ -146,8 +146,84 @@ function Ckbx({ checked, onChange }: { checked: boolean; onChange: (v: boolean) 
 
 // ── ArmCard ────────────────────────────────────────────────────────────────────
 
-function ArmCard({ arm, index, isHS, armCount, onChange }: {
+function MixedLaneHint({ index, arm, opposingHSSeparateLane }: {
+  index: number; arm: ArmConfiguration; opposingHSSeparateLane: boolean
+}) {
+  const isB = index === 2
+  const streams = isB
+    ? { right: '6 (B→C)', left: '4 (B→A)', through: '5 (B→D)', leftThrough: '4+5', throughRight: '5+6', all: '4+5+6' }
+    : { right: '12 (D→A)', left: '10 (D→C)', through: '11 (D→B)', leftThrough: '10+11', throughRight: '11+12', all: '10+11+12' }
+  const opposingArm = isB ? 'A' : 'C'
+
+  // Bestimme kontextabhängige Empfehlung
+  let recommendation: { combo: string; reason: string } | null = null
+  if (arm.hasRightTurnTriangleIsland) {
+    recommendation = {
+      combo: `Links+Kreuzen (${streams.leftThrough})`,
+      reason: `Fn 4 (Dreiecksinsel) ist aktiv: Der NS-Rechtsabbieger (Strom ${streams.right}) wartet an einer baulich getrennten Haltlinie und gehört nicht zum Mischstreifen.`,
+    }
+  } else if (opposingHSSeparateLane) {
+    if (isB) {
+      recommendation = {
+        combo: `Links+Kreuzen (${streams.leftThrough})`,
+        reason: `Arm A hat Fn 1 (separater Rechtsabbiegestreifen): Strom ${streams.right} muss nur dem rechten Fahrstreifen von A Vortritt geben und erhält dadurch deutlich mehr Kapazität als Strom ${streams.left} und ${streams.through}. Das Berechnungsbeispiel Punkt 22 der Norm (S. 13) wählt in diesem Fall Links+Kreuzen — der Rechtseinbieger wird separat beurteilt.`,
+      }
+    } else {
+      recommendation = {
+        combo: `Kreuzen+Rechts (${streams.throughRight})`,
+        reason: `Arm C hat Fn 1 (separater Rechtsabbiegestreifen): Strom ${streams.right} muss nur dem rechten Fahrstreifen von C Vortritt geben und erhält mehr Kapazität. Das Berechnungsbeispiel Punkt 22 der Norm (S. 13) wählt in diesem Fall Kreuzen+Rechts — der Linkseinbieger (Strom ${streams.left}) wird separat beurteilt.`,
+      }
+    }
+  }
+
+  return (
+    <div style={{ margin: '0 14px 10px', padding: '10px 12px', borderRadius: 6,
+                  background: '#f8fafc', border: '1px solid #e2e8f0', fontSize: 11,
+                  color: '#475569', lineHeight: 1.6 }}>
+      <div style={{ fontWeight: 600, color: '#334155', marginBottom: 6 }}>
+        Was bedeuten die Optionen? (SN 640 022, Abschn. 13, F21)
+      </div>
+      <div style={{ marginBottom: 4 }}>
+        <strong>Formel F21:</strong> L_m = Σqᵢ / Σaᵢ — harmonisches Mittel der Einzelströme.
+        Ein stark belasteter Strom senkt die Mischstreamkapazität der gesamten Gruppe.
+        Deshalb ist wichtig, nur Ströme zusammenzufassen die wirklich hinter derselben Haltlinie warten.
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: recommendation ? 8 : 0 }}>
+        <div>
+          <strong>Alle ({streams.all}):</strong> Der NS-Arm hat einen einzigen Fahrstreifen.
+          Linkseinbiegen, Kreuzen und Rechtseinbiegen teilen dieselbe Haltlinie — alle drei Ströme werden gemeinsam beurteilt.
+        </div>
+        <div>
+          <strong>Links+Kreuzen ({streams.leftThrough}):</strong> Zwei Fahrstreifen auf dem NS-Arm.
+          Linker Streifen: Linkseinbiegen + Kreuzen.
+          Rechter Streifen: nur Rechtseinbiegen (Strom {streams.right} wird separat beurteilt).
+        </div>
+        <div>
+          <strong>Kreuzen+Rechts ({streams.throughRight}):</strong> Zwei Fahrstreifen auf dem NS-Arm.
+          Linker Streifen: nur Linkseinbiegen (Strom {streams.left} separat).
+          Rechter Streifen: Kreuzen + Rechtseinbiegen gemeinsam.
+        </div>
+      </div>
+      {recommendation && (
+        <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 5,
+                      background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af' }}>
+          <span style={{ fontWeight: 700 }}>Empfehlung: {recommendation.combo}</span>
+          <br />{recommendation.reason}
+        </div>
+      )}
+      {!recommendation && (
+        <div style={{ marginTop: 4, color: '#64748b' }}>
+          <strong>Standard:</strong> Keine besonderen geometrischen Bedingungen erkannt.
+          Wählen Sie «Alle» wenn der NS-Arm einstreifig ist — andernfalls entsprechend der Fahrstreifenmarkierung auf dem Arm {opposingArm} gegenüber.
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, onChange }: {
   arm: ArmConfiguration; index: number; isHS: boolean; armCount: number
+  opposingHSSeparateLane: boolean
   onChange: (a: ArmConfiguration) => void
 }) {
   const lbl  = armLabel(index)
@@ -290,6 +366,7 @@ function ArmCard({ arm, index, isHS, armCount, onChange }: {
                   </div>
                 </div>
               ))}
+              <MixedLaneHint index={index} arm={arm} opposingHSSeparateLane={opposingHSSeparateLane} />
             </>
           )}
         </>
@@ -684,6 +761,11 @@ export default function App() {
             {cfg.arms.map((arm, i) => (
               <ArmCard key={arm.id} arm={arm} index={i} isHS={i < 2}
                 armCount={cfg.arms.length}
+                opposingHSSeparateLane={
+                  i === 2 ? (cfg.arms[0]?.hasSeparateTurnLane ?? false)
+                : i === 3 ? (cfg.arms[1]?.hasSeparateTurnLane ?? false)
+                : false
+                }
                 onChange={a => setArm(i, a)} />
             ))}
           </div>
