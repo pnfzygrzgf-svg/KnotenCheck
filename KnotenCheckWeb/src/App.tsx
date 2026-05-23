@@ -4,7 +4,7 @@ import kreuzungSvg   from './assets/kreuzung.svg'
 import { analyzeSN640022 } from './engine/sn640022Calculator'
 import {
   defaultIntersection, toSNVolumes, toSNLaneFlags, armLabel, totalVolume,
-  effectiveFactor, pctPW, armFactor,
+  pctPW, armFactor,
 } from './engine/armConfiguration'
 import type {
   IntersectionConfiguration, ArmConfiguration,

@@ -7,7 +7,7 @@ import {
   delay, queueLength
 } from '../calculators'
 import { classifyLOS } from '../levelOfService'
-import type { TrafficStream, StreamResult, LevelOfService } from '../types'
+import type { TrafficStream, StreamResult } from '../types'
 
 // ── Hilfsfunktion ─────────────────────────────────────────────────────────────
 

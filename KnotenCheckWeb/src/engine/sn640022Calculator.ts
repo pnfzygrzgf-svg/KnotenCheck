@@ -5,7 +5,7 @@ import { classifyLOS, worstLOS } from './levelOfService'
 import { delay } from './calculators'
 import type {
   SN640022Result, SN640022StreamResult, SN640022MixedResult,
-  SN640022LaneFlags, LevelOfService
+  SN640022LaneFlags
 } from './types'
 
 // ── Grundleistungsfähigkeit G_i (Abb. 2, SN 640 022) ─────────────────────────
