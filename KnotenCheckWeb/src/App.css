@@ -1,3 +1,32 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: #f1f5f9; }
 input[type=number]::-webkit-inner-spin-button { opacity: 1; }
+
+/* ── Responsive Layout ─────────────────────────────────────────────────────── */
+
+.layout-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+  gap: 16px;
+  align-items: start;
+}
+
+.arms-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.arms-grid-4 {
+  grid-template-columns: 1fr 1fr;
+}
+
+.results-panel {
+  position: sticky;
+  top: 16px;
+}
+
+@media (max-width: 720px) {
+  .layout-grid   { grid-template-columns: 1fr; }
+  .arms-grid-4   { grid-template-columns: 1fr; }
+  .results-panel { position: static; }
+}

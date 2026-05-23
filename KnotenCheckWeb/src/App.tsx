@@ -771,7 +771,7 @@ export default function App() {
         {/* Knotentyp */}
         <div style={{ background: '#fff', borderRadius: 10, padding: '12px 20px',
                       marginBottom: 16, boxShadow: '0 1px 3px #0001',
-                      display: 'flex', alignItems: 'center', gap: 12 }}>
+                      display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span style={{ fontWeight: 600, fontSize: 14, color: '#374151' }}>Knotentyp</span>
           {([3, 4] as const).map(n => (
             <button key={n} onClick={() => setArmCount(n)}
@@ -789,14 +789,10 @@ export default function App() {
         </div>
 
         {/* Arme + Ergebnisse */}
-        <div style={{ display: 'grid',
-                      gridTemplateColumns: 'minmax(0, 1fr) minmax(280px, 420px)',
-                      gap: 16, alignItems: 'start' }}>
+        <div className="layout-grid">
 
           {/* Arm-Karten */}
-          <div style={{ display: 'grid',
-                        gridTemplateColumns: cfg.arms.length === 4 ? '1fr 1fr' : '1fr',
-                        gap: 12 }}>
+          <div className={`arms-grid${cfg.arms.length === 4 ? ' arms-grid-4' : ''}`}>
             {cfg.arms.map((arm, i) => (
               <ArmCard key={arm.id} arm={arm} index={i} isHS={i < 2}
                 armCount={cfg.arms.length}
@@ -809,9 +805,10 @@ export default function App() {
             ))}
           </div>
 
-          {/* Ergebnisse (sticky) */}
-          <div style={{ background: '#fff', borderRadius: 10, padding: 20,
-                        boxShadow: '0 1px 3px #0001', position: 'sticky', top: 16 }}>
+          {/* Ergebnisse (sticky auf Desktop, static auf Mobile) */}
+          <div className="results-panel"
+               style={{ background: '#fff', borderRadius: 10, padding: 20,
+                        boxShadow: '0 1px 3px #0001' }}>
 
             {/* Schematik */}
             <div style={{ marginBottom: 16, borderRadius: 8, overflow: 'hidden',
