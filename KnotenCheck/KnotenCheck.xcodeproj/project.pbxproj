@@ -1,0 +1,477 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		068A23DC47B064C8B2D50189 /* CapacityGauge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51858068FDFC97B80B115E8 /* CapacityGauge.swift */; };
+		0948B9EE73C5481BEFD93363 /* ProjectDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2556B78B9EFB6B61ED822B5A /* ProjectDocument.swift */; };
+		10D33E611BAC1F6C4EB1416C /* IntersectionSchematicView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 815133890B361C0A09D3FECC /* IntersectionSchematicView.swift */; };
+		1E315544D9C332BC70D6CC98 /* CalculationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E736476B153C5B973C0E52A6 /* CalculationService.swift */; };
+		223D84F504C5CD64C45677C9 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA90CF944E949F5AB519DCF1 /* ContentView.swift */; };
+		2E46AD957CF30BDB2D9C29F8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6BB929C83AE5DF1482A4AAF6 /* Assets.xcassets */; };
+		40708CEDA19475A7EE23656C /* LOSBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6397327BDF8A73A51C6104A /* LOSBadge.swift */; };
+		45B28C3797E50715DFA23821 /* KnotenCheckEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 889B120B5AA380AED220E98F /* KnotenCheckEngine */; };
+		558C18DA2B9658BE372D9048 /* NodeEditorViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 863FA7BC4E0334D2BF348212 /* NodeEditorViewModel.swift */; };
+		7752CDC0F68B05574BBE8D28 /* ArmConfiguratorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8A142DA6580F20157B93846 /* ArmConfiguratorView.swift */; };
+		8B1E32E77F8F2967FA2DE07D /* ResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCEFA44F4E97938200CEA2C5 /* ResultsView.swift */; };
+		9322427905D96057AC4CB13E /* ProjectListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54BE78DC8F97EEAB7FAF35B5 /* ProjectListView.swift */; };
+		93295D2E0B5F73ECE32EAB30 /* DoubleTextField.swift in Sources */ = {isa = PBXBuildFile; fileRef = F06E4AACAD7A83664D4F7610 /* DoubleTextField.swift */; };
+		9EB959538B94B8E4B2618609 /* StreamResultCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF6EC27F3071F18B40434F30 /* StreamResultCard.swift */; };
+		A2C9AAAF1933FF34A34A4129 /* WizardContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1BE3089443E7CDEBD1DC56E /* WizardContainerView.swift */; };
+		A37393E010CA35539E4C4927 /* ArmConfigSchematicView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C28CC217EC84A1E9420E72BD /* ArmConfigSchematicView.swift */; };
+		A694ACCEB1BC69510228165A /* ConflictGraphView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0461571495B9F1D4DD4CB5A /* ConflictGraphView.swift */; };
+		A9B18B9B4666AD5E5F9A03A8 /* ArmConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6009CF2D66698ABE38F5CC7 /* ArmConfiguration.swift */; };
+		D8905BF6D7DC956114F84DBD /* HelpView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA3AEBFE010FB886EFC195B8 /* HelpView.swift */; };
+		F7865D462A6A145CF900F810 /* KnotenCheckApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A76800ACDB4A0C414C02D1F /* KnotenCheckApp.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		2556B78B9EFB6B61ED822B5A /* ProjectDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectDocument.swift; sourceTree = "<group>"; };
+		54BE78DC8F97EEAB7FAF35B5 /* ProjectListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectListView.swift; sourceTree = "<group>"; };
+		6947B494AF376BEFE9A22C3B /* KnotenCheckEngine */ = {isa = PBXFileReference; lastKnownFileType = folder; name = KnotenCheckEngine; path = ../KnotenCheckEngine; sourceTree = SOURCE_ROOT; };
+		6BB929C83AE5DF1482A4AAF6 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		815133890B361C0A09D3FECC /* IntersectionSchematicView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntersectionSchematicView.swift; sourceTree = "<group>"; };
+		863FA7BC4E0334D2BF348212 /* NodeEditorViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeEditorViewModel.swift; sourceTree = "<group>"; };
+		9A76800ACDB4A0C414C02D1F /* KnotenCheckApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KnotenCheckApp.swift; sourceTree = "<group>"; };
+		A4AD295115507423B1624E2A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		B51858068FDFC97B80B115E8 /* CapacityGauge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapacityGauge.swift; sourceTree = "<group>"; };
+		C28CC217EC84A1E9420E72BD /* ArmConfigSchematicView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmConfigSchematicView.swift; sourceTree = "<group>"; };
+		C4F92F3F74C11A61F4197AD0 /* KnotenCheck_iOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KnotenCheck_iOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C6009CF2D66698ABE38F5CC7 /* ArmConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmConfiguration.swift; sourceTree = "<group>"; };
+		CF6EC27F3071F18B40434F30 /* StreamResultCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamResultCard.swift; sourceTree = "<group>"; };
+		D8A142DA6580F20157B93846 /* ArmConfiguratorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmConfiguratorView.swift; sourceTree = "<group>"; };
+		E736476B153C5B973C0E52A6 /* CalculationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalculationService.swift; sourceTree = "<group>"; };
+		EA3AEBFE010FB886EFC195B8 /* HelpView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpView.swift; sourceTree = "<group>"; };
+		EA90CF944E949F5AB519DCF1 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		F0461571495B9F1D4DD4CB5A /* ConflictGraphView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConflictGraphView.swift; sourceTree = "<group>"; };
+		F06E4AACAD7A83664D4F7610 /* DoubleTextField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoubleTextField.swift; sourceTree = "<group>"; };
+		F1BE3089443E7CDEBD1DC56E /* WizardContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WizardContainerView.swift; sourceTree = "<group>"; };
+		F6397327BDF8A73A51C6104A /* LOSBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LOSBadge.swift; sourceTree = "<group>"; };
+		FCEFA44F4E97938200CEA2C5 /* ResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultsView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		C0F437C44FB663CFC8AFC72B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				45B28C3797E50715DFA23821 /* KnotenCheckEngine in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		01CAF7BF729461A83B89FBEE /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				863FA7BC4E0334D2BF348212 /* NodeEditorViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		0688DA0DC13A2CDF0D675B4F /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				C28CC217EC84A1E9420E72BD /* ArmConfigSchematicView.swift */,
+				B51858068FDFC97B80B115E8 /* CapacityGauge.swift */,
+				F0461571495B9F1D4DD4CB5A /* ConflictGraphView.swift */,
+				F06E4AACAD7A83664D4F7610 /* DoubleTextField.swift */,
+				EA3AEBFE010FB886EFC195B8 /* HelpView.swift */,
+				815133890B361C0A09D3FECC /* IntersectionSchematicView.swift */,
+				F6397327BDF8A73A51C6104A /* LOSBadge.swift */,
+				CF6EC27F3071F18B40434F30 /* StreamResultCard.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		0E3D2C6A29C667EB9F9C4491 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				C6009CF2D66698ABE38F5CC7 /* ArmConfiguration.swift */,
+				2556B78B9EFB6B61ED822B5A /* ProjectDocument.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		1BD58AEED6142C48001FEECF /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				6947B494AF376BEFE9A22C3B /* KnotenCheckEngine */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		23F333703442C1AA36E318AC /* KnotenCheck */ = {
+			isa = PBXGroup;
+			children = (
+				F450F26E74BADD0D5FAC895C /* App */,
+				0E3D2C6A29C667EB9F9C4491 /* Models */,
+				4BB450D920D57FE00947931A /* Services */,
+				01CAF7BF729461A83B89FBEE /* ViewModels */,
+				43ADE74C8C7264AB8EDFC17C /* Views */,
+			);
+			name = KnotenCheck;
+			path = Sources/KnotenCheck;
+			sourceTree = "<group>";
+		};
+		2F9D2911FBD38F09A947C679 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				6BB929C83AE5DF1482A4AAF6 /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		31131DC5DF6897015B07BB93 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				C4F92F3F74C11A61F4197AD0 /* KnotenCheck_iOS.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		43ADE74C8C7264AB8EDFC17C /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				EA90CF944E949F5AB519DCF1 /* ContentView.swift */,
+				B8E658A52A50252207B7D7BE /* iOS */,
+				0688DA0DC13A2CDF0D675B4F /* Shared */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		4BB450D920D57FE00947931A /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				E736476B153C5B973C0E52A6 /* CalculationService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		B8E658A52A50252207B7D7BE /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				D8A142DA6580F20157B93846 /* ArmConfiguratorView.swift */,
+				54BE78DC8F97EEAB7FAF35B5 /* ProjectListView.swift */,
+				FCEFA44F4E97938200CEA2C5 /* ResultsView.swift */,
+				F1BE3089443E7CDEBD1DC56E /* WizardContainerView.swift */,
+			);
+			path = iOS;
+			sourceTree = "<group>";
+		};
+		DE1CA19436C8BEBE49DDE14B = {
+			isa = PBXGroup;
+			children = (
+				23F333703442C1AA36E318AC /* KnotenCheck */,
+				1BD58AEED6142C48001FEECF /* Packages */,
+				2F9D2911FBD38F09A947C679 /* Resources */,
+				31131DC5DF6897015B07BB93 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		F450F26E74BADD0D5FAC895C /* App */ = {
+			isa = PBXGroup;
+			children = (
+				A4AD295115507423B1624E2A /* Info.plist */,
+				9A76800ACDB4A0C414C02D1F /* KnotenCheckApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		CE40386D263B140A35C18AF0 /* KnotenCheck_iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9B9BD8E2F60AA0A4B5B6B129 /* Build configuration list for PBXNativeTarget "KnotenCheck_iOS" */;
+			buildPhases = (
+				78A45190DC0F165083EF4567 /* Sources */,
+				8888D8A7AF1174B2EEB1A2ED /* Resources */,
+				C0F437C44FB663CFC8AFC72B /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = KnotenCheck_iOS;
+			packageProductDependencies = (
+				889B120B5AA380AED220E98F /* KnotenCheckEngine */,
+			);
+			productName = KnotenCheck_iOS;
+			productReference = C4F92F3F74C11A61F4197AD0 /* KnotenCheck_iOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A915C4C16DB1E5A949B4DCBE /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1600;
+			};
+			buildConfigurationList = 4A559F1237562C2EAFED4288 /* Build configuration list for PBXProject "KnotenCheck" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = DE1CA19436C8BEBE49DDE14B;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				EB3277FBF0179313069A24C4 /* XCLocalSwiftPackageReference "../KnotenCheckEngine" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 31131DC5DF6897015B07BB93 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				CE40386D263B140A35C18AF0 /* KnotenCheck_iOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		8888D8A7AF1174B2EEB1A2ED /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2E46AD957CF30BDB2D9C29F8 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		78A45190DC0F165083EF4567 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A37393E010CA35539E4C4927 /* ArmConfigSchematicView.swift in Sources */,
+				A9B18B9B4666AD5E5F9A03A8 /* ArmConfiguration.swift in Sources */,
+				7752CDC0F68B05574BBE8D28 /* ArmConfiguratorView.swift in Sources */,
+				1E315544D9C332BC70D6CC98 /* CalculationService.swift in Sources */,
+				068A23DC47B064C8B2D50189 /* CapacityGauge.swift in Sources */,
+				A694ACCEB1BC69510228165A /* ConflictGraphView.swift in Sources */,
+				223D84F504C5CD64C45677C9 /* ContentView.swift in Sources */,
+				93295D2E0B5F73ECE32EAB30 /* DoubleTextField.swift in Sources */,
+				D8905BF6D7DC956114F84DBD /* HelpView.swift in Sources */,
+				10D33E611BAC1F6C4EB1416C /* IntersectionSchematicView.swift in Sources */,
+				F7865D462A6A145CF900F810 /* KnotenCheckApp.swift in Sources */,
+				40708CEDA19475A7EE23656C /* LOSBadge.swift in Sources */,
+				558C18DA2B9658BE372D9048 /* NodeEditorViewModel.swift in Sources */,
+				0948B9EE73C5481BEFD93363 /* ProjectDocument.swift in Sources */,
+				9322427905D96057AC4CB13E /* ProjectListView.swift in Sources */,
+				8B1E32E77F8F2967FA2DE07D /* ResultsView.swift in Sources */,
+				9EB959538B94B8E4B2618609 /* StreamResultCard.swift in Sources */,
+				A2C9AAAF1933FF34A34A4129 /* WizardContainerView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		398C1EF4E86280C2F43D93A3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		80B8305A29E1383440302F79 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		B686FC6AD36543C52D9F19CC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 9LZ74RQ3F4;
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = Sources/KnotenCheck/App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ch.einfachsicher.KnotenCheck;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		ED4FFDDCCC83F01F4178C584 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 9LZ74RQ3F4;
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = Sources/KnotenCheck/App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ch.einfachsicher.KnotenCheck;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		4A559F1237562C2EAFED4288 /* Build configuration list for PBXProject "KnotenCheck" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				398C1EF4E86280C2F43D93A3 /* Debug */,
+				80B8305A29E1383440302F79 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		9B9BD8E2F60AA0A4B5B6B129 /* Build configuration list for PBXNativeTarget "KnotenCheck_iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ED4FFDDCCC83F01F4178C584 /* Debug */,
+				B686FC6AD36543C52D9F19CC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		EB3277FBF0179313069A24C4 /* XCLocalSwiftPackageReference "../KnotenCheckEngine" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../KnotenCheckEngine;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		889B120B5AA380AED220E98F /* KnotenCheckEngine */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = KnotenCheckEngine;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = A915C4C16DB1E5A949B4DCBE /* Project object */;
+}
