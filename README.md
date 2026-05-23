@@ -11,6 +11,36 @@ Werkzeug zur Leistungsbeurteilung von Vortrittregelungen nach **SN 640 022** (VS
 - Fussnoten 1–4: Dreiecksinsel, separater Rechts- und Linksabbiegestreifen
 - Mischstreifen-Kombination für NS-Arme (F21)
 - Qualitätsstufen A–F mit Wartezeit nach Kimber-Hollis
+- Zwei Berechnungsverfahren: SN 640 022 und analytisches Schätzverfahren (Teilimplementierung)
+
+## Berechnungsverfahren
+
+KnotenCheck bietet zwei Tabs. Die Resultate sind **nicht identisch** — das ist gewollt, da es sich um grundlegend verschiedene Methoden handelt.
+
+### SN 640 022
+
+Die offizielle Schweizer Norm berechnet die Grundleistungsfähigkeit mit empirisch kalibrierten Exponentialkurven:
+
+**G_i = a · e^(−b · qpi)**
+
+qpi ist die Summe der spezifisch definierten Konfliktströme je Bewegung (Formeln F1–F8). Die Parameter wurden an Schweizer Messdaten kalibriert. Dieses Verfahren ist für die normenkonforme Beurteilung massgebend.
+
+### Erweitert — Analytisches Schätzverfahren
+
+Basierend auf ausgewählten Teilen des VSS-Forschungsberichts 2008/301 (Pitzinger/Spacek, ETH Zürich, Dezember 2009). Der Bericht beschreibt ein allgemeines Konflikttyp-Verfahren für komplexe ungesteuerte Knoten. KnotenCheck implementiert davon **nur einen Teil**:
+
+**Implementiert:**
+- Typ 1 — Zweirangiger Konflikt ohne Vortrittswechsel: `L₂ = S_m · (1 − y₁)²` (für alle Fahrzeug- und Fussgängerkonflikte am Standard-Knoten)
+- Mischstreifen-Aggregation: `x_M = Σ(qᵢ/Lᵢ)`, `L_M = Q_M / x_M`
+- Wartezeit nach Kimber-Hollis, Staulänge
+
+**Nicht implementiert** (im Bericht vorhanden):
+- Typ 2 — Zweirangig mit Vortrittswechsel
+- Typen 5/6/7 — Mehrrangige und parallele Konflikte
+- Konflikt mit Lichtsignalanlage im Zufluss oder Stau im Abfluss
+- Tram, Bus auf Eigentrasse
+
+**Warum unterscheiden sich die Resultate?** SN 640 022 verwendet arm-spezifische Konfliktstrommassen (z.B. qp4 = q2 + q3 + q8 + q7), während dieses Verfahren das gesamte Arm-Volumen als Konfliktgrösse einsetzt — ein grundlegend anderer Ansatz. Beide sind methodisch korrekt, messen aber unterschiedliche Dinge.
 
 ## Repo-Struktur
 

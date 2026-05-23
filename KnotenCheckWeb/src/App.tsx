@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import einmuendungSvg from './assets/einmuendung.svg'
-import kreuzungSvg   from './assets/kreuzung.svg'
+import kreuzungSvg    from './assets/kreuzung.svg'
 import { analyzeSN640022 } from './engine/sn640022Calculator'
 import {
   defaultIntersection, toSNVolumes, toSNLaneFlags, armLabel, totalVolume,
@@ -563,6 +563,46 @@ function ExtendedPanel({ nodeResult, node, cfg }: {
           {nodeResult.warnings.join(' · ')}
         </div>
       )}
+
+      {/* Methodenerklärung — am Ende */}
+      <div style={{ marginTop: 20, padding: '10px 13px', borderRadius: 8,
+                    background: '#f8fafc', border: '1px solid #e2e8f0',
+                    fontSize: 11, color: '#475569', lineHeight: 1.65 }}>
+        <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: 5 }}>
+          Analytisches Schätzverfahren — Teilimplementierung nach VSS 2008/301
+        </div>
+        <p style={{ margin: '0 0 6px' }}>
+          Der VSS-Forschungsbericht 2008/301 (Pitzinger/Spacek, ETH Zürich, 2009) beschreibt ein
+          allgemeines Konflikttyp-Verfahren für komplexe ungesteuerte Knoten. KnotenCheck implementiert
+          davon <strong>nur einen Teil</strong>:
+        </p>
+        <p style={{ margin: '0 0 4px' }}><strong>Implementiert:</strong></p>
+        <ul style={{ margin: '0 0 6px', paddingLeft: 16 }}>
+          <li>Typ 1 — Zweirangiger Konflikt ohne Vortrittswechsel: <strong>L₂ = S_m · (1 − y₁)²</strong><br />
+            <span style={{ color: '#64748b' }}>Wird für alle Fahrzeug- und Fussgängerkonflikte am Standard-Knoten verwendet.</span>
+          </li>
+          <li>Mischstreifen-Aggregation: <strong>x_M = Σ(qᵢ/Lᵢ), L_M = Q_M / x_M</strong></li>
+          <li>Wartezeit nach Kimber-Hollis, Staulänge</li>
+        </ul>
+        <p style={{ margin: '0 0 4px' }}><strong>Nicht implementiert</strong> (im Bericht vorhanden, hier nicht):</p>
+        <ul style={{ margin: '0 0 6px', paddingLeft: 16, color: '#94a3b8' }}>
+          <li>Typ 2 — Zweirangig mit Vortrittswechsel</li>
+          <li>Typen 5/6/7 — Mehrrangige und parallele Konflikte</li>
+          <li>Konflikt mit Lichtsignalanlage im Zufluss oder Stau im Abfluss</li>
+          <li>Tram, Bus auf Eigentrasse</li>
+        </ul>
+        <p style={{ margin: '0 0 5px' }}>
+          <strong>Warum weichen die Resultate von SN 640 022 ab?</strong> SN 640 022 verwendet
+          empirisch kalibrierte Exponentialkurven (G_i = a · e^(−b · qpi)), wobei qpi die Summe
+          spezifisch definierter Konfliktströme ist. Dieses Verfahren setzt stattdessen das
+          gesamte Arm-Volumen als Konfliktgrösse ein — ein grundlegend anderer Ansatz.
+        </p>
+        <p style={{ margin: 0, color: '#64748b' }}>
+          <strong>Empfehlung:</strong> Für die normenkonforme Beurteilung gilt <em>SN 640 022</em>
+          als massgebend. Das erweiterte Verfahren dient der Plausibilisierung, insbesondere
+          bei Fussgängerquerungen oder komplexeren Geometrien.
+        </p>
+      </div>
     </div>
   )
 }
@@ -590,6 +630,13 @@ function ResultsPanel({ result, nodeResult, node, cfg }: {
             {label}
           </button>
         ))}
+      </div>
+
+      {/* Beta-Hinweis — in beiden Tabs */}
+      <div style={{ marginBottom: 14, padding: '7px 12px', borderRadius: 6,
+                    background: '#fff7ed', border: '1px solid #fed7aa',
+                    fontSize: 11, color: '#92400e', fontWeight: 600 }}>
+        ⚠ Beta — Resultate mit Vorsicht verwenden.
       </div>
 
       {showExtended
@@ -776,13 +823,18 @@ export default function App() {
 
             {/* Schematik */}
             <div style={{ marginBottom: 16, borderRadius: 8, overflow: 'hidden',
-                          border: '1px solid #e5e7eb', background: '#fafafa' }}>
-              <img
-                src={cfg.arms.length === 3 ? einmuendungSvg : kreuzungSvg}
-                alt={cfg.arms.length === 3 ? 'T-Knoten Schema' : 'Kreuzung Schema'}
-                style={{ width: '100%', height: 'auto', display: 'block',
-                         maxHeight: 280, objectFit: 'contain', padding: 8 }}
-              />
+                          border: '1px solid #e5e7eb', background: '#fafafa', padding: 8 }}>
+              {cfg.arms.length === 3 ? (
+                <img src={einmuendungSvg} alt="T-Knoten Schema"
+                  style={{ width: '100%', height: 'auto', display: 'block',
+                           maxHeight: 280, objectFit: 'contain' }} />
+              ) : (
+                <img
+                  src={cfg.arms.length === 3 ? einmuendungSvg : kreuzungSvg}
+                  alt={cfg.arms.length === 3 ? 'T-Knoten Schema' : 'Kreuzung Schema'}
+                  style={{ width: '100%', height: 'auto', display: 'block' }}
+                />
+              )}
             </div>
 
             {result
