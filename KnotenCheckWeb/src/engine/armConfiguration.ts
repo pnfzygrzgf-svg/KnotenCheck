@@ -1,6 +1,6 @@
 // Eingabemodell — Port von ArmConfiguration.swift + IntersectionConfiguration.swift
 
-import type { MixedLaneCombination, SN640022LaneFlags } from './types'
+import type { MixedLaneCombination, SN640022LaneFlags, IntersectionNode, TrafficStream, ConflictGroup, MixedLaneGroup, Rank } from './types'
 
 // ── Neigungsklassen (Tab. 1) ──────────────────────────────────────────────────
 
@@ -163,4 +163,162 @@ export function toSNVolumes(cfg: IntersectionConfiguration): number[][] | null {
     v[3][2] = f[3] * cfg.arms[3].straightVolume
   }
   return v
+}
+
+// ── Erweiterte Berechnung: IntersectionNode ───────────────────────────────────
+// Port von ArmConfiguration.toIntersectionNode() (Swift)
+
+interface EngineMovement {
+  label: string
+  key: 'leftVolume' | 'straightVolume' | 'rightVolume'
+  yieldsTo: number[]  // Arm-Indizes mit Vortritt
+  destination: number // Ziel-Arm-Index
+}
+
+function engineMovements(index: number, armCount: number): EngineMovement[] {
+  if (armCount === 3) {
+    if (index === 0) return [
+      { label: 'Geradeaus →C', key: 'straightVolume', yieldsTo: [],     destination: 1 },
+      { label: 'Rechts →B',    key: 'rightVolume',    yieldsTo: [],     destination: 2 },
+    ]
+    if (index === 1) return [
+      { label: 'Geradeaus →A', key: 'straightVolume', yieldsTo: [],     destination: 0 },
+      { label: 'Links →B',     key: 'leftVolume',     yieldsTo: [0],    destination: 2 },
+    ]
+    return [
+      { label: 'Links →A',  key: 'leftVolume',  yieldsTo: [0, 1], destination: 0 },
+      { label: 'Rechts →C', key: 'rightVolume', yieldsTo: [0],    destination: 1 },
+    ]
+  }
+  if (index === 0) return [
+    { label: 'Geradeaus →C', key: 'straightVolume', yieldsTo: [],     destination: 1 },
+    { label: 'Rechts →B',    key: 'rightVolume',    yieldsTo: [],     destination: 2 },
+    { label: 'Links →D',     key: 'leftVolume',     yieldsTo: [1],    destination: 3 },
+  ]
+  if (index === 1) return [
+    { label: 'Geradeaus →A', key: 'straightVolume', yieldsTo: [],     destination: 0 },
+    { label: 'Links →B',     key: 'leftVolume',     yieldsTo: [0],    destination: 2 },
+    { label: 'Rechts →D',    key: 'rightVolume',    yieldsTo: [],     destination: 3 },
+  ]
+  if (index === 2) return [
+    { label: 'Geradeaus →D', key: 'straightVolume', yieldsTo: [0, 1], destination: 3 },
+    { label: 'Links →A',     key: 'leftVolume',     yieldsTo: [0, 1], destination: 0 },
+    { label: 'Rechts →C',    key: 'rightVolume',    yieldsTo: [0],    destination: 1 },
+  ]
+  return [
+    { label: 'Geradeaus →B', key: 'straightVolume', yieldsTo: [0, 1], destination: 2 },
+    { label: 'Rechts →A',    key: 'rightVolume',    yieldsTo: [1],    destination: 0 },
+    { label: 'Links →C',     key: 'leftVolume',     yieldsTo: [0, 1], destination: 1 },
+  ]
+}
+
+function makeStream(name: string, rank: Rank, volume: number, armLbl: string, auxiliary = false): TrafficStream {
+  return { id: crypto.randomUUID(), name, rank, mode: 'motorVehicle', volume,
+           isAuxiliary: auxiliary, armLabel: armLbl }
+}
+
+export function toIntersectionNode(cfg: IntersectionConfiguration): IntersectionNode {
+  const n = cfg.arms.length
+  const isHS = (i: number) => i < 2
+  const lbl  = (i: number) => armLabel(i)
+
+  // Arm-Hauptströme
+  const armStreams: TrafficStream[] = cfg.arms.map((arm, i) => {
+    const f = armFactor(arm)
+    const vol = isHS(i) && arm.hasSeparateTurnLane
+      ? (arm.straightVolume + arm.leftVolume) * f
+      : totalVolume(arm) * f
+    return makeStream(`Arm ${lbl(i)}`, isHS(i) ? 'primary' : 'secondary', vol, lbl(i))
+  })
+
+  const subStreams:      TrafficStream[] = []
+  const conflictGroups: ConflictGroup[]  = []
+  const mixedLaneGroups: MixedLaneGroup[] = []
+  const armSubIDs: string[][] = cfg.arms.map(() => [])
+
+  // Sub-Ströme und Konfliktgruppen pro Arm
+  for (let i = 0; i < n; i++) {
+    const arm  = cfg.arms[i]
+    const f    = armFactor(arm)
+    const mvs  = engineMovements(i, n)
+    const rank: Rank = isHS(i) ? 'primary' : 'secondary'
+
+    for (const mv of mvs) {
+      const vol = arm[mv.key] * f
+      const sub = makeStream(`${lbl(i)} ${mv.label}`, rank, vol, lbl(i), true)
+      subStreams.push(sub)
+      armSubIDs[i].push(sub.id)
+
+      for (const pi of mv.yieldsTo) {
+        const priorityArm = cfg.arms[pi]
+        // Fn 2: NS-Rechtseinbieger gibt nur dem rechten HS-Fahrstreifen Vortritt
+        if (mv.key === 'rightVolume' && priorityArm.rightLaneVolume !== undefined && isHS(pi)) {
+          const rlStream = makeStream(
+            `Arm ${lbl(pi)} Rechtsstreifen`, 'primary',
+            priorityArm.rightLaneVolume * armFactor(priorityArm), lbl(pi), true
+          )
+          subStreams.push(rlStream)
+          conflictGroups.push({
+            id: crypto.randomUUID(), streamIDs: [rlStream.id, sub.id],
+            conflictType: 'twoRankNoSwitch',
+            rankOverrides: { [rlStream.id]: 'primary', [sub.id]: 'secondary' },
+          })
+        } else {
+          conflictGroups.push({
+            id: crypto.randomUUID(), streamIDs: [armStreams[pi].id, sub.id],
+            conflictType: 'twoRankNoSwitch',
+            rankOverrides: { [armStreams[pi].id]: 'primary', [sub.id]: 'secondary' },
+          })
+        }
+      }
+    }
+
+    mixedLaneGroups.push({
+      id: crypto.randomUUID(), name: `Arm ${lbl(i)}`,
+      armStreamID: armStreams[i].id, subStreamIDs: armSubIDs[i],
+    })
+  }
+
+  // Fussgängerströme
+  const pedestrianStreams: TrafficStream[] = []
+  for (let i = 0; i < n; i++) {
+    const arm = cfg.arms[i]
+    if (!arm.hasPedestrianCrossing || arm.pedestrianVolume <= 0) continue
+    const fg: TrafficStream = {
+      id: crypto.randomUUID(), name: `Fg ${lbl(i)}`, rank: 'primary',
+      mode: 'pedestrian', volume: arm.pedestrianVolume, armLabel: lbl(i),
+    }
+    pedestrianStreams.push(fg)
+
+    // K2: eigene Sub-Ströme (Fz die von Arm i wegfahren)
+    for (const subID of armSubIDs[i]) {
+      conflictGroups.push({
+        id: crypto.randomUUID(), streamIDs: [fg.id, subID],
+        conflictType: 'twoRankNoSwitch',
+        rankOverrides: { [fg.id]: 'primary', [subID]: 'secondary' },
+      })
+    }
+    // K1: Sub-Ströme anderer Arme die ZU Arm i fahren
+    for (let j = 0; j < n; j++) {
+      if (j === i) continue
+      const jMvs = engineMovements(j, n)
+      jMvs.forEach((mv, k) => {
+        if (mv.destination === i && k < armSubIDs[j].length) {
+          conflictGroups.push({
+            id: crypto.randomUUID(), streamIDs: [fg.id, armSubIDs[j][k]],
+            conflictType: 'twoRankNoSwitch',
+            rankOverrides: { [fg.id]: 'primary', [armSubIDs[j][k]]: 'secondary' },
+          })
+        }
+      })
+    }
+  }
+
+  return {
+    id: crypto.randomUUID(),
+    name: cfg.name || 'Neuer Knoten',
+    streams: [...armStreams, ...subStreams, ...pedestrianStreams],
+    conflictGroups,
+    mixedLaneGroups,
+  }
 }

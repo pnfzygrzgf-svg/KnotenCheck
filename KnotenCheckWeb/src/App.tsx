@@ -4,13 +4,15 @@ import kreuzungSvg   from './assets/kreuzung.svg'
 import { analyzeSN640022 } from './engine/sn640022Calculator'
 import {
   defaultIntersection, toSNVolumes, toSNLaneFlags, armLabel, totalVolume,
-  pctPW, armFactor,
+  toIntersectionNode, pctPW, armFactor,
 } from './engine/armConfiguration'
+import { analyzeNode } from './engine/engine'
+import { worstLOS } from './engine/levelOfService'
 import type {
   IntersectionConfiguration, ArmConfiguration,
   GradientCategory, VehicleCategoryMix,
 } from './engine/armConfiguration'
-import type { SN640022Result, SN640022StreamResult, SN640022MixedResult, LevelOfService, MixedLaneCombination } from './engine/types'
+import type { SN640022Result, SN640022StreamResult, SN640022MixedResult, LevelOfService, MixedLaneCombination, NodeResult, StreamResult } from './engine/types'
 import './App.css'
 
 // ── Farben ─────────────────────────────────────────────────────────────────────
@@ -392,12 +394,128 @@ function StreamRow({ s }: { s: SN640022StreamResult }) {
   )
 }
 
-function ResultsPanel({ result }: { result: SN640022Result }) {
+// ── Erweiterte Ergebnisse ─────────────────────────────────────────────────────
+
+function ExtendedArmCard({ name, result }: { name: string; result: StreamResult }) {
+  const col = utilizationColor(result.utilizationDegree)
+  const pct = Math.min(999, Math.round(result.utilizationDegree * 100))
+  return (
+    <div style={{ padding: '12px 14px', background: '#fff', borderRadius: 8,
+                  border: '1px solid #e5e7eb', marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+        <span style={{ fontWeight: 700, fontSize: 14 }}>{name}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 16, fontWeight: 700, color: col }}>{pct} %</span>
+          <LOSBadge los={result.levelOfService} />
+        </div>
+      </div>
+      <UtilBar value={result.utilizationDegree} />
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6b7280' }}>
+        <div><span style={{ color: '#9ca3af' }}>L </span><strong>{Math.round(result.capacity)} Fz/h</strong></div>
+        <div><span style={{ color: '#9ca3af' }}>Reserve </span>
+          <strong style={{ color: result.capacity - result.volume < 0 ? '#dc2626' : '#16a34a' }}>
+            {Math.round(result.capacity - result.volume)}
+          </strong>
+        </div>
+        <div><span style={{ color: '#9ca3af' }}>Wartezeit </span><strong>{delayText(result.delay)}</strong></div>
+        <div><span style={{ color: '#9ca3af' }}>Stau </span>
+          <strong>{isFinite(result.queueLength) ? `${result.queueLength.toFixed(1)} Fz` : '> 999'}</strong>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ExtendedPanel({ nodeResult, cfg }: { nodeResult: NodeResult; cfg: IntersectionConfiguration }) {
+  const armResults = cfg.arms.map((_, i) => {
+    const node = toIntersectionNode(cfg)
+    const armStream = node.streams.find(s => s.armLabel === armLabel(i) && !s.isAuxiliary)
+    return nodeResult.streamResults.find(r => r.id === armStream?.id)
+  })
+
+  const pedestrianResults = nodeResult.streamResults.filter(r => {
+    const stream = toIntersectionNode(cfg).streams.find(s => s.id === r.id)
+    return stream?.mode === 'pedestrian'
+  })
+
+  const validLOS = armResults
+    .filter((r): r is StreamResult => r !== undefined)
+    .map(r => r.levelOfService)
+  const overall = validLOS.length > 0 ? worstLOS(validLOS) : 'A'
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '14px 16px', borderRadius: 10, marginBottom: 16,
+                    background: LOS_BG[overall], border: `1px solid ${LOS_COLOR[overall]}44` }}>
+        <div>
+          <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 2 }}>Gesamtbeurteilung · Erweitert</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>Qualitätsstufe {overall}</div>
+          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>(schlechtester Arm)</div>
+        </div>
+        <LOSBadge los={overall} />
+      </div>
+
+      <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280',
+                    textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+        Arme
+      </div>
+      {cfg.arms.map((_, i) => {
+        const r = armResults[i]
+        if (!r) return null
+        return <ExtendedArmCard key={i} name={`Arm ${armLabel(i)} (${i < 2 ? 'HS' : 'NS'})`} result={r} />
+      })}
+
+      {pedestrianResults.length > 0 && (
+        <>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280',
+                        textTransform: 'uppercase', letterSpacing: '0.05em',
+                        marginTop: 16, marginBottom: 8 }}>
+            Fussgänger
+          </div>
+          {pedestrianResults.map(r => (
+            <ExtendedArmCard key={r.id} name="Fussgänger" result={r} />
+          ))}
+        </>
+      )}
+
+      {nodeResult.warnings.length > 0 && (
+        <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8,
+                      background: '#fff7ed', border: '1px solid #fed7aa', fontSize: 12, color: '#92400e' }}>
+          {nodeResult.warnings.join(' · ')}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ResultsPanel({ result, nodeResult, cfg }: {
+  result: SN640022Result; nodeResult: NodeResult; cfg: IntersectionConfiguration
+}) {
   const [showDetails, setShowDetails] = useState(false)
+  const [showExtended, setShowExtended] = useState(false)
   const rang2 = result.streams.filter(s => s.rang === 2)
 
   return (
     <div>
+      {/* Toggle SN 640 022 / Erweitert */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 16, background: '#f3f4f6',
+                    borderRadius: 8, padding: 3 }}>
+        {(['SN 640 022', 'Erweitert'] as const).map(label => (
+          <button key={label} onClick={() => setShowExtended(label === 'Erweitert')}
+            style={{ flex: 1, padding: '6px 0', borderRadius: 6, fontSize: 13, cursor: 'pointer',
+                     border: 'none', fontWeight: showExtended === (label === 'Erweitert') ? 700 : 400,
+                     background: showExtended === (label === 'Erweitert') ? '#fff' : 'transparent',
+                     color: '#374151',
+                     boxShadow: showExtended === (label === 'Erweitert') ? '0 1px 3px #0002' : 'none' }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {showExtended
+        ? <ExtendedPanel nodeResult={nodeResult} cfg={cfg} />
+        : <>
       {/* Gesamtbeurteilung */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     padding: '14px 16px', borderRadius: 10, marginBottom: 16,
@@ -484,6 +602,7 @@ function ResultsPanel({ result }: { result: SN640022Result }) {
           </table>
         </div>
       )}
+      </>}
     </div>
   )
 }
@@ -498,6 +617,10 @@ export default function App() {
     if (!v) return null
     return analyzeSN640022(v, toSNLaneFlags(cfg))
   }, [cfg])
+
+  const nodeResult = useMemo<NodeResult>(() =>
+    analyzeNode(toIntersectionNode(cfg))
+  , [cfg])
 
   const setArm = (i: number, arm: ArmConfiguration) =>
     setCfg(prev => { const arms = [...prev.arms]; arms[i] = arm; return { ...prev, arms } })
@@ -580,7 +703,7 @@ export default function App() {
             </div>
 
             {result
-              ? <ResultsPanel result={result} />
+              ? <ResultsPanel result={result} nodeResult={nodeResult} cfg={cfg} />
               : <p style={{ color: '#9ca3af', textAlign: 'center', padding: 32 }}>
                   Bitte Verkehrsmengen eingeben.
                 </p>
