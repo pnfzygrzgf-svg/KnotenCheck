@@ -588,9 +588,17 @@ export default function App() {
           </div>
         </div>
 
-        <p style={{ fontSize: 11, color: '#9ca3af', textAlign: 'center', marginTop: 24 }}>
-          Berechnung nach SN 640 022 (VSS, Mai 1999) und VSS-Forschungsbericht 2008/301.
-          Umrechnungsfaktor f = 1.1 (Fall 1, ±0% Neigung). Kein amtliches Dokument.
+        <p style={{ fontSize: 11, color: '#9ca3af', textAlign: 'center', marginTop: 24, lineHeight: 1.8 }}>
+          Berechnung nach SN 640 022 (VSS, Mai 1999) und VSS-Forschungsbericht 2008/301. Kein amtliches Dokument —
+          die Ergebnisse ersetzen keine Überprüfung durch eine Fachperson. Keine Gewähr.
+          <br />
+          © 2026 pnfzygrzgf-svg · Quellcode:{' '}
+          <a href="https://github.com/pnfzygrzgf-svg/KnotenCheck"
+             target="_blank" rel="noopener noreferrer"
+             style={{ color: '#9ca3af', textDecoration: 'underline' }}>
+            GitHub
+          </a>
+          {' '}· Lizenz: GNU GPL v3 — kommerzielle Nutzung ohne Offenlegung des Quellcodes nicht gestattet.
         </p>
       </main>
     </div>
