@@ -763,14 +763,6 @@ export default function App() {
           <span style={{ fontWeight: 800, fontSize: 20, letterSpacing: '-0.5px' }}>KnotenCheck</span>
           <span style={{ fontSize: 12, opacity: 0.6, marginTop: 1 }}>nach SN 640 022</span>
           <div style={{ flex: 1 }} />
-          <input
-            value={cfg.name}
-            onChange={e => setCfg(p => ({ ...p, name: e.target.value }))}
-            placeholder="Name des Knotens…"
-            style={{ fontSize: 13, padding: '4px 10px', borderRadius: 6,
-                     border: '1px solid #fff3', background: '#ffffff18',
-                     color: '#fff', width: 200, outline: 'none' }}
-          />
         </div>
       </header>
 
