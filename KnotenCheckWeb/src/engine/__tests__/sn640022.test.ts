@@ -71,11 +71,9 @@ describe('Kreuzung (Punkt 22)', () => {
   test('S7: L7=G7', () => { acc(s(7).capacity, s(7).basicCapacity, 1) })
 
   // Rang 3
-  // TODO: Kreuzen NS qp=1400 wurde als 300 abgelesen (= gleich wie qp=1200).
-  // Norm impliziert G(1390)≈245 → Ablesefehler wahrscheinlich. Bitte nachkontrollieren.
-  // Bis zur Korrektur: Toleranz auf tatsächlichen Interpolationswert gesetzt.
+  // Rang 3 (Toleranz ±18: Interpolation auf konkaver Kreuzen-Kurve)
   test('S5: L5≈245', () => { acc(s(5).capacity, 245, 18) })
-  test('S11: L11≈204', () => { acc(s(11).capacity, 204, 50) })
+  test('S11: L11≈204', () => { acc(s(11).capacity, 204, 18) })
 
   // Rang 4
   test('S4: L4≈200', () => { acc(s(4).capacity, 200, 12) })

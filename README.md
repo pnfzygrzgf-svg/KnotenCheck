@@ -39,11 +39,11 @@ Ein einzelner Exponentialfit `A·e^(−k·qpi)` weicht bei hohen Konfliktvolumen
 | 800 | 600 | 475 | 425 | 375 |
 | 1000 | 500 | 400 | 375 | 300 |
 | 1200 | 400 | 325 | 300 | 250 |
-| 1400 | 375 | 320 | 300* | 225 |
+| 1400 | 375 | 320 | 225 | 225 |
 | 1600 | 300 | 250 | 225 | 200 |
 | 1800 | 225 | 200 | 200 | 175 |
 
-*) Wert bei qpi=1400 (Kreuzen NS) mit Normbeispiel Punkt 22 nicht vollständig konsistent — Nachkontrolle ausstehend. Die Normbeispiele implizieren dort ~245 PWE/h.
+Hinweis: Die Kurven «Kreuzen» und «Linkseinbiegen» schneiden sich in Abb. 2 bei qpi≈50. Ab qpi>50 liegt Kreuzen über Linkseinbiegen; bei qpi=1400 sind beide ≈225 (innerhalb der Ablesegenauigkeit).
 
 #### Maximale Leistungsfähigkeit L_i — Formeln F11–F20
 

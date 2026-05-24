@@ -45,9 +45,11 @@ const G_SIDE_RIGHT: GTable = [
   [1000, 400], [1200, 325], [1400, 320], [1600, 250], [1800, 200],
 ]
 // Kreuzen aus der Nebenstrasse (Ströme 5, 11)
+// Hinweis: Kurven «Kreuzen» und «Linkseinbiegen» schneiden sich bei qpi≈50.
+// Ab qpi>50 liegt Kreuzen über Linkseinbiegen; bei qpi=1400 sind beide ≈225.
 const G_SIDE_CROSS: GTable = [
   [0, 1000], [200, 800], [400, 625], [600, 525], [800, 425],
-  [1000, 375], [1200, 300], [1400, 300], [1600, 225], [1800, 200],
+  [1000, 375], [1200, 300], [1400, 225], [1600, 225], [1800, 200],
 ]
 // Linkseinbiegen aus der Nebenstrasse (Ströme 4, 10)
 const G_SIDE_LEFT: GTable = [
