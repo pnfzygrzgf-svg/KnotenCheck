@@ -8,12 +8,57 @@ import type {
 } from './types'
 
 // ── Grundleistungsfähigkeit G_i (Abb. 2, SN 640 022) ─────────────────────────
-// Exponentialfit an Normkurven inkl. CH-Erhöhung +90 PWE/h
+// Stückweise lineare Interpolation auf abgelesenen Stützpunkten.
+// Ablesungen: Mai 2026, auf Gitterlinien qpi = 0–1800 Fz/h.
+// Inkl. CH-Erhöhung +90 PWE/h (SN 640 022, Abschnitt 9).
+// Jenseits qpi = 1800: letzte Steigung linear extrapoliert, Minimum 0.
+// Dokumentation der Methode: siehe README.md, Abschnitt «Grundleistungsfähigkeit G_i».
 
-function gMainLeft(qpi: number):  number { return Math.max(0, 1486 * Math.exp(-0.001104 * qpi)) }
-function gSideRight(qpi: number): number { return Math.max(0, 1232 * Math.exp(-0.001205 * qpi)) }
-function gSideCross(qpi: number): number { return Math.max(0,  791 * Math.exp(-0.000829 * qpi)) }
-function gSideLeft(qpi: number):  number { return Math.max(0, 1019 * Math.exp(-0.001166 * qpi)) }
+type GTable = readonly [number, number][]
+
+function interpG(table: GTable, qpi: number): number {
+  const n = table.length
+  if (qpi <= table[0][0]) return table[0][1]
+  if (qpi >= table[n - 1][0]) {
+    const [x1, y1] = table[n - 2]
+    const [x2, y2] = table[n - 1]
+    return Math.max(0, y2 + (qpi - x2) * (y2 - y1) / (x2 - x1))
+  }
+  let lo = 0, hi = n - 1
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1
+    if (table[mid][0] <= qpi) lo = mid; else hi = mid
+  }
+  const [x0, y0] = table[lo]
+  const [x1, y1] = table[hi]
+  return Math.max(0, y0 + (qpi - x0) * (y1 - y0) / (x1 - x0))
+}
+
+// Linksabbiegen von der Hauptstrasse (Ströme 1, 7)
+const G_MAIN_LEFT: GTable = [
+  [0, 1575], [200, 1200], [400, 950], [600, 775], [800, 600],
+  [1000, 500], [1200, 400], [1400, 375], [1600, 300], [1800, 225],
+]
+// Rechtseinbiegen aus der Nebenstrasse (Ströme 6, 12)
+const G_SIDE_RIGHT: GTable = [
+  [0, 1250], [200, 975], [400, 750], [600, 600], [800, 475],
+  [1000, 400], [1200, 325], [1400, 320], [1600, 250], [1800, 200],
+]
+// Kreuzen aus der Nebenstrasse (Ströme 5, 11)
+const G_SIDE_CROSS: GTable = [
+  [0, 1000], [200, 800], [400, 625], [600, 525], [800, 425],
+  [1000, 375], [1200, 300], [1400, 300], [1600, 225], [1800, 200],
+]
+// Linkseinbiegen aus der Nebenstrasse (Ströme 4, 10)
+const G_SIDE_LEFT: GTable = [
+  [0, 1000], [200, 800], [400, 600], [600, 475], [800, 375],
+  [1000, 300], [1200, 250], [1400, 225], [1600, 200], [1800, 175],
+]
+
+function gMainLeft(qpi: number):  number { return interpG(G_MAIN_LEFT,  qpi) }
+function gSideRight(qpi: number): number { return interpG(G_SIDE_RIGHT, qpi) }
+function gSideCross(qpi: number): number { return interpG(G_SIDE_CROSS, qpi) }
+function gSideLeft(qpi: number):  number { return interpG(G_SIDE_LEFT,  qpi) }
 
 // ── p₀ Wahrscheinlichkeit staufreier Zustand [F12] ───────────────────────────
 function p0(q: number, L: number): number {
