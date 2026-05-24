@@ -3,7 +3,7 @@ import einmuendungSvg from './assets/einmuendung.svg'
 import kreuzungSvg    from './assets/kreuzung.svg'
 import { analyzeSN640022 } from './engine/sn640022Calculator'
 import {
-  defaultIntersection, toSNVolumes, toSNLaneFlags, armLabel, totalVolume,
+  defaultIntersection, toSNVolumes, toSNRawVolumes, toSNLaneFlags, armLabel, totalVolume,
   toIntersectionNode, pctPW, armFactor,
 } from './engine/armConfiguration'
 import { analyzeNode } from './engine/engine'
@@ -803,9 +803,10 @@ export default function App() {
   const [cfg, setCfg] = useState<IntersectionConfiguration>(defaultIntersection(3))
 
   const result = useMemo<SN640022Result | null>(() => {
-    const v = toSNVolumes(cfg)
-    if (!v) return null
-    return analyzeSN640022(v, toSNLaneFlags(cfg))
+    const v   = toSNVolumes(cfg)     // PWE/h — Auslastung, Reserve, Wartezeit
+    const raw = toSNRawVolumes(cfg)  // Fz/h  — qpi für G-Funktionen (Abb. 2)
+    if (!v || !raw) return null
+    return analyzeSN640022(v, toSNLaneFlags(cfg), raw)
   }, [cfg])
 
   const intersectionNode = useMemo(() => toIntersectionNode(cfg), [cfg])

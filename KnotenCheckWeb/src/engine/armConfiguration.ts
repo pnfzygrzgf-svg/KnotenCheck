@@ -165,6 +165,43 @@ export function toSNVolumes(cfg: IntersectionConfiguration): number[][] | null {
   return v
 }
 
+// ── Volumenmatrix volumes[i][j] [Fz/h] (roh, ohne PWE-Umrechnung) ────────────
+// Wie toSNVolumes, aber OHNE Multiplikation mit Faktor f.
+// Wird für qpi in den G-Funktionen (Abb. 2, x-Achse = Fz/h) benötigt.
+
+export function toSNRawVolumes(cfg: IntersectionConfiguration): number[][] | null {
+  const n = cfg.arms.length
+  if (n !== 3 && n !== 4) return null
+  const v: number[][] = Array.from({ length: n }, () => Array(n).fill(0))
+
+  if (n === 3) {
+    v[0][1] = cfg.arms[0].straightVolume  // q2 roh [Fz/h]
+    v[0][2] = cfg.arms[0].rightVolume     // q3
+    v[1][0] = cfg.arms[1].straightVolume  // q8
+    v[1][2] = cfg.arms[1].leftVolume      // q7
+    v[2][0] = cfg.arms[2].leftVolume      // q4
+    v[2][1] = cfg.arms[2].rightVolume     // q6
+  } else {
+    // A (0): gerade→C (q2), rechts→B (q3), links→D (q1)
+    v[0][1] = cfg.arms[0].straightVolume
+    v[0][2] = cfg.arms[0].rightVolume
+    v[0][3] = cfg.arms[0].leftVolume
+    // C (1): gerade→A (q8), links→B (q7), rechts→D (q9)
+    v[1][0] = cfg.arms[1].straightVolume
+    v[1][2] = cfg.arms[1].leftVolume
+    v[1][3] = cfg.arms[1].rightVolume
+    // B (2): links→A (q4), rechts→C (q6), gerade→D (q5)
+    v[2][0] = cfg.arms[2].leftVolume
+    v[2][1] = cfg.arms[2].rightVolume
+    v[2][3] = cfg.arms[2].straightVolume
+    // D (3): rechts→A (q12), links→C (q10), gerade→B (q11)
+    v[3][0] = cfg.arms[3].rightVolume
+    v[3][1] = cfg.arms[3].leftVolume
+    v[3][2] = cfg.arms[3].straightVolume
+  }
+  return v
+}
+
 // ── Erweiterte Berechnung: IntersectionNode ───────────────────────────────────
 // Port von ArmConfiguration.toIntersectionNode() (Swift)
 

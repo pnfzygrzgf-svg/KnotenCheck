@@ -71,25 +71,30 @@ function mixed(
 
 // ── Einmündung (3-armig) ──────────────────────────────────────────────────────
 // Arm 0 = SN A (HS), Arm 1 = SN C (HS), Arm 2 = SN B (NS)
+// v   = PWE/h  → für Auslastungsgrad, Reserve, Wartezeit
+// raw = Fz/h   → für qpi in G-Funktionen (Abb. 2, x-Achse = Fz/h)
 
-function einmuendung(v: number[][], flags: SN640022LaneFlags): SN640022Result {
-  const q2 = v[0][1], q3 = v[0][2]
-  const q8 = v[1][0], q7 = v[1][2]
-  const q4 = v[2][0], q6 = v[2][1]
+function einmuendung(v: number[][], raw: number[][], flags: SN640022LaneFlags): SN640022Result {
+  // PWE/h — analysierte Ströme (Auslastungsgrad, Reserve, Wartezeit)
+  const q7 = v[1][2]               // C → B [Rang 2]
+  const q4 = v[2][0], q6 = v[2][1] // B → A [Rang 3], B → C [Rang 2]
+  // Fz/h — Konfliktvolumen für G-Funktionen (Abb. 2, x-Achse = Fz/h)
+  const r2 = raw[0][1], r3 = raw[0][2]
+  const r8 = raw[1][0], r7 = raw[1][2]
 
-  const q3f = flags.armASeparateLane   ? 0 : q3
-  const q2r = flags.armAQ2Override     ?? q2
-  const q3g = flags.armATriangleIsland ? 0 : q3
+  const r3f = flags.armASeparateLane   ? 0 : r3
+  const r2r = flags.armAQ2Override     ?? r2   // Override bereits in Fz/h
+  const r3g = flags.armATriangleIsland ? 0 : r3
 
   // Rang 2
-  const qp7 = q2 + q3g;           const G7 = gMainLeft(qp7);   const L7 = G7
-  const qp6 = q2r + 0.5 * q3f;   const G6 = gSideRight(qp6);  const L6 = G6
+  const qp7 = r2 + r3g;           const G7 = gMainLeft(qp7);   const L7 = G7
+  const qp6 = r2r + 0.5 * r3f;   const G6 = gSideRight(qp6);  const L6 = G6
   const s7 = makeStream(7, 'C → B', 2, q7, qp7, G7, L7)
   const s6 = makeStream(6, 'B → C', 2, q6, qp6, G6, L6)
 
   // Rang 3
   const p07 = p0(q7, L7)
-  const qp4 = q2 + 0.5 * q3f + q8 + q7
+  const qp4 = r2 + 0.5 * r3f + r8 + r7
   const G4  = gSideLeft(qp4)
   const L4  = p07 * G4
   const s4  = makeStream(4, 'B → A', 3, q4, qp4, G4, L4)
@@ -103,27 +108,35 @@ function einmuendung(v: number[][], flags: SN640022LaneFlags): SN640022Result {
 
 // ── Kreuzung (4-armig) ────────────────────────────────────────────────────────
 // Arm 0 = SN A (HS), Arm 1 = SN C (HS), Arm 2 = SN B (NS), Arm 3 = SN D (NS)
+// v   = PWE/h  → für Auslastungsgrad, Reserve, Wartezeit
+// raw = Fz/h   → für qpi in G-Funktionen (Abb. 2, x-Achse = Fz/h)
 
-function kreuzung(v: number[][], flags: SN640022LaneFlags): SN640022Result {
-  const q1 = v[0][3], q2 = v[0][1], q3 = v[0][2]
-  const q7 = v[1][2], q8 = v[1][0], q9 = v[1][3]
-  const q4 = v[2][0], q5 = v[2][3], q6 = v[2][1]
-  const q10= v[3][1], q11= v[3][2], q12= v[3][0]
+function kreuzung(v: number[][], raw: number[][], flags: SN640022LaneFlags): SN640022Result {
+  // PWE/h — analysierte Ströme (Auslastungsgrad, Reserve, Wartezeit)
+  const q1  = v[0][3]
+  const q7  = v[1][2]
+  const q4  = v[2][0], q5  = v[2][3], q6  = v[2][1]
+  const q10 = v[3][1], q11 = v[3][2], q12 = v[3][0]
+  // Fz/h — Konfliktvolumen für G-Funktionen (Abb. 2, x-Achse = Fz/h)
+  const r1 = raw[0][3], r2 = raw[0][1], r3 = raw[0][2]
+  const r7 = raw[1][2], r8 = raw[1][0], r9 = raw[1][3]
+  const r5 = raw[2][3], r6 = raw[2][1]
+  const r11= raw[3][2], r12= raw[3][0]
 
-  const q3f = flags.armASeparateLane   ? 0 : q3
-  const q9f = flags.armCSeparateLane   ? 0 : q9
-  const q2r = flags.armAQ2Override     ?? q2
-  const q8r = flags.armCQ8Override     ?? q8
-  const q3g = flags.armATriangleIsland ? 0 : q3
-  const q9g = flags.armCTriangleIsland ? 0 : q9
-  const q6g = flags.armBRightIsland    ? 0 : q6
-  const q12g= flags.armDRightIsland    ? 0 : q12
+  const r3f = flags.armASeparateLane   ? 0 : r3
+  const r9f = flags.armCSeparateLane   ? 0 : r9
+  const r2r = flags.armAQ2Override     ?? r2   // Override bereits in Fz/h
+  const r8r = flags.armCQ8Override     ?? r8   // Override bereits in Fz/h
+  const r3g = flags.armATriangleIsland ? 0 : r3
+  const r9g = flags.armCTriangleIsland ? 0 : r9
+  const r6g = flags.armBRightIsland    ? 0 : r6
+  const r12g= flags.armDRightIsland    ? 0 : r12
 
   // Rang 2
-  const qp1 = q8 + q9g;              const G1  = gMainLeft(qp1);   const L1  = G1
-  const qp7 = q2 + q3g;              const G7  = gMainLeft(qp7);   const L7  = G7
-  const qp6 = q2r + 0.5 * q3f;      const G6  = gSideRight(qp6);  const L6  = G6
-  const qp12= q8r + 0.5 * q9f;      const G12 = gSideRight(qp12); const L12 = G12
+  const qp1 = r8 + r9g;              const G1  = gMainLeft(qp1);   const L1  = G1
+  const qp7 = r2 + r3g;              const G7  = gMainLeft(qp7);   const L7  = G7
+  const qp6 = r2r + 0.5 * r3f;      const G6  = gSideRight(qp6);  const L6  = G6
+  const qp12= r8r + 0.5 * r9f;      const G12 = gSideRight(qp12); const L12 = G12
   const s1  = makeStream(1,  'A → D', 2, q1,  qp1,  G1,  L1)
   const s7  = makeStream(7,  'C → B', 2, q7,  qp7,  G7,  L7)
   const s6  = makeStream(6,  'B → C', 2, q6,  qp6,  G6,  L6)
@@ -131,9 +144,9 @@ function kreuzung(v: number[][], flags: SN640022LaneFlags): SN640022Result {
 
   // Rang 3
   const p01 = p0(q1, L1); const p07 = p0(q7, L7); const px = p01 * p07
-  const qp5 = q2 + 0.5*q3f + q8 + q9g + q1 + q7
+  const qp5 = r2 + 0.5*r3f + r8 + r9g + r1 + r7
   const G5  = gSideCross(qp5); const L5  = px * G5
-  const qp11= q8 + 0.5*q9f + q2 + q3g + q1 + q7
+  const qp11= r8 + 0.5*r9f + r2 + r3g + r1 + r7
   const G11 = gSideCross(qp11); const L11 = px * G11
   const s5  = makeStream(5,  'B → D', 3, q5,  qp5,  G5,  L5)
   const s11 = makeStream(11, 'D → B', 3, q11, qp11, G11, L11)
@@ -141,12 +154,12 @@ function kreuzung(v: number[][], flags: SN640022LaneFlags): SN640022Result {
   // Rang 4
   const Py11 = px * p0(q11, L11); const pz11 = pz(Py11)
   const p012 = p0(q12, L12)
-  const qp4  = q2 + 0.5*q3f + q8 + q1 + q7 + q12g + q11
+  const qp4  = r2 + 0.5*r3f + r8 + r1 + r7 + r12g + r11
   const G4   = gSideLeft(qp4); const L4  = pz11 * p012 * G4
 
   const Py5  = px * p0(q5, L5);  const pz5 = pz(Py5)
   const p06  = p0(q6, L6)
-  const qp10 = q8 + 0.5*q9f + q2 + q1 + q7 + q6g + q5
+  const qp10 = r8 + 0.5*r9f + r2 + r1 + r7 + r6g + r5
   const G10  = gSideLeft(qp10); const L10 = pz5 * p06 * G10
 
   const s4  = makeStream(4,  'B → A', 4, q4,  qp4,  G4,  L4)
@@ -178,9 +191,11 @@ function kreuzung(v: number[][], flags: SN640022LaneFlags): SN640022Result {
 
 /**
  * Berechnet einen Knoten nach SN 640 022.
- * @param volumes volumes[i][j] = Verkehrsstärke von Arm i nach Arm j [Fz/h als PWE]
+ * @param volumes    volumes[i][j] = Verkehrsstärke [PWE/h] — für Auslastung, Reserve, Wartezeit
  *   Arm 0=SN A (HS links), 1=SN C (HS rechts), 2=SN B (NS unten), 3=SN D (NS oben)
- * @param flags   Geometrie-Flags (Fussnoten 1–4, Mischstreifen-Kombination)
+ * @param flags      Geometrie-Flags (Fussnoten 1–4, Mischstreifen-Kombination)
+ * @param rawVolumes rawVolumes[i][j] = Verkehrsstärke [Fz/h] — für qpi in G-Funktionen (Abb. 2).
+ *   Wenn nicht angegeben, wird volumes verwendet (Fallback: f=1,0, kein Unterschied).
  */
 export function analyzeSN640022(
   volumes: number[][],
@@ -190,9 +205,11 @@ export function analyzeSN640022(
     armAQ2Override: undefined, armCQ8Override: undefined,
     armATriangleIsland: false, armCTriangleIsland: false,
     armBRightIsland: false, armDRightIsland: false,
-  }
+  },
+  rawVolumes?: number[][]
 ): SN640022Result | null {
-  if (volumes.length === 3) return einmuendung(volumes, flags)
-  if (volumes.length === 4) return kreuzung(volumes, flags)
+  const raw = rawVolumes ?? volumes
+  if (volumes.length === 3) return einmuendung(volumes, raw, flags)
+  if (volumes.length === 4) return kreuzung(volumes, raw, flags)
   return null
 }
