@@ -13,7 +13,123 @@ Werkzeug zur Leistungsbeurteilung von Vortrittregelungen nach **SN 640 022** (VS
 - Qualitätsstufen A–F mit Wartezeit nach Kimber-Hollis
 - Zwei Berechnungsverfahren: SN 640 022 und analytisches Schätzverfahren (Teilimplementierung)
 
-## Berechnungsverfahren
+## Methodik — SN 640 022 verständlich erklärt
+
+### Worum geht es?
+
+An einem Knoten ohne Lichtsignalanlage gilt eine klare Vorrangregel: Fahrzeuge auf der Hauptstrasse haben Vortritt, Fahrzeuge von der Nebenstrasse müssen warten. Die Schweizer Norm SN 640 022 beschreibt ein Verfahren, mit dem man beurteilen kann, ob dieser Knoten für den vorhandenen Verkehr ausreichend leistungsfähig ist — oder ob es zu langen Wartezeiten und Stau kommt.
+
+Das Verfahren gilt für Einmündungen (drei Arme) und Kreuzungen (vier Arme).
+
+---
+
+### Was die Norm nicht berücksichtigt: Velos und Fussgänger
+
+Die SN 640 022 berechnet ausschliesslich die Leistungsfähigkeit für **motorisierten Individualverkehr (MIV)**. Velofahrende und Fussgängerinnen und Fussgänger kommen im Berechnungsverfahren nicht vor — weder als eigene Ströme, noch als Einflussgrösse auf die Kapazität der Motorfahrzeuge.
+
+Das hat weitreichende Konsequenzen: Wie lange Velofahrende an einer Einmündung warten müssen, wie sicher eine Querung für Fussgängerinnen und Fussgänger ist, oder ob der Knoten überhaupt für alle Verkehrsteilnehmenden funktioniert — all das lässt sich mit diesem Verfahren nicht beurteilen. Die Norm bewertet einen Knoten allein aus der Perspektive des Autoverkehrs.
+
+Wer die Qualität eines Knotens für den Fuss- und Veloverkehr beurteilen will, braucht andere Methoden und Normen.
+
+---
+
+### Schritt 1: Verkehrsströme erfassen und gewichten
+
+Zuerst werden alle Fahrzeugbewegungen am Knoten erfasst: Wer kommt woher, und wohin fährt er? Jede Bewegung — Linksabbiegen, Geradeausfahren, Rechtsabbiegen — wird als eigener «Verkehrsstrom» betrachtet.
+
+Weil ein Lastwagen mehr Platz und Zeit beansprucht als ein Personenwagen, werden alle Fahrzeuge in eine gemeinsame Einheit umgerechnet: **Personenwagen-Einheiten pro Stunde (PWE/h)**. Dabei spielt auch die Strassenneigung eine Rolle — ein Lastwagen an einem Hang entspricht mehr PWE/h als in der Ebene.
+
+---
+
+### Schritt 2: Rangfolge bestimmen
+
+Die Norm teilt die Verkehrsströme in **vier Ränge** ein, je nachdem, wem gegenüber sie Vortritt gewähren müssen:
+
+- **Rang 1** — Hauptstrasse: freie Fahrt, kein Warten
+- **Rang 2** — Nebenstrasse, einfaches Einbiegen oder Linksabbiegen von der Hauptstrasse: muss einem Konfliktvolumen ausweichen
+- **Rang 3** — Nebenstrasse, Querung: muss warten, bis mehrere Ströme frei sind
+- **Rang 4** — Nebenstrasse, Linkseinbiegen: muss warten, bis praktisch alle anderen frei sind
+
+Je höher der Rang, desto mehr Fahrzeuge müssen «durchgelassen» werden, bevor man selbst fahren darf — und desto kleiner ist die nutzbare Kapazität.
+
+---
+
+### Schritt 3: Grundleistungsfähigkeit G ablesen
+
+Für jeden Strom ab Rang 2 wird die **Grundleistungsfähigkeit G** bestimmt. Sie gibt an, wie viele Fahrzeuge pro Stunde maximal einbiegen oder kreuzen könnten, wenn der Nebenstrassen-Strom die einzige Einschränkung wäre.
+
+G hängt davon ab, wie viele Fahrzeuge auf dem Hauptstrom fahren: Je mehr Fahrzeuge den Weg «blockieren», desto seltener gibt es eine freie Lücke — und desto tiefer ist G. Die Werte werden direkt aus einem Diagramm der Norm (Abbildung 2) entnommen.
+
+---
+
+### Schritt 4: Tatsächliche Leistungsfähigkeit L berechnen
+
+Ströme mit Rang 3 und 4 müssen nicht nur auf einen, sondern auf **mehrere** Vorrangströme gleichzeitig warten. Die tatsächliche Leistungsfähigkeit L ist deshalb kleiner als G: Sie wird mit der Wahrscheinlichkeit multipliziert, dass alle vorrangigen Ströme in dem Moment frei sind.
+
+Wenn zwei Fahrzeuge am selben Stau «feststecken», beeinflusst dieser Stau ausserdem den nächsthöheren Rang — auch das berücksichtigt die Norm.
+
+---
+
+### Schritt 5: Auslastungsgrad und Reserve berechnen
+
+Jetzt werden die tatsächlichen Verkehrsstärken mit der berechneten Leistungsfähigkeit verglichen:
+
+- **Auslastungsgrad a = Verkehr / Leistungsfähigkeit**  
+  Ein Wert von 0,5 bedeutet: Der Strom ist zu 50 % ausgelastet.  
+  Ein Wert von 1,0 bedeutet: Die Kapazitätsgrenze ist erreicht — ab hier entsteht dauerhafter Stau.
+
+- **Belastungsreserve R = Leistungsfähigkeit − Verkehr**  
+  Wie viele Fahrzeuge pro Stunde könnten noch zusätzlich abgewickelt werden?
+
+---
+
+### Schritt 6: Wartezeit berechnen
+
+Die mittlere Wartezeit gibt an, wie lange ein Fahrzeug im Durchschnitt warten muss, bevor es einbiegen oder kreuzen kann. Sie setzt sich aus zwei Teilen zusammen:
+
+1. **Bedienzeit:** Selbst ohne Warteschlange braucht ein Fahrzeug eine gewisse Zeit, um eine geeignete Lücke im Verkehr zu finden und zu nutzen.
+2. **Wartezeit durch Stau:** Je höher der Auslastungsgrad, desto länger steht das Fahrzeug in der Warteschlange.
+
+Die Formel stammt von Kimber & Hollis (1979) und bildet die Grundlage für die grafische Darstellung in Abbildung 4 der Norm.
+
+---
+
+### Schritt 7: Qualitätsstufe ablesen
+
+Aus Auslastungsgrad und Wartezeit ergibt sich die **Qualitätsstufe (QS)** — vergleichbar mit Schulnoten von A bis F:
+
+| QS | Wartezeit | Bedeutung |
+|---|---|---|
+| A | ≤ 10 s | Sehr gut — kaum Wartezeiten |
+| B | ≤ 20 s | Gut |
+| C | ≤ 30 s | Befriedigend |
+| D | ≤ 45 s | Ausreichend — spürbare Wartezeiten |
+| E | > 45 s | Mangelhaft — lange Wartezeiten |
+| F | Überlastet | Dauerstau — Leistungsfähigkeit überschritten |
+
+---
+
+### Sonderfall: Mischstreifen
+
+Wenn auf der Nebenstrasse kein separater Abbiegestreifen vorhanden ist, benutzen mehrere Ströme (z. B. Geradeausfahrer und Linksabbieger) dieselbe Spur. Die Norm berechnet für diesen «Mischstreifen» eine kombinierte Leistungsfähigkeit — massgebend ist der am stärksten belastete Strom.
+
+---
+
+### Einfluss von Geometrie: Mehrspurigkeit und Dreiecksinsel
+
+Die Geometrie des Knotens wirkt sich direkt auf die Leistungsfähigkeit aus. Die Norm berücksichtigt zwei wichtige Sonderfälle:
+
+**Mehrere Fahrstreifen auf der Hauptstrasse**  
+Wer von der Nebenstrasse einbiegt, muss in erster Linie eine Lücke im nächstgelegenen Fahrstreifen der Hauptstrasse abwarten. Wenn die Hauptstrasse zwei Spuren hat, zählt für das Konfliktvolumen deshalb nur die rechte Spur — die Fahrzeuge auf der linken Spur sind für den Einbiegevorgang weniger relevant. Das reduziert das wirksame Konfliktvolumen und erhöht damit die Grundleistungsfähigkeit G.
+
+Auf der Nebenstrasse gilt ähnliches: Gibt es einen **separaten Rechtsabbiegestreifen**, können Rechtsabbieger unabhängig von den Geradeausfahrern und Linksabbiegern abfliessen. Ihre Wartezeit wird separat berechnet, und sie behindern die anderen Ströme nicht mehr.
+
+**Dreiecksinsel für Rechtsabbieger**  
+Eine Dreiecksinsel ist eine bauliche Verkehrsinsel, die den Rechtsabbiegestreifen vom übrigen Fahrverkehr trennt. Wenn diese Insel mit einem «Kein Vortritt»- oder «Stop»-Signal versehen ist, behandelt die Norm die Rechtsabbieger als eigenständigen, untergeordneten Strom. Sie tauchen dann nicht mehr als Teil des Konfliktvolumens der anderen Nebenstrassen-Ströme auf — was deren Leistungsfähigkeit erhöht.
+
+---
+
+## Berechnungsverfahren (technisch)
 
 KnotenCheck bietet zwei Tabs. Die Resultate sind **nicht identisch** — das ist gewollt, da es sich um grundlegend verschiedene Methoden handelt.
 
