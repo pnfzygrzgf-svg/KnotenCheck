@@ -2,7 +2,6 @@
 // Port von SN640022Calculator.swift — alle Formeln F1–F21
 
 import { classifyLOS, worstLOS } from './levelOfService'
-import { delay } from './calculators'
 import type {
   SN640022Result, SN640022StreamResult, SN640022MixedResult,
   SN640022LaneFlags
@@ -28,12 +27,18 @@ function pz(Py: number): number {
   return 0.65 * Py - Py / (Py + 3) + 0.6 * Math.sqrt(Py)
 }
 
-// ── Wartezeit ─────────────────────────────────────────────────────────────────
+// ── Wartezeit [F25] nach Kimber & Hollis (1979) / Abb. 4, SN 640 022 ──────────
+// w = 3600/L + 900·T · [(a−1) + √((a−1)² + (3600/L · a) / (450·T))]
+// 3600/L = freie Wartezeit (Bedienzeit, Zeit zum Auffinden und Nutzen einer Lücke)
+// Gibt auch bei q=0 (a=0) die Bedienzeit 3600/L zurück — nie 0.
 function w(q: number, L: number): number {
-  if (L <= 0 || q <= 0) return 0
-  const a = q / L
+  if (L <= 0) return 0
+  const a   = q / L
   if (a >= 1) return Infinity
-  return delay(a, q)
+  const T   = 0.25
+  const t0  = 3600 / L                                     // Bedienzeit [s]
+  const inner = (a - 1) ** 2 + t0 * a / (450 * T)
+  return t0 + 900 * T * ((a - 1) + Math.sqrt(inner))
 }
 
 // ── Stream-Ergebnis zusammenbauen ─────────────────────────────────────────────

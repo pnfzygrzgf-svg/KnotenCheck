@@ -35,6 +35,10 @@ export function switchThreshold(y1: number, y2: number): number {
 // ── DelayCalculator ───────────────────────────────────────────────────────────
 
 /**
+ * @deprecated Formel stimmt nicht mit Abb. 4 / SN 640 022 überein — gibt w→0 bei a→0.
+ * Ersetzt durch die Kimber-Hollis-Formel direkt in sn640022Calculator.ts (w-Funktion).
+ * Funktion bleibt bis zur vollständigen Migration erhalten.
+ *
  * Mittlere Wartezeit nach Kimber-Hollis (Abb. 4, SN 640 022 / VSS 2008/301 S. 10).
  * w(x,Q) = 900·T · [(x−1) − 4Cx/Q + √((x−1)² + 8C(x+1+2Cx/Q)/(Q/x))]
  * mit C = 1, T = 0.25 h
