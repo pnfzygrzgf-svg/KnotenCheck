@@ -12,7 +12,7 @@ import type {
   IntersectionConfiguration, ArmConfiguration,
   GradientCategory, VehicleCategoryMix,
 } from './engine/armConfiguration'
-import type { SN640022Result, SN640022StreamResult, SN640022MixedResult, LevelOfService, MixedLaneCombination, NodeResult, StreamResult } from './engine/types'
+import type { SN640022Result, SN640022StreamResult, SN640022MixedResult, LevelOfService, MixedLaneCombination, NodeResult, StreamResult, TrafficStream } from './engine/types'
 import './App.css'
 
 // ── Farben ─────────────────────────────────────────────────────────────────────
@@ -473,12 +473,41 @@ function StreamRow({ s }: { s: SN640022StreamResult }) {
 
 // ── Erweiterte Ergebnisse ─────────────────────────────────────────────────────
 
-function ExtendedArmCard({ name, result }: { name: string; result: StreamResult }) {
+function SubStreamRow({ name, result, isLast }: {
+  name: string; result: StreamResult; isLast: boolean
+}) {
   const col = utilizationColor(result.utilizationDegree)
   const pct = Math.min(999, Math.round(result.utilizationDegree * 100))
   return (
-    <div style={{ padding: '12px 14px', background: '#fff', borderRadius: 8,
-                  border: '1px solid #e5e7eb', marginBottom: 8 }}>
+    <div style={{ display: 'flex', alignItems: 'center', padding: '6px 14px',
+                  borderBottom: isLast ? 'none' : '1px solid #f0f4f8' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ fontSize: 12, color: '#374151' }}>{name}</span>
+        <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 6 }}>
+          L = {Math.round(result.capacity)} Fz/h · {delayText(result.delay)}
+        </span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, marginLeft: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: col, minWidth: 36, textAlign: 'right' }}>
+          {pct} %
+        </span>
+        <LOSBadge los={result.levelOfService} />
+      </div>
+    </div>
+  )
+}
+
+function ExtendedArmCard({ name, result, hasSubRows = false }: {
+  name: string; result: StreamResult; hasSubRows?: boolean
+}) {
+  const col = utilizationColor(result.utilizationDegree)
+  const pct = Math.min(999, Math.round(result.utilizationDegree * 100))
+  return (
+    <div style={{ padding: '12px 14px', background: '#fff',
+                  borderRadius: hasSubRows ? '8px 8px 0 0' : 8,
+                  border: '1px solid #e5e7eb',
+                  borderBottom: hasSubRows ? 'none' : '1px solid #e5e7eb',
+                  marginBottom: hasSubRows ? 0 : 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
         <span style={{ fontWeight: 700, fontSize: 14 }}>{name}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -503,20 +532,34 @@ function ExtendedArmCard({ name, result }: { name: string; result: StreamResult 
   )
 }
 
-function ExtendedPanel({ nodeResult, node, cfg }: {
-  nodeResult: NodeResult; node: ReturnType<typeof toIntersectionNode>; cfg: IntersectionConfiguration
+function ExtendedPanel({ nodeResult, node }: {
+  nodeResult: NodeResult; node: ReturnType<typeof toIntersectionNode>
 }) {
-  // Arm-Ergebnisse über mixedLaneGroups — gleiche IDs wie im analyzeNode-Lauf
-  const armResults = node.mixedLaneGroups.map(group =>
-    nodeResult.streamResults.find(r => r.id === group.armStreamID)
-  )
+  const resultMap = new Map(nodeResult.streamResults.map(r => [r.id, r]))
+  const streamMap = new Map(node.streams.map(s => [s.id, s]))
+
+  // Arm-Ergebnisse + Sub-Ströme je Arm
+  const armGroups = node.mixedLaneGroups.map(group => {
+    const armResult = resultMap.get(group.armStreamID)
+    const subItems = group.subStreamIDs
+      .map(id => {
+        const stream = streamMap.get(id)
+        const result = resultMap.get(id)
+        return stream && result ? { stream, result } : null
+      })
+      .filter((x): x is { stream: TrafficStream; result: StreamResult } =>
+        x !== null && x.stream.volume > 0
+      )
+    return { armResult, subItems }
+  })
 
   const pedestrianStreamIDs = new Set(
     node.streams.filter(s => s.mode === 'pedestrian').map(s => s.id)
   )
   const pedestrianResults = nodeResult.streamResults.filter(r => pedestrianStreamIDs.has(r.id))
 
-  const validLOS = armResults
+  const validLOS = armGroups
+    .map(g => g.armResult)
     .filter((r): r is StreamResult => r !== undefined)
     .map(r => r.levelOfService)
   const overall = validLOS.length > 0 ? worstLOS(validLOS) : 'A'
@@ -538,10 +581,31 @@ function ExtendedPanel({ nodeResult, node, cfg }: {
                     textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
         Arme
       </div>
-      {cfg.arms.map((_, i) => {
-        const r = armResults[i]
-        if (!r) return null
-        return <ExtendedArmCard key={i} name={`Arm ${armLabel(i)} (${i < 2 ? 'HS' : 'NS'})`} result={r} />
+      {armGroups.map(({ armResult, subItems }, i) => {
+        if (!armResult) return null
+        const hasSubs = subItems.length > 0
+        return (
+          <div key={i} style={{ marginBottom: 8 }}>
+            <ExtendedArmCard
+              name={`Arm ${armLabel(i)} (${i < 2 ? 'HS' : 'NS'})`}
+              result={armResult}
+              hasSubRows={hasSubs}
+            />
+            {hasSubs && (
+              <div style={{ background: '#f8fafc', border: '1px solid #e5e7eb',
+                            borderTop: 'none', borderRadius: '0 0 8px 8px', overflow: 'hidden' }}>
+                {subItems.map(({ stream, result }, j) => (
+                  <SubStreamRow
+                    key={stream.id}
+                    name={stream.name.replace(/^[A-Z]\s+/, '')}
+                    result={result}
+                    isLast={j === subItems.length - 1}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )
       })}
 
       {pedestrianResults.length > 0 && (
@@ -607,9 +671,9 @@ function ExtendedPanel({ nodeResult, node, cfg }: {
   )
 }
 
-function ResultsPanel({ result, nodeResult, node, cfg }: {
+function ResultsPanel({ result, nodeResult, node }: {
   result: SN640022Result; nodeResult: NodeResult
-  node: ReturnType<typeof toIntersectionNode>; cfg: IntersectionConfiguration
+  node: ReturnType<typeof toIntersectionNode>
 }) {
   const [showDetails, setShowDetails] = useState(false)
   const [showExtended, setShowExtended] = useState(false)
@@ -640,7 +704,7 @@ function ResultsPanel({ result, nodeResult, node, cfg }: {
       </div>
 
       {showExtended
-        ? <ExtendedPanel nodeResult={nodeResult} node={node} cfg={cfg} />
+        ? <ExtendedPanel nodeResult={nodeResult} node={node} />
         : <>
       {/* Gesamtbeurteilung */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -827,7 +891,7 @@ export default function App() {
             </div>
 
             {result
-              ? <ResultsPanel result={result} nodeResult={nodeResult} node={intersectionNode} cfg={cfg} />
+              ? <ResultsPanel result={result} nodeResult={nodeResult} node={intersectionNode} />
               : <p style={{ color: '#9ca3af', textAlign: 'center', padding: 32 }}>
                   Bitte Verkehrsmengen eingeben.
                 </p>
