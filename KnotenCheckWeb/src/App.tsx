@@ -828,6 +828,19 @@ export default function App() {
           <span style={{ fontWeight: 800, fontSize: 20, letterSpacing: '-0.5px' }}>KnotenCheck</span>
           <span style={{ fontSize: 12, opacity: 0.6, marginTop: 1 }}>nach SN 640 022</span>
           <div style={{ flex: 1 }} />
+          <nav style={{ display: 'flex', gap: 12, fontSize: 12, opacity: 0.75 }}>
+            <a href="https://github.com/pnfzygrzgf-svg/KnotenCheck"
+               target="_blank" rel="noopener noreferrer"
+               style={{ color: '#fff', textDecoration: 'none' }}>
+              Quellcode: GitHub
+            </a>
+            <span style={{ opacity: 0.5 }}>·</span>
+            <a href="https://creativecommons.org/licenses/by-nc/4.0/"
+               target="_blank" rel="noopener noreferrer"
+               style={{ color: '#fff', textDecoration: 'none' }}>
+              Lizenz: CC BY-NC 4.0
+            </a>
+          </nav>
         </div>
       </header>
 
@@ -900,24 +913,27 @@ export default function App() {
           </div>
         </div>
 
-        <p style={{ fontSize: 11, color: '#9ca3af', textAlign: 'center', marginTop: 24, lineHeight: 1.8 }}>
-          Berechnung nach SN 640 022 (VSS, Mai 1999) und VSS-Forschungsbericht 2008/301. Kein amtliches Dokument —
-          die Ergebnisse ersetzen keine Überprüfung durch eine Fachperson. Keine Gewähr.
-          <br />
-          © 2026 pnfzygrzgf-svg · Quellcode:{' '}
-          <a href="https://github.com/pnfzygrzgf-svg/KnotenCheck"
-             target="_blank" rel="noopener noreferrer"
-             style={{ color: '#9ca3af', textDecoration: 'underline' }}>
-            GitHub
-          </a>
-          {' '}· Lizenz:{' '}
-          <a href="https://creativecommons.org/licenses/by-nc/4.0/"
-             target="_blank" rel="noopener noreferrer"
-             style={{ color: '#9ca3af', textDecoration: 'underline' }}>
-            CC BY-NC 4.0
-          </a>
-          {' '}— kommerzielle Nutzung untersagt.
-        </p>
+        <footer style={{ fontSize: 11, color: '#9ca3af', textAlign: 'center', marginTop: 24, lineHeight: 2 }}>
+          <div>
+            Berechnung nach SN 640 022 (VSS, Mai 1999) und VSS-Forschungsbericht 2008/301.
+            Die Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.
+          </div>
+          <div>
+            © 2026 pnfzygrzgf-svg · Quellcode:{' '}
+            <a href="https://github.com/pnfzygrzgf-svg/KnotenCheck"
+               target="_blank" rel="noopener noreferrer"
+               style={{ color: '#9ca3af', textDecoration: 'underline' }}>
+              GitHub
+            </a>
+            {' '}· Lizenz:{' '}
+            <a href="https://creativecommons.org/licenses/by-nc/4.0/"
+               target="_blank" rel="noopener noreferrer"
+               style={{ color: '#9ca3af', textDecoration: 'underline' }}>
+              CC BY-NC 4.0
+            </a>
+            {' '}— kommerzielle Nutzung untersagt.
+          </div>
+        </footer>
       </main>
     </div>
   )
