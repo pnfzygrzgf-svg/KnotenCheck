@@ -163,7 +163,7 @@ export function computeQKfromOD(qe: number[], qa: number[], qk0: number): number
 //   4-Arm: Q_K[i] = straight[i-1] + left[i-1] + left[i-2]   (mod 4)
 //   3-Arm: Q_K[i] = left[i-1]                                (mod 3)
 export function computeQKfromTurnings(
-  rights: number[], straights: number[], lefts: number[], armCount: 3 | 4
+  _rights: number[], straights: number[], lefts: number[], armCount: 3 | 4
 ): number[] {
   const n = armCount
   return Array.from({ length: n }, (_, i) => {
