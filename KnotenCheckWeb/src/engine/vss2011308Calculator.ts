@@ -6,10 +6,10 @@ export type RoadType = 'HS' | 'NS' | 'equal'
 
 export type LevelOfService = 'A' | 'B' | 'C' | 'D' | 'E' | 'F'
 
-// ── Sättigungsflüsse (Tab. 1) ─────────────────────────────────────────────────
-const S_M1 = 1800  // Rang 1 Fz/h
-const S_M2 = 1500  // Rang 2 Fz/h
-const S_FG = 900   // Fg/h
+// ── Sättigungsflüsse (Tab. 8 / Tab. 13) ──────────────────────────────────────
+const S_M1 = 1750  // Rang 1 Fz/h (empirisch; VSS 2008/301 hatte 1800)
+const S_M2 = 1650  // Rang 2 Fz/h (empirisch; VSS 2008/301 hatte 1500)
+const S_FG = 900   // Fg/h (ρ=1)
 
 // ── Eingabe ───────────────────────────────────────────────────────────────────
 

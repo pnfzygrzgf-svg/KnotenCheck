@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Berechnungsblatt } from './Berechnungsblatt'
 import RoundaboutApp from './RoundaboutApp'
 import VSS308App from './VSS308App'
+import LSAApp from './LSAApp'
 import einmuendungSvg from './assets/einmuendung.svg'
 import kreuzungSvg    from './assets/kreuzung.svg'
 import { analyzeSN640022 } from './engine/sn640022Calculator'
@@ -581,7 +582,7 @@ function ResultsPanel({ result, onShowBerechnungsblatt }: {
 // ── Hauptapp ──────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [mode, setMode] = useState<'sn022' | 'sn024a' | 'vss308'>('sn022')
+  const [mode, setMode] = useState<'sn022' | 'sn024a' | 'vss308' | 'lsa'>('sn022')
   const [cfg, setCfg] = useState<IntersectionConfiguration>(defaultIntersection(3))
   const [showBl, setShowBl] = useState(false)
   const openBl  = useCallback(() => setShowBl(true),  [])
@@ -617,6 +618,7 @@ export default function App() {
               { key: 'sn022',  label: 'SN 640 022',  sub: '(Einmündung, Kreuzung)' },
               { key: 'sn024a', label: 'SN 640 024a', sub: 'Kreisverkehr' },
               { key: 'vss308', label: 'VSS 2011/308', sub: '(Ungesteuerter Knoten)' },
+              { key: 'lsa',    label: 'SN 640 023a',  sub: '(LSA-Knoten)' },
             ] as const).map(m => (
               <button key={m.key} onClick={() => setMode(m.key)}
                 style={{ padding: '4px 12px', borderRadius: 5, fontSize: 12, cursor: 'pointer',
@@ -648,6 +650,7 @@ export default function App() {
 
       {mode === 'sn024a' && <RoundaboutApp />}
       {mode === 'vss308' && <VSS308App />}
+      {mode === 'lsa'    && <LSAApp />}
       <main style={{ maxWidth: 1100, margin: '0 auto', padding: '20px 16px',
                      display: mode === 'sn022' ? undefined : 'none' }}>
 
