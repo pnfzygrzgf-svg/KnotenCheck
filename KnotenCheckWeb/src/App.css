@@ -30,3 +30,31 @@ input[type=number]::-webkit-inner-spin-button { opacity: 1; }
   .arms-grid-4   { grid-template-columns: 1fr; }
   .results-panel { position: static; }
 }
+
+/* ── Berechnungsblatt ──────────────────────────────────────────────────────── */
+
+.bl-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: #f1f5f9;
+  overflow-y: auto;
+}
+
+.berechnungsblatt {
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+/* Print: nur das Berechnungsblatt ausgeben */
+@media print {
+  body > #root { display: none !important; }
+  .bl-overlay { position: static !important; overflow: visible !important; }
+  .berechnungsblatt { box-shadow: none !important; padding: 10px 14px !important; }
+  .berechnungsblatt table { margin-bottom: 4px !important; }
+  .berechnungsblatt td, .berechnungsblatt th { padding: 1px 4px !important; font-size: 8px !important; }
+  .berechnungsblatt sub { font-size: 6px !important; }
+  .bl-sec { margin: 4px 0 1px !important; font-size: 8px !important; }
+  .bl-diagram img { height: 80px !important; }
+  .no-print { display: none !important; }
+
+  @page { margin: 12mm 10mm; size: A4; }
+}

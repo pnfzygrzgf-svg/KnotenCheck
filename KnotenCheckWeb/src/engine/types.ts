@@ -86,8 +86,8 @@ export interface SN640022StreamResult {
   streamNumber: number
   name: string
   rang: number
-  volumeFzh: number
-  qpi: number
+  volumePWE: number   // q [PWE/h] — für Auslastung, Reserve, Wartezeit
+  qpi: number         // massgebende Hauptstrombelastung [Fz/h]
   basicCapacity: number
   capacity: number
   reserve: number

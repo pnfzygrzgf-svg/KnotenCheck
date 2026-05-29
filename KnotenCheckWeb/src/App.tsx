@@ -1,4 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
+import { Berechnungsblatt } from './Berechnungsblatt'
 import einmuendungSvg from './assets/einmuendung.svg'
 import kreuzungSvg    from './assets/kreuzung.svg'
 import { analyzeSN640022 } from './engine/sn640022Calculator'
@@ -249,18 +251,25 @@ function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, onChange 
     <div style={{ border: `1px solid ${bd}`, borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
 
       {/* Kopfzeile */}
-      <div style={{ background: bg, padding: '10px 14px', display: 'flex',
-                    alignItems: 'center', justifyContent: 'space-between' }}>
-        <div>
-          <span style={{ fontWeight: 700, fontSize: 15, color: col }}>Arm {lbl}</span>
-          <span style={{ fontSize: 11, color: '#6b7280', marginLeft: 8 }}>
-            {Math.round(tot)} Fz/h · f = {f.toFixed(2)}
+      <div style={{ background: bg, padding: '10px 14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          <div>
+            <span style={{ fontWeight: 700, fontSize: 15, color: col }}>Arm {lbl}</span>
+            <span style={{ fontSize: 11, color: '#6b7280', marginLeft: 8 }}>
+              {Math.round(tot)} Fz/h · f = {f.toFixed(2)}
+            </span>
+          </div>
+          <span style={{ fontSize: 11, color: col, background: isHS ? '#dbeafe' : '#ffedd5',
+                         padding: '2px 8px', borderRadius: 12, fontWeight: 600 }}>
+            {isHS ? 'Hauptstrasse' : 'Nebenstrasse'}
           </span>
         </div>
-        <span style={{ fontSize: 11, color: col, background: isHS ? '#dbeafe' : '#ffedd5',
-                       padding: '2px 8px', borderRadius: 12, fontWeight: 600 }}>
-          {isHS ? 'Hauptstrasse' : 'Nebenstrasse'}
-        </span>
+        <input type="text" value={arm.streetName}
+          onChange={e => upd('streetName', e.target.value)}
+          placeholder="Strassenname"
+          style={{ width: '100%', padding: '3px 8px', borderRadius: 4,
+                   border: `1px solid ${bd}`, fontSize: 12,
+                   background: '#ffffffaa', color: '#374151' }} />
       </div>
 
       {/* Verkehrsmengen */}
@@ -671,9 +680,10 @@ function ExtendedPanel({ nodeResult, node }: {
   )
 }
 
-function ResultsPanel({ result, nodeResult, node }: {
+function ResultsPanel({ result, nodeResult, node, onShowBerechnungsblatt }: {
   result: SN640022Result; nodeResult: NodeResult
   node: ReturnType<typeof toIntersectionNode>
+  onShowBerechnungsblatt: () => void
 }) {
   const [showDetails, setShowDetails] = useState(false)
   const [showExtended, setShowExtended] = useState(false)
@@ -695,6 +705,14 @@ function ResultsPanel({ result, nodeResult, node }: {
           </button>
         ))}
       </div>
+
+      {/* Berechnungsblatt-Button */}
+      <button onClick={onShowBerechnungsblatt}
+        style={{ width: '100%', marginBottom: 12, padding: '7px 0', borderRadius: 6,
+                 fontSize: 12, cursor: 'pointer', border: '1px solid #1e3a5f',
+                 background: '#1e3a5f', color: '#fff', fontWeight: 600 }}>
+        Berechnungsblatt (Druckansicht)
+      </button>
 
       {/* Beta-Hinweis — in beiden Tabs */}
       <div style={{ marginBottom: 14, padding: '7px 12px', borderRadius: 6,
@@ -801,6 +819,9 @@ function ResultsPanel({ result, nodeResult, node }: {
 
 export default function App() {
   const [cfg, setCfg] = useState<IntersectionConfiguration>(defaultIntersection(3))
+  const [showBl, setShowBl] = useState(false)
+  const openBl  = useCallback(() => setShowBl(true),  [])
+  const closeBl = useCallback(() => setShowBl(false), [])
 
   const result = useMemo<SN640022Result | null>(() => {
     const v   = toSNVolumes(cfg)     // PWE/h — Auslastung, Reserve, Wartezeit
@@ -819,6 +840,7 @@ export default function App() {
     setCfg(prev => prev.arms.length === n ? prev : defaultIntersection(n))
 
   return (
+    <>
     <div style={{ minHeight: '100vh', background: '#f1f5f9', fontFamily: 'system-ui, sans-serif' }}>
 
       {/* Header */}
@@ -850,6 +872,12 @@ export default function App() {
         <div style={{ background: '#fff', borderRadius: 10, padding: '12px 20px',
                       marginBottom: 16, boxShadow: '0 1px 3px #0001',
                       display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <input type="text" value={cfg.name}
+            onChange={e => setCfg(prev => ({ ...prev, name: e.target.value }))}
+            placeholder="Bezeichnung des Knotens"
+            style={{ flexBasis: '100%', padding: '5px 10px', borderRadius: 5,
+                     border: '1px solid #d1d5db', fontSize: 14, fontWeight: 600,
+                     color: '#1e293b' }} />
           <span style={{ fontWeight: 600, fontSize: 14, color: '#374151' }}>Knotentyp</span>
           {([3, 4] as const).map(n => (
             <button key={n} onClick={() => setArmCount(n)}
@@ -905,11 +933,13 @@ export default function App() {
             </div>
 
             {result
-              ? <ResultsPanel result={result} nodeResult={nodeResult} node={intersectionNode} />
+              ? <ResultsPanel result={result} nodeResult={nodeResult} node={intersectionNode}
+                              onShowBerechnungsblatt={openBl} />
               : <p style={{ color: '#9ca3af', textAlign: 'center', padding: 32 }}>
                   Bitte Verkehrsmengen eingeben.
                 </p>
             }
+
           </div>
         </div>
 
@@ -936,5 +966,10 @@ export default function App() {
         </footer>
       </main>
     </div>
+    {result && showBl && createPortal(
+      <Berechnungsblatt cfg={cfg} result={result} onClose={closeBl} />,
+      document.body
+    )}
+    </>
   )
 }

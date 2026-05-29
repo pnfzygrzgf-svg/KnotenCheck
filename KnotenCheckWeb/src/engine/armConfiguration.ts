@@ -48,6 +48,7 @@ export function effectiveFactor(mix: VehicleCategoryMix, gradient: GradientCateg
 
 export interface ArmConfiguration {
   id: string
+  streetName: string      // Strassenname für Berechnungsblatt
   leftVolume: number      // Linksabbieger [Fz/h]
   straightVolume: number  // Geradeaus [Fz/h]
   rightVolume: number     // Rechtsabbieger [Fz/h]
@@ -65,6 +66,7 @@ export interface ArmConfiguration {
 export function defaultArm(isHS: boolean): ArmConfiguration {
   return {
     id: crypto.randomUUID(),
+    streetName: '',
     leftVolume:     isHS ? 100 : 80,
     straightVolume: isHS ? 400 : 0,
     rightVolume:    isHS ? 100 : 80,

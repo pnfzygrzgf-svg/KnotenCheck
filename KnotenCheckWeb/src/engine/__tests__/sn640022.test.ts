@@ -110,3 +110,37 @@ describe('Grundleistungsfähigkeit G_i (Abb. 2)', () => {
   test('Kreuzen NS: qp=1170 → 300', () => check(1170, 300, 'sideCross'))
   test('Kreuzen NS: qp=1390 → 250', () => check(1390, 250, 'sideCross'))
 })
+
+// ─── Egerkingen (Verkehrsgutachten Anhang I) ──────────────────────────────────
+// Einmündung Oltnerstrasse / Hotel Egerkingen, Prognose 2035
+// Rohdaten Fz/h, f = 1.1 (Fall 1, ±0%); Gutachtenwerte in Klammern
+
+describe('Egerkingen Anhang I', () => {
+  const f = 1.1
+  const raw = [[0, 833, 13], [833, 0, 41], [13, 41, 0]]
+  const v   = raw.map(row => row.map(x => x * f))
+  const r = analyzeSN640022(v, undefined, raw)!
+  const s = (n: number) => r.streams.find(s => s.streamNumber === n)!
+
+  // qpi-Werte — aus Formeln, identisch zum Gutachten
+  test('qp7 = 846 (PDF: 846)', () => acc(s(7).qpi, 846, 1))
+  test('qp6 = 839.5 (PDF: 839.5)', () => acc(s(6).qpi, 839.5, 0.5))
+  test('qp4 = 1713.5 (PDF: 1713.5)', () => acc(s(4).qpi, 1713.5, 0.5))
+
+  // G-Werte — Interpolation aus digitisierten Kurven (Toleranz ±15 = Ablesegenauigkeit)
+  test('G7 ≈ 580 (PDF: 580)', () => acc(s(7).basicCapacity, 580, 15))
+  test('G6 ≈ 450 (PDF: 450)', () => acc(s(6).basicCapacity, 450, 15))
+  test('G4 ≈ 170 (PDF: 170)', () => acc(s(4).basicCapacity, 170, 20))
+
+  // Leistungsfähigkeit & Reserve — Rang 3
+  test('L4 ≈ 165 (PDF: 165)', () => acc(s(4).capacity, 165, 15))
+  test('R4 ≈ 151 (PDF: 151)', () => acc(s(4).reserve, 151, 15))
+
+  // Wartezeit & Qualitätsstufe
+  test('w4 ≈ 23s → QS C (PDF: 23s, C)', () => {
+    acc(s(4).delay, 23, 4)
+    expect(s(4).levelOfService).toBe('C')
+  })
+  test('S7 QS A (PDF: A)', () => expect(s(7).levelOfService).toBe('A'))
+  test('S6 QS A (PDF: A)', () => expect(s(6).levelOfService).toBe('A'))
+})

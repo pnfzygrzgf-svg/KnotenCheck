@@ -100,7 +100,7 @@ function makeStream(
   const R  = L - q
   const wt = a < 1 ? w(q, L) : Infinity
   const los = classifyLOS(wt, a)
-  return { id: sid(), streamNumber, name, rang, volumeFzh: q,
+  return { id: sid(), streamNumber, name, rang, volumePWE: q,
            qpi, basicCapacity: G, capacity: L, reserve: R,
            utilizationDegree: a, delay: wt, levelOfService: los }
 }
