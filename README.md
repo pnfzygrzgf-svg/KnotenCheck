@@ -202,13 +202,7 @@ Die Umrechnung von Fahrzeugen in PWE erfolgt mit den Faktoren aus Tabelle 2 (abh
 
 ---
 
-#### Schritt 2: Ausfahrten prüfen
-
-Bevor die Einfahrten berechnet werden, ist zu prüfen, ob alle Ausfahrten leistungsfähig genug sind. Die maximale Leistungsfähigkeit einer einstreifigen Ausfahrt beträgt 1400 PWE/h, vermindert durch querende Fussgänger. Ist die Ausfahrtsbelastung Q_A(i) grösser als die Leistungsfähigkeit L_A(i), ist eine andere Knotenform zu wählen.
-
----
-
-#### Schritt 3: Einfahrtsleistungsfähigkeit berechnen
+#### Schritt 2: Einfahrtsleistungsfähigkeit berechnen
 
 Die Grundleistungsfähigkeit L_E(i) hängt linear von der Kreiselfahrbahnbelastung Q_K(i) ab (Abbildung 6, Regressionsformeln):
 
@@ -221,7 +215,7 @@ Sind querende Fussgänger vorhanden, wird L_E mit dem Korrekturfaktor f_F multip
 
 ---
 
-#### Schritt 4: Auslastungsgrad und Reserve berechnen
+#### Schritt 3: Auslastungsgrad und Reserve berechnen
 
 - **Auslastungsgrad X = Q_E / L_E**
 - **Belastungsreserve R = L_E − Q_E [PWE/h]**
@@ -230,7 +224,7 @@ Als Dimensionierungsrichtwert empfiehlt die Norm R ≥ 100 PWE/h (entspricht Qua
 
 ---
 
-#### Schritt 5: Wartezeit und Qualitätsstufe
+#### Schritt 4: Wartezeit und Qualitätsstufe
 
 Die mittlere Wartezeit wird in Abhängigkeit von R und L_E bestimmt (Abbildung 7). Die Qualitätsstufen entsprechen Tabelle 3:
 
