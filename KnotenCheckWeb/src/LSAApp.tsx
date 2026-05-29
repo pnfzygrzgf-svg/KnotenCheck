@@ -326,6 +326,13 @@ function ResultsPanel({ result }: { result: LSAResult }) {
         <StreamTable streams={streams} />
       </div>
 
+      {/* Beta-Hinweis */}
+      <div style={{ margin: '0 12px 8px', padding: '7px 12px', borderRadius: 6,
+                    background: '#fff7ed', border: '1px solid #fed7aa',
+                    fontSize: 11, color: '#92400e', fontWeight: 600 }}>
+        ⚠ Beta — Resultate mit Vorsicht verwenden.
+      </div>
+
       {/* Methodik-Hinweis */}
       <div style={{ margin: '0 12px 12px', padding: '10px 12px', borderRadius: 8,
                     background: '#f8fafc', border: '1px solid #e2e8f0',
