@@ -2,20 +2,19 @@ import { useState, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { Berechnungsblatt } from './Berechnungsblatt'
 import RoundaboutApp from './RoundaboutApp'
+import VSS308App from './VSS308App'
 import einmuendungSvg from './assets/einmuendung.svg'
 import kreuzungSvg    from './assets/kreuzung.svg'
 import { analyzeSN640022 } from './engine/sn640022Calculator'
 import {
   defaultIntersection, toSNVolumes, toSNRawVolumes, toSNLaneFlags, armLabel, totalVolume,
-  toIntersectionNode, pctPW, armFactor,
+  pctPW, armFactor,
 } from './engine/armConfiguration'
-import { analyzeNode } from './engine/engine'
-import { worstLOS } from './engine/levelOfService'
 import type {
   IntersectionConfiguration, ArmConfiguration,
   GradientCategory, VehicleCategoryMix,
 } from './engine/armConfiguration'
-import type { SN640022Result, SN640022StreamResult, SN640022MixedResult, LevelOfService, MixedLaneCombination, NodeResult, StreamResult, TrafficStream } from './engine/types'
+import type { SN640022Result, SN640022StreamResult, SN640022MixedResult, LevelOfService, MixedLaneCombination } from './engine/types'
 import './App.css'
 
 // ── Farben ─────────────────────────────────────────────────────────────────────
@@ -382,24 +381,6 @@ function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, onChange 
         </>
       )}
 
-      {/* Fussgänger */}
-      <SectionLabel title="Fussgänger" />
-      <Row label="Fussgängerstreifen vorhanden"
-           sub="Wirkt nur im erweiterten Schätzverfahren — nicht im SN 640 022-Ergebnis">
-        <Ckbx checked={arm.hasPedestrianCrossing} onChange={v => upd('hasPedestrianCrossing', v)} />
-      </Row>
-      {arm.hasPedestrianCrossing && (
-        <>
-          <Row label="Fussgänger-Volumen">
-            <NumInput value={arm.pedestrianVolume} onChange={v => upd('pedestrianVolume', v)} />
-            <span style={{ fontSize: 11, color: '#9ca3af', width: 30 }}>Fg/h</span>
-          </Row>
-          <Row label="Mittelinsel vorhanden"
-               sub="Jede Strassenhälfte gilt als eigener Streifen (VRV Art. 47 Abs. 3)">
-            <Ckbx checked={arm.hasMittelinsel} onChange={v => upd('hasMittelinsel', v)} />
-          </Row>
-        </>
-      )}
     </div>
   )
 }
@@ -481,232 +462,17 @@ function StreamRow({ s }: { s: SN640022StreamResult }) {
   )
 }
 
-// ── Erweiterte Ergebnisse ─────────────────────────────────────────────────────
+// ── Ergebnis-Panel ────────────────────────────────────────────────────────────
 
-function SubStreamRow({ name, result, isLast }: {
-  name: string; result: StreamResult; isLast: boolean
-}) {
-  const col = utilizationColor(result.utilizationDegree)
-  const pct = Math.min(999, Math.round(result.utilizationDegree * 100))
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', padding: '6px 14px',
-                  borderBottom: isLast ? 'none' : '1px solid #f0f4f8' }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ fontSize: 12, color: '#374151' }}>{name}</span>
-        <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 6 }}>
-          L = {Math.round(result.capacity)} Fz/h · {delayText(result.delay)}
-        </span>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, marginLeft: 8 }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: col, minWidth: 36, textAlign: 'right' }}>
-          {pct} %
-        </span>
-        <LOSBadge los={result.levelOfService} />
-      </div>
-    </div>
-  )
-}
-
-function ExtendedArmCard({ name, result, hasSubRows = false }: {
-  name: string; result: StreamResult; hasSubRows?: boolean
-}) {
-  const col = utilizationColor(result.utilizationDegree)
-  const pct = Math.min(999, Math.round(result.utilizationDegree * 100))
-  return (
-    <div style={{ padding: '12px 14px', background: '#fff',
-                  borderRadius: hasSubRows ? '8px 8px 0 0' : 8,
-                  border: '1px solid #e5e7eb',
-                  borderBottom: hasSubRows ? 'none' : '1px solid #e5e7eb',
-                  marginBottom: hasSubRows ? 0 : 8 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
-        <span style={{ fontWeight: 700, fontSize: 14 }}>{name}</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 16, fontWeight: 700, color: col }}>{pct} %</span>
-          <LOSBadge los={result.levelOfService} />
-        </div>
-      </div>
-      <UtilBar value={result.utilizationDegree} />
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#6b7280' }}>
-        <div><span style={{ color: '#9ca3af' }}>L </span><strong>{Math.round(result.capacity)} Fz/h</strong></div>
-        <div><span style={{ color: '#9ca3af' }}>Reserve </span>
-          <strong style={{ color: result.capacity - result.volume < 0 ? '#dc2626' : '#16a34a' }}>
-            {Math.round(result.capacity - result.volume)}
-          </strong>
-        </div>
-        <div><span style={{ color: '#9ca3af' }}>Wartezeit </span><strong>{delayText(result.delay)}</strong></div>
-        <div><span style={{ color: '#9ca3af' }}>Stau </span>
-          <strong>{isFinite(result.queueLength) ? `${result.queueLength.toFixed(1)} Fz` : '> 999'}</strong>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function ExtendedPanel({ nodeResult, node }: {
-  nodeResult: NodeResult; node: ReturnType<typeof toIntersectionNode>
-}) {
-  const resultMap = new Map(nodeResult.streamResults.map(r => [r.id, r]))
-  const streamMap = new Map(node.streams.map(s => [s.id, s]))
-
-  // Arm-Ergebnisse + Sub-Ströme je Arm
-  const armGroups = node.mixedLaneGroups.map(group => {
-    const armResult = resultMap.get(group.armStreamID)
-    const subItems = group.subStreamIDs
-      .map(id => {
-        const stream = streamMap.get(id)
-        const result = resultMap.get(id)
-        return stream && result ? { stream, result } : null
-      })
-      .filter((x): x is { stream: TrafficStream; result: StreamResult } =>
-        x !== null && x.stream.volume > 0
-      )
-    return { armResult, subItems }
-  })
-
-  const pedestrianStreamIDs = new Set(
-    node.streams.filter(s => s.mode === 'pedestrian').map(s => s.id)
-  )
-  const pedestrianResults = nodeResult.streamResults.filter(r => pedestrianStreamIDs.has(r.id))
-
-  const validLOS = armGroups
-    .map(g => g.armResult)
-    .filter((r): r is StreamResult => r !== undefined)
-    .map(r => r.levelOfService)
-  const overall = validLOS.length > 0 ? worstLOS(validLOS) : 'A'
-
-  return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '14px 16px', borderRadius: 10, marginBottom: 16,
-                    background: LOS_BG[overall], border: `1px solid ${LOS_COLOR[overall]}44` }}>
-        <div>
-          <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 2 }}>Gesamtbeurteilung · Erweitert</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>Qualitätsstufe {overall}</div>
-          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>(schlechtester Arm)</div>
-        </div>
-        <LOSBadge los={overall} />
-      </div>
-
-      <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280',
-                    textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-        Arme
-      </div>
-      {armGroups.map(({ armResult, subItems }, i) => {
-        if (!armResult) return null
-        const hasSubs = subItems.length > 0
-        return (
-          <div key={i} style={{ marginBottom: 8 }}>
-            <ExtendedArmCard
-              name={`Arm ${armLabel(i)} (${i < 2 ? 'HS' : 'NS'})`}
-              result={armResult}
-              hasSubRows={hasSubs}
-            />
-            {hasSubs && (
-              <div style={{ background: '#f8fafc', border: '1px solid #e5e7eb',
-                            borderTop: 'none', borderRadius: '0 0 8px 8px', overflow: 'hidden' }}>
-                {subItems.map(({ stream, result }, j) => (
-                  <SubStreamRow
-                    key={stream.id}
-                    name={stream.name.replace(/^[A-Z]\s+/, '')}
-                    result={result}
-                    isLast={j === subItems.length - 1}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        )
-      })}
-
-      {pedestrianResults.length > 0 && (
-        <>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280',
-                        textTransform: 'uppercase', letterSpacing: '0.05em',
-                        marginTop: 16, marginBottom: 8 }}>
-            Fussgänger
-          </div>
-          {pedestrianResults.map(r => (
-            <ExtendedArmCard key={r.id} name="Fussgänger" result={r} />
-          ))}
-        </>
-      )}
-
-      {nodeResult.warnings.length > 0 && (
-        <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8,
-                      background: '#fff7ed', border: '1px solid #fed7aa', fontSize: 12, color: '#92400e' }}>
-          {nodeResult.warnings.join(' · ')}
-        </div>
-      )}
-
-      {/* Methodenerklärung — am Ende */}
-      <div style={{ marginTop: 20, padding: '10px 13px', borderRadius: 8,
-                    background: '#f8fafc', border: '1px solid #e2e8f0',
-                    fontSize: 11, color: '#475569', lineHeight: 1.65 }}>
-        <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: 5 }}>
-          Analytisches Schätzverfahren — Teilimplementierung nach VSS 2008/301
-        </div>
-        <p style={{ margin: '0 0 6px' }}>
-          Der VSS-Forschungsbericht 2008/301 (Pitzinger/Spacek, ETH Zürich, 2009) beschreibt ein
-          allgemeines Konflikttyp-Verfahren für komplexe ungesteuerte Knoten. KnotenCheck implementiert
-          davon <strong>nur einen Teil</strong>:
-        </p>
-        <p style={{ margin: '0 0 4px' }}><strong>Implementiert:</strong></p>
-        <ul style={{ margin: '0 0 6px', paddingLeft: 16 }}>
-          <li>Typ 1 — Zweirangiger Konflikt ohne Vortrittswechsel: <strong>L₂ = S_m · (1 − y₁)²</strong><br />
-            <span style={{ color: '#64748b' }}>Wird für alle Fahrzeug- und Fussgängerkonflikte am Standard-Knoten verwendet.</span>
-          </li>
-          <li>Mischstreifen-Aggregation: <strong>x_M = Σ(qᵢ/Lᵢ), L_M = Q_M / x_M</strong></li>
-          <li>Wartezeit nach Kimber-Hollis, Staulänge</li>
-        </ul>
-        <p style={{ margin: '0 0 4px' }}><strong>Nicht implementiert</strong> (im Bericht vorhanden, hier nicht):</p>
-        <ul style={{ margin: '0 0 6px', paddingLeft: 16, color: '#94a3b8' }}>
-          <li>Typ 2 — Zweirangig mit Vortrittswechsel</li>
-          <li>Typen 5/6/7 — Mehrrangige und parallele Konflikte</li>
-          <li>Konflikt mit Lichtsignalanlage im Zufluss oder Stau im Abfluss</li>
-          <li>Tram, Bus auf Eigentrasse</li>
-        </ul>
-        <p style={{ margin: '0 0 5px' }}>
-          <strong>Warum weichen die Resultate von SN 640 022 ab?</strong> SN 640 022 verwendet
-          empirisch kalibrierte Exponentialkurven (G_i = a · e^(−b · qpi)), wobei qpi die Summe
-          spezifisch definierter Konfliktströme ist. Dieses Verfahren setzt stattdessen das
-          gesamte Arm-Volumen als Konfliktgrösse ein — ein grundlegend anderer Ansatz.
-        </p>
-        <p style={{ margin: 0, color: '#64748b' }}>
-          <strong>Empfehlung:</strong> Für die normenkonforme Beurteilung gilt <em>SN 640 022</em>
-          als massgebend. Das erweiterte Verfahren dient der Plausibilisierung, insbesondere
-          bei Fussgängerquerungen oder komplexeren Geometrien.
-        </p>
-      </div>
-    </div>
-  )
-}
-
-function ResultsPanel({ result, nodeResult, node, onShowBerechnungsblatt }: {
-  result: SN640022Result; nodeResult: NodeResult
-  node: ReturnType<typeof toIntersectionNode>
+function ResultsPanel({ result, onShowBerechnungsblatt }: {
+  result: SN640022Result
   onShowBerechnungsblatt: () => void
 }) {
   const [showDetails, setShowDetails] = useState(false)
-  const [showExtended, setShowExtended] = useState(false)
   const rang2 = result.streams.filter(s => s.rang === 2)
 
   return (
     <div>
-      {/* Toggle SN 640 022 / Erweitert */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 16, background: '#f3f4f6',
-                    borderRadius: 8, padding: 3 }}>
-        {(['SN 640 022', 'Erweitert'] as const).map(label => (
-          <button key={label} onClick={() => setShowExtended(label === 'Erweitert')}
-            style={{ flex: 1, padding: '6px 0', borderRadius: 6, fontSize: 13, cursor: 'pointer',
-                     border: 'none', fontWeight: showExtended === (label === 'Erweitert') ? 700 : 400,
-                     background: showExtended === (label === 'Erweitert') ? '#fff' : 'transparent',
-                     color: '#374151',
-                     boxShadow: showExtended === (label === 'Erweitert') ? '0 1px 3px #0002' : 'none' }}>
-            {label}
-          </button>
-        ))}
-      </div>
-
       {/* Berechnungsblatt-Button */}
       <button onClick={onShowBerechnungsblatt}
         style={{ width: '100%', marginBottom: 12, padding: '7px 0', borderRadius: 6,
@@ -722,9 +488,6 @@ function ResultsPanel({ result, nodeResult, node, onShowBerechnungsblatt }: {
         ⚠ Beta — Resultate mit Vorsicht verwenden.
       </div>
 
-      {showExtended
-        ? <ExtendedPanel nodeResult={nodeResult} node={node} />
-        : <>
       {/* Gesamtbeurteilung */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     padding: '14px 16px', borderRadius: 10, marginBottom: 16,
@@ -811,7 +574,6 @@ function ResultsPanel({ result, nodeResult, node, onShowBerechnungsblatt }: {
           </table>
         </div>
       )}
-      </>}
     </div>
   )
 }
@@ -819,7 +581,7 @@ function ResultsPanel({ result, nodeResult, node, onShowBerechnungsblatt }: {
 // ── Hauptapp ──────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [mode, setMode] = useState<'sn022' | 'sn024a'>('sn022')
+  const [mode, setMode] = useState<'sn022' | 'sn024a' | 'vss308'>('sn022')
   const [cfg, setCfg] = useState<IntersectionConfiguration>(defaultIntersection(3))
   const [showBl, setShowBl] = useState(false)
   const openBl  = useCallback(() => setShowBl(true),  [])
@@ -832,8 +594,6 @@ export default function App() {
     return analyzeSN640022(v, toSNLaneFlags(cfg), raw)
   }, [cfg])
 
-  const intersectionNode = useMemo(() => toIntersectionNode(cfg), [cfg])
-  const nodeResult = useMemo<NodeResult>(() => analyzeNode(intersectionNode), [intersectionNode])
 
   const setArm = (i: number, arm: ArmConfiguration) =>
     setCfg(prev => { const arms = [...prev.arms]; arms[i] = arm; return { ...prev, arms } })
@@ -856,6 +616,7 @@ export default function App() {
             {([
               { key: 'sn022',  label: 'SN 640 022',  sub: '(Einmündung, Kreuzung)' },
               { key: 'sn024a', label: 'SN 640 024a', sub: 'Kreisverkehr' },
+              { key: 'vss308', label: 'VSS 2011/308', sub: '(Ungesteuerter Knoten)' },
             ] as const).map(m => (
               <button key={m.key} onClick={() => setMode(m.key)}
                 style={{ padding: '4px 12px', borderRadius: 5, fontSize: 12, cursor: 'pointer',
@@ -886,8 +647,9 @@ export default function App() {
       </header>
 
       {mode === 'sn024a' && <RoundaboutApp />}
+      {mode === 'vss308' && <VSS308App />}
       <main style={{ maxWidth: 1100, margin: '0 auto', padding: '20px 16px',
-                     display: mode === 'sn024a' ? 'none' : undefined }}>
+                     display: mode === 'sn022' ? undefined : 'none' }}>
 
         {/* Knotentyp */}
         <div style={{ background: '#fff', borderRadius: 10, padding: '12px 20px',
@@ -954,8 +716,7 @@ export default function App() {
             </div>
 
             {result
-              ? <ResultsPanel result={result} nodeResult={nodeResult} node={intersectionNode}
-                              onShowBerechnungsblatt={openBl} />
+              ? <ResultsPanel result={result} onShowBerechnungsblatt={openBl} />
               : <p style={{ color: '#9ca3af', textAlign: 'center', padding: 32 }}>
                   Bitte Verkehrsmengen eingeben.
                 </p>
@@ -966,7 +727,7 @@ export default function App() {
 
         <footer style={{ fontSize: 11, color: '#9ca3af', textAlign: 'center', marginTop: 24, lineHeight: 2 }}>
           <div>
-            Berechnung nach SN 640 022 (VSS, Mai 1999) und VSS-Forschungsbericht 2008/301.
+            Berechnung nach SN 640 022 (VSS, Mai 1999).
             Die Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.
           </div>
           <div>
