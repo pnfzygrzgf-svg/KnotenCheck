@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { Berechnungsblatt } from './Berechnungsblatt'
+import RoundaboutApp from './RoundaboutApp'
 import einmuendungSvg from './assets/einmuendung.svg'
 import kreuzungSvg    from './assets/kreuzung.svg'
 import { analyzeSN640022 } from './engine/sn640022Calculator'
@@ -818,6 +819,7 @@ function ResultsPanel({ result, nodeResult, node, onShowBerechnungsblatt }: {
 // ── Hauptapp ──────────────────────────────────────────────────────────────────
 
 export default function App() {
+  const [mode, setMode] = useState<'sn022' | 'sn024a'>('sn022')
   const [cfg, setCfg] = useState<IntersectionConfiguration>(defaultIntersection(3))
   const [showBl, setShowBl] = useState(false)
   const openBl  = useCallback(() => setShowBl(true),  [])
@@ -848,7 +850,24 @@ export default function App() {
         <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex',
                       alignItems: 'center', height: 56, gap: 16 }}>
           <span style={{ fontWeight: 800, fontSize: 20, letterSpacing: '-0.5px' }}>KnotenCheck</span>
-          <span style={{ fontSize: 12, opacity: 0.6, marginTop: 1 }}>nach SN 640 022</span>
+
+          {/* Modus-Toggle */}
+          <div style={{ display: 'flex', gap: 2, background: '#ffffff22', borderRadius: 6, padding: 2 }}>
+            {([
+              { key: 'sn022',  label: 'SN 640 022',  sub: '(Einmündung, Kreuzung)' },
+              { key: 'sn024a', label: 'SN 640 024a', sub: 'Kreisverkehr' },
+            ] as const).map(m => (
+              <button key={m.key} onClick={() => setMode(m.key)}
+                style={{ padding: '4px 12px', borderRadius: 5, fontSize: 12, cursor: 'pointer',
+                         border: 'none', fontWeight: mode === m.key ? 700 : 400,
+                         background: mode === m.key ? '#fff' : 'transparent',
+                         color: mode === m.key ? '#1e3a5f' : '#ffffffbb' }}>
+                {m.label}
+                <span style={{ fontSize: 10, opacity: 0.7, marginLeft: 4 }}>{m.sub}</span>
+              </button>
+            ))}
+          </div>
+
           <div style={{ flex: 1 }} />
           <nav style={{ display: 'flex', gap: 12, fontSize: 12, opacity: 0.75 }}>
             <a href="https://github.com/pnfzygrzgf-svg/KnotenCheck"
@@ -866,7 +885,9 @@ export default function App() {
         </div>
       </header>
 
-      <main style={{ maxWidth: 1100, margin: '0 auto', padding: '20px 16px' }}>
+      {mode === 'sn024a' && <RoundaboutApp />}
+      <main style={{ maxWidth: 1100, margin: '0 auto', padding: '20px 16px',
+                     display: mode === 'sn024a' ? 'none' : undefined }}>
 
         {/* Knotentyp */}
         <div style={{ background: '#fff', borderRadius: 10, padding: '12px 20px',
