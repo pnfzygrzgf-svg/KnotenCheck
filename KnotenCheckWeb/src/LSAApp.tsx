@@ -4,6 +4,45 @@ import type { ArmInput, LSAResult, LevelOfService, StreamResult } from './engine
 import { IntersectionSchematic } from './IntersectionSchematic'
 import einmuendungSvg from './assets/einmuendung.svg'
 
+// ── Fahrzeugzusammensetzung (VSS 40 023a Ziff. 10.2) ─────────────────────────
+interface VehicleMix {
+  pctLW: number   // Lastwagen [%]
+  pctMR: number   // Motorräder [%]
+  pctFR: number   // Leichte Zweiräder [%]
+}
+
+function pctPW(mix: VehicleMix): number {
+  return Math.max(0, 100 - mix.pctLW - mix.pctMR - mix.pctFR)
+}
+
+// PW=1, LW=2, MR=0.5, FR=0.25
+function armFactor(mix: VehicleMix | undefined): number {
+  if (!mix) return 1.0
+  const pw = pctPW(mix)
+  const tot = pw + mix.pctLW + mix.pctMR + mix.pctFR
+  if (tot <= 0) return 1.0
+  return (pw * 1.0 + mix.pctLW * 2.0 + mix.pctMR * 0.5 + mix.pctFR * 0.25) / tot
+}
+
+// ── UI-Arm (Fz/h + optionale Zusammensetzung) ─────────────────────────────────
+interface UIArmInput {
+  name:     string
+  left:     number   // [Fz/h]
+  straight: number   // [Fz/h]
+  right:    number   // [Fz/h]
+  mix?:     VehicleMix
+}
+
+function toEngineArm(arm: UIArmInput): ArmInput {
+  const f = armFactor(arm.mix)
+  return {
+    name:     arm.name,
+    left:     Math.round(arm.left     * f),
+    straight: Math.round(arm.straight * f),
+    right:    Math.round(arm.right    * f),
+  }
+}
+
 // ── Farben ────────────────────────────────────────────────────────────────────
 
 const LOS_COLOR: Record<LevelOfService, string> = {
@@ -73,7 +112,7 @@ function Row({ label, sub, children }: { label: string; sub?: string; children: 
 
 // ── Bewegungen je Arm und Topologie ──────────────────────────────────────────
 
-type Movement = { key: keyof ArmInput; label: string }
+type Movement = { key: keyof UIArmInput; label: string }
 
 function getMovements(armIndex: number, armCount: 3 | 4): Movement[] {
   if (armCount === 3) {
@@ -119,7 +158,7 @@ function armLabel(index: number): string {
 // ── ArmCard ───────────────────────────────────────────────────────────────────
 
 function ArmCard({ arm, index, armCount, onChange }: {
-  arm: ArmInput; index: number; armCount: 3 | 4; onChange: (a: ArmInput) => void
+  arm: UIArmInput; index: number; armCount: 3 | 4; onChange: (a: UIArmInput) => void
 }) {
   const lbl   = armLabel(index)
   const isHS  = index < 2
@@ -127,7 +166,11 @@ function ArmCard({ arm, index, armCount, onChange }: {
   const bg    = isHS ? '#eff6ff' : '#fff7ed'
   const bd    = isHS ? '#bfdbfe' : '#fed7aa'
   const moves = getMovements(index, armCount)
-  const upd   = <K extends keyof ArmInput>(k: K, v: ArmInput[K]) => onChange({ ...arm, [k]: v })
+  const upd   = <K extends keyof UIArmInput>(k: K, v: UIArmInput[K]) => onChange({ ...arm, [k]: v })
+  const f     = armFactor(arm.mix)
+
+  const updMix = (k: keyof VehicleMix, v: number) =>
+    arm.mix && onChange({ ...arm, mix: { ...arm.mix, [k]: v } })
 
   return (
     <div style={{ background: '#fff', borderRadius: 10, border: `1.5px solid ${bd}`,
@@ -148,13 +191,47 @@ function ArmCard({ arm, index, armCount, onChange }: {
         </span>
       </div>
 
-      <SectionLabel title="Knotenströme [PWE/h]" />
+      <SectionLabel title="Knotenströme [Fz/h]" />
       {moves.map(m => (
         <Row key={m.key} label={m.label}>
           <NumInput value={(arm[m.key] as number) ?? 0}
             onChange={v => upd(m.key, v)} />
         </Row>
       ))}
+
+      {/* Fahrzeugzusammensetzung */}
+      <SectionLabel title="Fahrzeugzusammensetzung" />
+      <Row label="Gemischter Verkehr" sub="LW / MR / FR angeben">
+        <input type="checkbox" checked={arm.mix !== undefined}
+          onChange={e => onChange({ ...arm, mix: e.target.checked
+            ? { pctLW: 5, pctMR: 2, pctFR: 0 } : undefined })}
+          style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#1e3a5f' }} />
+      </Row>
+      {arm.mix && (
+        <>
+          {([
+            { key: 'pctLW' as const, label: 'Lastwagen LW',       sub: 'f = 2.0 PWE' },
+            { key: 'pctMR' as const, label: 'Motorräder MR',       sub: 'f = 0.5 PWE' },
+            { key: 'pctFR' as const, label: 'Leichte Zweiräder FR', sub: 'f = 0.25 PWE' },
+          ]).map(({ key, label, sub }) => (
+            <Row key={key} label={label} sub={sub}>
+              <NumInput value={arm.mix![key]} onChange={v => updMix(key, v)} max={100} width={60} />
+              <span style={{ fontSize: 12, color: '#9ca3af', minWidth: 16 }}>%</span>
+            </Row>
+          ))}
+          <Row label="Personenwagen PW" sub={`${pctPW(arm.mix).toFixed(0)} % · f = 1.0 PWE`}>
+            <span style={{ fontSize: 13, color: '#6b7280', minWidth: 72, textAlign: 'right' }}>
+              {pctPW(arm.mix).toFixed(0)} %
+            </span>
+          </Row>
+          <Row label="Umrechnungsfaktor f" sub="Fz/h × f = PWE/h">
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#1e3a5f',
+                           minWidth: 72, textAlign: 'right' }}>
+              {f.toFixed(3)}
+            </span>
+          </Row>
+        </>
+      )}
     </div>
   )
 }
@@ -342,6 +419,7 @@ function ResultsPanel({ result }: { result: LSAResult }) {
         Grünzeiten proportional zu Q<sub>krit</sub> je Phase.
         L = λ·S (S = 1800 PWE/h).
         w<sub>m</sub> = w<sub>1</sub> + w<sub>0</sub>, C = 0,5.
+        Umrechnung Fz→PWE nach Ziff. 10.2 (PW=1, LW=2, MR=0.5, FR=0.25).
         Ohne ÖV-Privilegierung, Phasentrennung vollständig.
       </div>
     </div>
@@ -350,17 +428,17 @@ function ResultsPanel({ result }: { result: LSAResult }) {
 
 // ── Standard-Arme ─────────────────────────────────────────────────────────────
 
-function defaultArms(armCount: 3 | 4): ArmInput[] {
+function defaultArms(armCount: 3 | 4): UIArmInput[] {
   if (armCount === 3) return [
-    { name: '', left: 0,   straight: 400, right: 100 },  // A
-    { name: '', left: 100, straight: 400, right: 0 },    // C
-    { name: '', left: 200, straight: 0,   right: 150 },  // B
+    { name: '', left: 0,   straight: 400, right: 100 },
+    { name: '', left: 100, straight: 400, right: 0 },
+    { name: '', left: 200, straight: 0,   right: 150 },
   ]
   return [
-    { name: '', left: 100, straight: 400, right: 100 },  // A
-    { name: '', left: 100, straight: 400, right: 100 },  // C
-    { name: '', left: 150, straight: 200, right: 100 },  // B
-    { name: '', left: 150, straight: 200, right: 100 },  // D
+    { name: '', left: 100, straight: 400, right: 100 },
+    { name: '', left: 100, straight: 400, right: 100 },
+    { name: '', left: 150, straight: 200, right: 100 },
+    { name: '', left: 150, straight: 200, right: 100 },
   ]
 }
 
@@ -369,19 +447,19 @@ function defaultArms(armCount: 3 | 4): ArmInput[] {
 export default function LSAApp() {
   const [armCount,   setArmCount]   = useState<3 | 4>(4)
   const [phaseCount, setPhaseCount] = useState<2 | 3>(3)
-  const [arms, setArms]             = useState<ArmInput[]>(defaultArms(4))
+  const [arms, setArms]             = useState<UIArmInput[]>(defaultArms(4))
 
   function handleArmCount(n: 3 | 4) {
     setArmCount(n)
     setArms(defaultArms(n))
   }
 
-  function updateArm(index: number, arm: ArmInput) {
+  function updateArm(index: number, arm: UIArmInput) {
     setArms(prev => prev.map((a, i) => i === index ? arm : a))
   }
 
   const result = useMemo<LSAResult>(() =>
-    calculateLSA({ armCount, phaseCount, arms }),
+    calculateLSA({ armCount, phaseCount, arms: arms.map(toEngineArm) }),
     [armCount, phaseCount, arms]
   )
 
@@ -429,7 +507,7 @@ export default function LSAApp() {
         </div>
 
         <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 'auto' }}>
-          Volumen in PWE/h · vollständige Phasentrennung · ohne ÖV
+          Eingabe in Fz/h · Umrechnung in PWE/h per Arm · vollständige Phasentrennung · ohne ÖV
         </span>
       </div>
 
