@@ -465,11 +465,28 @@ function StreamRow({ s }: { s: SN640022StreamResult }) {
 
 // ── Ergebnis-Panel ────────────────────────────────────────────────────────────
 
+const LEGEND_ITEMS: { abbr: string; unit?: string; desc: string }[] = [
+  { abbr: 'Fz/h',      desc: 'Fahrzeuge pro Stunde — Roheingabe' },
+  { abbr: 'PWE/h',     desc: 'Personenwageneinheiten/h — umgerechnet mit PW=1, LW=2, MR=0.5, FR=0.25' },
+  { abbr: 'S',         desc: 'Strom-Nummer nach SN 640 022 (q1–q12)' },
+  { abbr: 'Bewegung',  desc: 'Bewegungsrichtung, z.B. A→C = Geradeaus von Arm A nach Arm C' },
+  { abbr: 'Rg',        desc: 'Rang — 1 = Hauptstrasse (Vortritt), 2 = Nebenstrasse oder HS-Linksabbieger' },
+  { abbr: 'qpi',  unit: 'Fz/h',  desc: 'Massgebende Hauptstrombelastung — ermittelt nach Ziffer 7 (SN 640 022, S. 3) aus den vorfahrtsberechtigten Begleitströmen je Fahrtbeziehung; x-Achse von Abb. 2' },
+  { abbr: 'G',    unit: 'PWE/h', desc: 'Grundleistungsfähigkeit — abgelesen aus Abb. 2 «Grundleistungsfähigkeiten der verschiedenen Fahrbeziehungen» (SN 640 022, S. 5) bei gegebenem qpi; vier Kurven je Manöver: Linksabbiegen HS · Rechtseinbiegen NS · Kreuzen NS · Linkseinbiegen NS' },
+  { abbr: 'L',    unit: 'PWE/h', desc: 'Leistungsfähigkeit — für Rang-2-Ströme L = G; für Rang-3-Ströme L = p₀ · G, wobei p₀ die Wahrscheinlichkeit des staufreien Zustands des übergeordneten Rang-2-Stroms ist' },
+  { abbr: 'Lm',   unit: 'PWE/h', desc: 'Leistungsfähigkeit Mischstreifen — Kapazität eines gemeinsamen Fahrstreifens für mehrere NS-Ströme auf der Nebenstrasse (Ziffer 11, SN 640 022)' },
+  { abbr: 'R',    unit: 'PWE/h', desc: 'Reserve = L − Q; negativ = Überlast' },
+  { abbr: 'a',         desc: 'Auslastungsgrad = Q / L (dimensionslos)' },
+  { abbr: 'w',    unit: 's',     desc: 'Mittlere Wartezeit — nach Kimber-Hollis (SN 640 022)' },
+  { abbr: 'QS',        desc: 'Qualitätsstufe A–F nach Tab. 3 (SN 640 022): A ≤10s · B ≤20s · C ≤30s · D ≤45s · E >45s · F Überlast' },
+]
+
 function ResultsPanel({ result, onShowBerechnungsblatt }: {
   result: SN640022Result
   onShowBerechnungsblatt: () => void
 }) {
   const [showDetails, setShowDetails] = useState(false)
+  const [showLegend,  setShowLegend]  = useState(false)
   const rang2 = result.streams.filter(s => s.rang === 2)
 
   return (
@@ -573,6 +590,40 @@ function ResultsPanel({ result, onShowBerechnungsblatt }: {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Legende */}
+      <button onClick={() => setShowLegend(d => !d)}
+        style={{ marginTop: 10, width: '100%', padding: '7px', borderRadius: 6,
+                 fontSize: 12, cursor: 'pointer', border: '1px solid #d1d5db',
+                 background: '#f9fafb', color: '#374151' }}>
+        {showLegend ? 'Legende ausblenden' : 'Legende einblenden'}
+      </button>
+
+      {showLegend && (
+        <div style={{ marginTop: 8, borderRadius: 8, border: '1px solid #e5e7eb',
+                      overflow: 'hidden', fontSize: 12 }}>
+          <div style={{ padding: '6px 12px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb',
+                        fontSize: 11, fontWeight: 700, color: '#6b7280',
+                        textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Abkürzungen &amp; Begriffe
+          </div>
+          {LEGEND_ITEMS.map((item, i) => (
+            <div key={item.abbr} style={{
+              display: 'flex', gap: 10, padding: '5px 12px', alignItems: 'baseline',
+              borderBottom: i < LEGEND_ITEMS.length - 1 ? '1px solid #f3f4f6' : undefined,
+              background: i % 2 === 0 ? '#fff' : '#fafafa',
+            }}>
+              <div style={{ minWidth: 52, flexShrink: 0 }}>
+                <span style={{ fontWeight: 700, color: '#1e3a5f' }}>{item.abbr}</span>
+                {item.unit && (
+                  <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 2 }}>[{item.unit}]</span>
+                )}
+              </div>
+              <div style={{ color: '#4b5563', lineHeight: 1.4 }}>{item.desc}</div>
+            </div>
+          ))}
         </div>
       )}
     </div>

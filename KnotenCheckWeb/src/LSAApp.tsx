@@ -110,6 +110,77 @@ function Row({ label, sub, children }: { label: string; sub?: string; children: 
   )
 }
 
+// ── Phasenplan-Diagramm ───────────────────────────────────────────────────────
+
+type ArrowDir = 'up' | 'down' | 'left' | 'right'
+interface StreamArrow { id: string; cx: number; cy: number; dir: ArrowDir }
+
+const STREAM_ARROWS_4: StreamArrow[] = [
+  { id: 'q1',  cx: 37, cy: 54, dir: 'up'    },
+  { id: 'q2',  cx: 37, cy: 60, dir: 'right' },
+  { id: 'q3',  cx: 37, cy: 66, dir: 'down'  },
+  { id: 'q9',  cx: 83, cy: 54, dir: 'up'    },
+  { id: 'q8',  cx: 83, cy: 60, dir: 'left'  },
+  { id: 'q7',  cx: 83, cy: 66, dir: 'down'  },
+  { id: 'q6',  cx: 54, cy: 83, dir: 'right' },
+  { id: 'q5',  cx: 60, cy: 83, dir: 'up'    },
+  { id: 'q4',  cx: 66, cy: 83, dir: 'left'  },
+  { id: 'q10', cx: 54, cy: 37, dir: 'right' },
+  { id: 'q11', cx: 60, cy: 37, dir: 'down'  },
+  { id: 'q12', cx: 66, cy: 37, dir: 'left'  },
+]
+
+const STREAM_ARROWS_3: StreamArrow[] = [
+  { id: 'q2', cx: 37, cy: 57, dir: 'right' },
+  { id: 'q3', cx: 37, cy: 63, dir: 'down'  },
+  { id: 'q8', cx: 83, cy: 57, dir: 'left'  },
+  { id: 'q7', cx: 83, cy: 63, dir: 'down'  },
+  { id: 'q4', cx: 57, cy: 83, dir: 'left'  },
+  { id: 'q6', cx: 63, cy: 83, dir: 'right' },
+]
+
+function ArrowMark({ cx, cy, dir, active }: {
+  cx: number; cy: number; dir: ArrowDir; active: boolean
+}) {
+  const s = 4
+  const fill = active ? '#16a34a' : '#d1d5db'
+  const p = {
+    right: `${cx+s},${cy} ${cx-s},${cy-s*0.65} ${cx-s},${cy+s*0.65}`,
+    left:  `${cx-s},${cy} ${cx+s},${cy-s*0.65} ${cx+s},${cy+s*0.65}`,
+    up:    `${cx},${cy-s} ${cx-s*0.65},${cy+s} ${cx+s*0.65},${cy+s}`,
+    down:  `${cx},${cy+s} ${cx-s*0.65},${cy-s} ${cx+s*0.65},${cy-s}`,
+  }
+  return <polygon points={p[dir]} fill={fill} />
+}
+
+function PhaseDiagramCard({ streamIds, label, armCount }: {
+  streamIds: string[]; label: string; armCount: 3 | 4
+}) {
+  const active = new Set(streamIds)
+  const arrows = armCount === 4 ? STREAM_ARROWS_4 : STREAM_ARROWS_3
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+      <div style={{ fontSize: 10, fontWeight: 600, color: '#374151', textAlign: 'center',
+                    maxWidth: 108, lineHeight: 1.3 }}>{label}</div>
+      <svg viewBox="0 0 120 120" width={108} height={108} style={{ display: 'block' }}>
+        <rect x="0" y="0" width="120" height="120" fill="#f8fafc" rx="6" />
+        <rect x="0" y="52" width="120" height="16" fill="#e2e8f0" />
+        {armCount === 4
+          ? <rect x="52" y="0" width="16" height="120" fill="#e2e8f0" />
+          : <rect x="52" y="52" width="16" height="68" fill="#e2e8f0" />}
+        <rect x="52" y="52" width="16" height="16" fill="#cbd5e1" />
+        <text x="5"   y="61" fontSize="8" fill="#94a3b8" dominantBaseline="middle">A</text>
+        <text x="115" y="61" fontSize="8" fill="#94a3b8" dominantBaseline="middle" textAnchor="end">C</text>
+        <text x="60"  y="116" fontSize="8" fill="#94a3b8" dominantBaseline="middle" textAnchor="middle">B</text>
+        {armCount === 4 && <text x="60" y="5" fontSize="8" fill="#94a3b8" dominantBaseline="middle" textAnchor="middle">D</text>}
+        {arrows.map(a => (
+          <ArrowMark key={a.id} cx={a.cx} cy={a.cy} dir={a.dir} active={active.has(a.id)} />
+        ))}
+      </svg>
+    </div>
+  )
+}
+
 // ── Bewegungen je Arm und Topologie ──────────────────────────────────────────
 
 type Movement = { key: keyof UIArmInput; label: string }
@@ -472,43 +543,54 @@ export default function LSAApp() {
 
       {/* Knotentyp + Phasenplan */}
       <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb',
-                    padding: '12px 16px', marginBottom: 16,
-                    display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Knotentyp:</span>
-          {([3, 4] as const).map(n => (
-            <button key={n} onClick={() => handleArmCount(n)}
-              style={{
-                padding: '5px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
-                cursor: 'pointer',
-                background: armCount === n ? '#1e3a5f' : '#f3f4f6',
-                color:      armCount === n ? '#fff'    : '#374151',
-                border: armCount === n ? '1.5px solid #1e3a5f' : '1.5px solid #e5e7eb',
-              }}>
-              {n === 3 ? 'Einmündung (3-Arm)' : 'Kreuzung (4-Arm)'}
-            </button>
-          ))}
+                    padding: '12px 16px', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+                      marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Knotentyp:</span>
+            {([3, 4] as const).map(n => (
+              <button key={n} onClick={() => handleArmCount(n)}
+                style={{
+                  padding: '5px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+                  cursor: 'pointer',
+                  background: armCount === n ? '#1e3a5f' : '#f3f4f6',
+                  color:      armCount === n ? '#fff'    : '#374151',
+                  border: armCount === n ? '1.5px solid #1e3a5f' : '1.5px solid #e5e7eb',
+                }}>
+                {n === 3 ? 'Einmündung (3-Arm)' : 'Kreuzung (4-Arm)'}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Phasenplan:</span>
+            {([2, 3] as const).map(n => (
+              <button key={n} onClick={() => setPhaseCount(n)}
+                style={{
+                  padding: '5px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+                  cursor: 'pointer',
+                  background: phaseCount === n ? '#1e3a5f' : '#f3f4f6',
+                  color:      phaseCount === n ? '#fff'    : '#374151',
+                  border: phaseCount === n ? '1.5px solid #1e3a5f' : '1.5px solid #e5e7eb',
+                }}>
+                {n}-phasig
+              </button>
+            ))}
+          </div>
+
+          <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 'auto' }}>
+            Eingabe in Fz/h · Umrechnung in PWE/h per Arm · vollständige Phasentrennung · ohne ÖV
+          </span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Phasenplan:</span>
-          {([2, 3] as const).map(n => (
-            <button key={n} onClick={() => setPhaseCount(n)}
-              style={{
-                padding: '5px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
-                cursor: 'pointer',
-                background: phaseCount === n ? '#1e3a5f' : '#f3f4f6',
-                color:      phaseCount === n ? '#fff'    : '#374151',
-                border: phaseCount === n ? '1.5px solid #1e3a5f' : '1.5px solid #e5e7eb',
-              }}>
-              {n}-phasig
-            </button>
+        {/* Phasenplan-Diagramme */}
+        <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: 10,
+                      display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          {result.phases.map(ph => (
+            <PhaseDiagramCard key={ph.phaseIndex}
+              streamIds={ph.streamIds} label={ph.label} armCount={armCount} />
           ))}
         </div>
-
-        <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 'auto' }}>
-          Eingabe in Fz/h · Umrechnung in PWE/h per Arm · vollständige Phasentrennung · ohne ÖV
-        </span>
       </div>
 
       <div className="layout-grid">
