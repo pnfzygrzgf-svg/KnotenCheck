@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { calculateVSS308 } from './engine/vss2011308Calculator'
-import type { ArmInput, ArmResult, LevelOfService, RoadType } from './engine/vss2011308Calculator'
+import type { ArmInput, ArmResult, StreamResult, LevelOfService, RoadType } from './engine/vss2011308Calculator'
 import { IntersectionSchematic } from './IntersectionSchematic'
 import einmuendungSvg    from './assets/einmuendung.svg'
 import rechtsvorttrittSvg from './assets/rechtsvortritt.svg'
@@ -263,6 +263,60 @@ function ResultCard({ res }: { res: ArmResult }) {
   )
 }
 
+// ── Ströme-Tabelle (Kap. 5 — pro Bewegungsrichtung) ──────────────────────────
+
+function StreamsTable({ streams }: { streams: StreamResult[] }) {
+  const visible = streams.filter(s => s.Q > 0 && s.toArmIndex >= 0)
+  if (visible.length === 0) return null
+
+  return (
+    <div style={{ padding: '0 12px 12px' }}>
+      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
+                    color: '#6b7280', textTransform: 'uppercase', marginBottom: 6 }}>
+        Ströme
+      </div>
+      <div style={{ borderRadius: 6, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+          <thead>
+            <tr style={{ background: '#f9fafb' }}>
+              {['Strom', 'Q', 'β', 'L', 'x', 'w', 'LOS'].map(h => (
+                <th key={h} style={{
+                  padding: '4px 7px', textAlign: h === 'Strom' ? 'left' : 'right',
+                  borderBottom: '1px solid #e5e7eb', color: '#6b7280', fontWeight: 700,
+                }}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map(s => {
+              const col = s.roadType === 'HS' ? '#1d4ed8' : s.roadType === 'NS' ? '#c2410c' : '#4b5563'
+              return (
+                <tr key={s.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                  <td style={{ padding: '3px 7px', fontWeight: 700, color: col }}>{s.id}</td>
+                  <td style={{ padding: '3px 7px', textAlign: 'right', color: '#374151' }}>{s.Q}</td>
+                  <td style={{ padding: '3px 7px', textAlign: 'right', color: '#374151' }}>{s.beta.toFixed(3)}</td>
+                  <td style={{ padding: '3px 7px', textAlign: 'right', color: '#374151' }}>{Math.round(s.capacity)}</td>
+                  <td style={{ padding: '3px 7px', textAlign: 'right' }}>
+                    <span style={{ color: utilizationColor(s.utilizationDegree), fontWeight: 600 }}>
+                      {isFinite(s.utilizationDegree) ? s.utilizationDegree.toFixed(2) : '>1'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '3px 7px', textAlign: 'right', color: '#374151' }}>{delayText(s.delay)}</td>
+                  <td style={{ padding: '3px 7px', textAlign: 'right' }}>
+                    <LOSBadge los={s.levelOfService} />
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 
 export default function VSS308App() {
@@ -374,12 +428,15 @@ export default function VSS308App() {
             <div style={{ padding: 12 }}>
               <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
                             color: '#6b7280', textTransform: 'uppercase', marginBottom: 8 }}>
-                Einfahrten
+                Einfahrten (Mittelwert)
               </div>
               {result.arms.map(r => (
                 <ResultCard key={r.armIndex} res={r} />
               ))}
             </div>
+
+            {/* Ströme-Tabelle */}
+            <StreamsTable streams={result.streams} />
 
             {/* Beta-Hinweis */}
             <div style={{ margin: '0 12px 8px', padding: '7px 12px', borderRadius: 6,
@@ -392,11 +449,11 @@ export default function VSS308App() {
             <div style={{ margin: '0 12px 12px', padding: '10px 12px', borderRadius: 8,
                           background: '#f8fafc', border: '1px solid #e2e8f0',
                           fontSize: 11, color: '#64748b', lineHeight: 1.6 }}>
-              <strong style={{ color: '#334155' }}>Methodik:</strong> VSS 2011/308
-              (Menendez/Guler/Puffe). Kapazität: L = S·β.
-              β = (1−y<sub>HS</sub>)³ · (1−y<sub>Fg</sub>)³.
+              <strong style={{ color: '#334155' }}>Methodik:</strong> VSS 2011/308 Kap. 5
+              (Menendez/Guler/Puffe). Pro Strom: β = ∏(1−y<sub>Fg</sub>)³
+              für alle senkrechten Fg-Ströme (Ein- und Ausfahrt).
+              L = S·β (Szenario I). Einfahrten-Werte sind Volumen-gewichtete Mittel.
               C = 0.5 für Rang 1, C = 1.0 für Rang 2.
-              Wartezeit nach Kimber–Hollis, angepasst.
             </div>
           </div>
         </div>

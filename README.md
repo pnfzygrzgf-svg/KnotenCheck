@@ -46,7 +46,8 @@ Beurteilung von Einmündungen, Kreuzungen und Rechtsvortritt-Knoten unter Berüc
 **Funktionen:**
 - Einmündung (T-Knoten), Kreuzung (4 Arme) und Gleicher Rang (Rechtsvortritt)
 - Fussgängervolumen am Fussgängerstreifen je Arm
-- Qualitätsstufen A–F je Arm sowie Gesamt-QS
+- Pro-Strom-Kapazität nach Kap. 5 (Ein- und Ausfahrts-Fg je Bewegungsrichtung)
+- Qualitätsstufen A–F je Strom, je Arm (Mittelwert) sowie Gesamt-QS
 
 ---
 
@@ -269,30 +270,64 @@ mit T = 1.0 h (Betrachtungshorizont 1 Stunde), a = Q_E / L_E.
 
 Der Forschungsbericht VSS 2011/308 ist eine empirisch validierte Vereinfachung und Erweiterung der Methodik aus VSS 2008/301. Im Unterschied zur SN 640 022 werden **Fussgänger** als Konfliktgrösse berücksichtigt. Alle Berechnungen erfolgen rein algebraisch — keine Diagramme zum Ablesen.
 
-Der Rechner deckt einfache Knoten ab (zweirangig oder gleichrangig, Kap. 4 des Berichts). Komplexe Knoten mit mehr als zwei Rängen oder Rückstauwirkung von Nachbarknoten sind nicht abgedeckt.
+Der Rechner deckt zweirangige und gleichrangige Knoten ab (kein Tram, kein Bus). Komplexe Knoten mit mehr als zwei Rängen oder Rückstauwirkung von Nachbarknoten sind nicht vollständig abgedeckt (Schritt 3, LSA-Korrektur, ist nicht implementiert — konservativ).
 
-#### Methodik (Tab. 25, VSS 2011/308)
+#### Methodik (Kap. 5, VSS 2011/308)
 
-| Rang des Stroms | C | Konfliktierender Strom | β |
-|---|---|---|---|
-| 1 | 0.5 | — | 1 |
-| 2 | 1.0 | Abbiegende Fz | (1 − y)³ |
-| 2 | 1.0 | Fussgänger | (1 − y)³ |
-| Gleicher Rang | 1.0 | — | y₁ / (y₁ + y₂) |
+Der Rechner folgt dem 5-Schritte-Verfahren nach Kap. 5.1:
 
-Kapazität: `L = S × β` (Produkt über alle senkrechten Rang-1-Ströme)
+**Schritt 1 — Szenario I oder II (Abb. 22)**
 
-Sättigungsflüsse: S_m1 = 1800 Fz/h (Rang 1), S_m2 = 1500 Fz/h (Rang 2), S_Fg = 900 Fg/h
+Entscheidungsdiagramm: Gibt es einen höheren *parallelen* Strom (Tram, Bus)? Bei reinen Fz/Fg-Knoten lautet die Antwort immer Nein → **Szenario I** für alle Ströme.
 
-**Wartezeit (Gl. 1, S. 62):**
+**Schritt 2 — β berechnen (Abb. 23, Gl. 12)**
+
+Für jeden senkrechten, höherrangigen Strom `i`:
+
+```
+βᵢ = (1 − yᵢ)³     (abbiegende Fz oder Fg)
+β  = ∏ βᵢ           (Produkt über alle senkrechten Ströme)
+```
+
+Die Berechnung erfolgt **pro Bewegungsrichtung** (A→C, B→A, etc.):
+
+| Strom | β |
+|---|---|
+| HS (Rang 1) | `(1 − y_FgEinfahrt)³ × (1 − y_FgAusfahrt)³` |
+| NS (Rang 2) | `(1 − y_HS)³ × (1 − y_FgEinfahrt)³ × (1 − y_FgAusfahrt)³` |
+| Gleicher Rang | `y_this / (y_this + y_partner)` |
+
+Ein HS-Fahrzeug, das von A nach C fährt, passiert den Fussgängerstreifen bei Arm A (Einfahrt) **und** den Fussgängerstreifen bei Arm C (Ausfahrt). Beide gehen in das β des Stroms A→C ein.
+
+**Schritt 3 — LSA-Korrektur (Gl. 13)**
+
+Nur nötig bei vorgelagertem Lichtsignal: `β_neu = β × 1 / (1 − yᵢΦ)²`. **Nicht implementiert** — der Rechner nimmt keinen LSA stromaufwärts an (konservativ).
+
+**Schritt 4 — Effektive Kapazität (Gl. 5)**
+
+```
+L = S_Modus × β
+```
+
+Sättigungsflüsse: S_m1 = 1750 Fz/h (Rang 1), S_m2 = 1650 Fz/h (Rang 2), S_Fg = 900 Fg/h (empirisch, Tab. 8/13)
+
+**Schritt 5 — Wartezeit und Stau (Gl. 1–3, Abschnitt 2.3)**
+
 ```
 w = 900 × [(x−1) − 4C·(x/Q) + √((x−1)² + 8C·(x + 1 + 2C·(x/Q)) / (Q/x))]
 ```
-mit x = Q/L, C = 0.5 (Rang 1) oder 1.0 (Rang 2 / gleicher Rang)
+mit `x = Q/L`, `C = 0.5` (Rang 1) oder `1.0` (Rang 2 / gleicher Rang)
 
-**Stau:** `k = w [s] × L / 3600`
+```
+k = w [s] × L / 3600
+```
 
 **Qualitätsstufen:** identisch zu SN 640 022 (A ≤ 10 s, B ≤ 20 s, C ≤ 30 s, D ≤ 45 s, E > 45 s, F = Überlast)
+
+#### Ergebnis-Darstellung
+
+- **Einfahrten:** volumengewichteter Mittelwert von β, L und w über alle Bewegungsrichtungen des Arms
+- **Ströme:** Einzelwerte je Bewegungsrichtung (Q, β, L, x, w, QS)
 
 ---
 
