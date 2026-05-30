@@ -279,12 +279,11 @@ const LOS_DESC: Record<LevelOfService, string> = {
   F: 'Überlastet — Stau',
 }
 
-function PrintSheet({ nodeName, type, armCount, arms, qkFzh, result }: {
+function PrintSheet({ nodeName, type, armCount, arms, result }: {
   nodeName: string
   type: RoundaboutType
   armCount: number
   arms: ArmInput[]
-  qkFzh: number[]
   result: NonNullable<ReturnType<typeof calculateRoundabout>>
 }) {
   const date = new Date().toLocaleDateString('de-CH', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -709,7 +708,6 @@ export default function RoundaboutApp() {
         type={type}
         armCount={armCount}
         arms={activeArms}
-        qkFzh={qkFzh}
         result={result}
       />
     )}
