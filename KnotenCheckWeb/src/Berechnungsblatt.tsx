@@ -138,7 +138,12 @@ export function Berechnungsblatt({ cfg, result, onClose }: Props) {
         display: 'flex', gap: 10, padding: '10px 24px',
         background: '#1e3a5f', borderBottom: '2px solid #2d5490',
       }}>
-        <button onClick={() => window.print()}
+        <button onClick={() => {
+          const prev = document.title
+          document.title = `KnotenCheck – SN 640 022${cfg.name ? ' – ' + cfg.name : ''}`
+          window.addEventListener('afterprint', () => { document.title = prev }, { once: true })
+          window.print()
+        }}
           style={{ padding: '6px 16px', background: '#fff', color: '#1e3a5f',
                    border: 'none', borderRadius: 5, fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
           Drucken / Als PDF speichern

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { calculateRoundabout, computeQKfromTurnings } from './engine/roundaboutCalculator'
 import type { RoundaboutType, LevelOfService, EntryResult } from './engine/roundaboutCalculator'
 import kreiselSvg from './assets/Kreisel.svg'
@@ -305,7 +306,7 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
   const tdL: React.CSSProperties = { ...td, textAlign: 'left' }
 
   return (
-    <div className="print-only" style={{ lineHeight: 1.4 }}>
+    <div style={{ lineHeight: 1.4 }}>
 
       {/* Kopfzeile */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
@@ -592,12 +593,25 @@ export default function RoundaboutApp() {
                       boxShadow: '0 1px 3px #0001' }}>
 
           {/* Schematik */}
-          <div style={{ marginBottom: 16, borderRadius: 8, overflow: 'hidden',
+          <div style={{ marginBottom: 12, borderRadius: 8, overflow: 'hidden',
                         border: '1px solid #e5e7eb', background: '#fafafa', padding: 8 }}>
             <img src={kreiselSvg} alt="Kreisverkehr Schema"
               style={{ width: '100%', height: 'auto', display: 'block',
                        maxHeight: 260, objectFit: 'contain' }} />
           </div>
+
+          {/* Drucken */}
+          <button onClick={() => {
+            const prev = document.title
+            document.title = `KnotenCheck – SN 640 024a${nodeName ? ' – ' + nodeName : ''}`
+            window.addEventListener('afterprint', () => { document.title = prev }, { once: true })
+            window.print()
+          }}
+            style={{ width: '100%', marginBottom: 12, padding: '7px 0', borderRadius: 6,
+                     fontSize: 12, cursor: 'pointer', border: '1px solid #1e3a5f',
+                     background: '#1e3a5f', color: '#fff', fontWeight: 600 }}>
+            Bewertungsblatt (Druckansicht)
+          </button>
 
           {/* Beta-Hinweis */}
           <div style={{ marginBottom: 14, padding: '7px 12px', borderRadius: 6,
@@ -651,13 +665,6 @@ export default function RoundaboutApp() {
                 <div><strong>VQS</strong> nach Tab. 3: A ≤ 10 s · B ≤ 20 s · C ≤ 30 s · D ≤ 45 s · E &gt; 45 s · F = Überlast</div>
               </div>
 
-              {/* Drucken */}
-              <button onClick={() => window.print()}
-                style={{ marginTop: 12, width: '100%', padding: '8px 0', borderRadius: 6,
-                         border: '1px solid #1e3a5f', background: '#1e3a5f', color: '#fff',
-                         fontSize: 13, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.02em' }}>
-                Bewertungsblatt drucken / PDF
-              </button>
             </>
           )}
 
@@ -702,14 +709,18 @@ export default function RoundaboutApp() {
       </footer>
     </main>
 
-    {result && (
-      <PrintSheet
-        nodeName={nodeName}
-        type={type}
-        armCount={armCount}
-        arms={activeArms}
-        result={result}
-      />
+    {result && createPortal(
+      <div className="print-portal" style={{ padding: '14mm 16mm', background: '#fff',
+                                             fontFamily: 'system-ui, Arial, sans-serif' }}>
+        <PrintSheet
+          nodeName={nodeName}
+          type={type}
+          armCount={armCount}
+          arms={activeArms}
+          result={result}
+        />
+      </div>,
+      document.body
     )}
     </>
   )

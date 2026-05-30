@@ -2,6 +2,98 @@
 body { background: #f1f5f9; }
 input[type=number]::-webkit-inner-spin-button { opacity: 1; }
 
+/* ── Header ────────────────────────────────────────────────────────────────── */
+
+.app-header {
+  background: #1e3a5f;
+  color: #fff;
+  padding: 0 24px;
+}
+
+.app-header-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+}
+
+.app-header-title {
+  font-weight: 800;
+  font-size: 20px;
+  letter-spacing: -0.5px;
+  white-space: nowrap;
+}
+
+.app-header-nav {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  opacity: 0.75;
+  margin-left: auto;
+}
+
+.app-header-nav a {
+  color: #fff;
+  text-decoration: none;
+}
+
+.mode-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  background: #ffffff18;
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.mode-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 5px 12px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  line-height: 1.3;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.mode-btn-sub {
+  font-size: 10px;
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+.mode-btn.active {
+  background: #fff;
+  color: #1e3a5f;
+  border-color: #fff;
+}
+
+.mode-btn.inactive {
+  background: transparent;
+  color: #fff;
+  border-color: #ffffff44;
+}
+
+.mode-btn.inactive:hover {
+  background: #ffffff22;
+  border-color: #ffffff88;
+}
+
+@media (max-width: 600px) {
+  .app-header-nav { display: none; }
+  .mode-switcher   { width: 100%; }
+  .mode-btn        { flex: 1; min-width: 120px; }
+}
+
 /* ── Responsive Layout ─────────────────────────────────────────────────────── */
 
 .layout-grid {
@@ -37,6 +129,16 @@ input[type=number]::-webkit-inner-spin-button { opacity: 1; }
   position: fixed; inset: 0; z-index: 1000;
   background: #f1f5f9;
   overflow-y: auto;
+}
+
+/* Portal für Bewertungsblätter: auf dem Bildschirm unsichtbar, beim Drucken sichtbar */
+.print-portal {
+  display: none;
+}
+@media print {
+  .print-portal {
+    display: block;
+  }
 }
 
 .berechnungsblatt {

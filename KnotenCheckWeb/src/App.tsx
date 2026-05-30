@@ -658,41 +658,34 @@ export default function App() {
     <div style={{ minHeight: '100vh', background: '#f1f5f9', fontFamily: 'system-ui, sans-serif' }}>
 
       {/* Header */}
-      <header style={{ background: '#1e3a5f', color: '#fff', padding: '0 24px' }}>
-        <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex',
-                      alignItems: 'center', height: 56, gap: 16 }}>
-          <span style={{ fontWeight: 800, fontSize: 20, letterSpacing: '-0.5px' }}>KnotenCheck</span>
+      <header className="app-header">
+        <div className="app-header-inner">
+          <span className="app-header-title">KnotenCheck</span>
 
           {/* Modus-Toggle */}
-          <div style={{ display: 'flex', gap: 2, background: '#ffffff22', borderRadius: 6, padding: 2 }}>
+          <div className="mode-switcher">
             {([
-              { key: 'sn022',  label: 'SN 640 022',  sub: '(Einmündung, Kreuzung)' },
+              { key: 'sn022',  label: 'SN 640 022',  sub: 'Einmündung, Kreuzung' },
               { key: 'sn024a', label: 'SN 640 024a', sub: 'Kreisverkehr' },
-              { key: 'vss308', label: 'VSS 2011/308', sub: '(Ungesteuerter Knoten)' },
-              { key: 'lsa',    label: 'SN 640 023a',  sub: '(LSA-Knoten)' },
+              { key: 'vss308', label: 'VSS 2011/308', sub: 'Ungesteuerter Knoten' },
+              { key: 'lsa',    label: 'SN 640 023a',  sub: 'LSA-Knoten' },
             ] as const).map(m => (
               <button key={m.key} onClick={() => setMode(m.key)}
-                style={{ padding: '4px 12px', borderRadius: 5, fontSize: 12, cursor: 'pointer',
-                         border: 'none', fontWeight: mode === m.key ? 700 : 400,
-                         background: mode === m.key ? '#fff' : 'transparent',
-                         color: mode === m.key ? '#1e3a5f' : '#ffffffbb' }}>
+                className={`mode-btn ${mode === m.key ? 'active' : 'inactive'}`}>
                 {m.label}
-                <span style={{ fontSize: 10, opacity: 0.7, marginLeft: 4 }}>{m.sub}</span>
+                <span className="mode-btn-sub">{m.sub}</span>
               </button>
             ))}
           </div>
 
-          <div style={{ flex: 1 }} />
-          <nav style={{ display: 'flex', gap: 12, fontSize: 12, opacity: 0.75 }}>
+          <nav className="app-header-nav">
             <a href="https://github.com/pnfzygrzgf-svg/KnotenCheck"
-               target="_blank" rel="noopener noreferrer"
-               style={{ color: '#fff', textDecoration: 'none' }}>
+               target="_blank" rel="noopener noreferrer">
               Quellcode: GitHub
             </a>
             <span style={{ opacity: 0.5 }}>·</span>
             <a href="https://creativecommons.org/licenses/by-nc/4.0/"
-               target="_blank" rel="noopener noreferrer"
-               style={{ color: '#fff', textDecoration: 'none' }}>
+               target="_blank" rel="noopener noreferrer">
               Lizenz: CC BY-NC 4.0
             </a>
           </nav>

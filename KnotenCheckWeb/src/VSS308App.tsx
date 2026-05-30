@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { calculateVSS308 } from './engine/vss2011308Calculator'
 import type { ArmInput, ArmResult, StreamResult, LevelOfService, RoadType } from './engine/vss2011308Calculator'
 import { IntersectionSchematic } from './IntersectionSchematic'
@@ -149,23 +150,25 @@ function ArmCard({ arm, index, nodeType, result, onChange }: {
     <div style={{ background: '#fff', borderRadius: 10, border: `1.5px solid ${bd}`,
                   overflow: 'hidden', boxShadow: '0 1px 4px #0001' }}>
       {/* Header */}
-      <div style={{ background: bg, borderBottom: `1px solid ${bd}`,
-                    padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span style={{ fontWeight: 800, fontSize: 17, color: col,
-                       background: '#fff', border: `1.5px solid ${bd}`,
-                       borderRadius: 6, minWidth: 28, textAlign: 'center', padding: '1px 6px' }}>
-          {lbl}
-        </span>
+      <div style={{ background: bg, borderBottom: `1px solid ${bd}`, padding: '10px 14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+          <span style={{ fontWeight: 800, fontSize: 17, color: col,
+                         background: '#fff', border: `1.5px solid ${bd}`,
+                         borderRadius: 6, minWidth: 28, textAlign: 'center', padding: '1px 6px' }}>
+            {lbl}
+          </span>
+          <span style={{ fontSize: 11, color: col, fontWeight: 600, opacity: 0.7 }}>
+            {isHS ? 'Hauptstrasse (HS)' : isEqual ? 'Gleicher Rang' : 'Nebenstrasse (NS)'}
+          </span>
+        </div>
         <input
           type="text" placeholder="Strassenname (optional)"
           value={arm.name}
           onChange={e => upd('name', e.target.value)}
-          style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 14,
-                   fontWeight: 600, color: col, outline: 'none' }}
+          style={{ width: '100%', border: `1px solid ${bd}`, background: '#fff', fontSize: 13,
+                   fontWeight: 600, color: col, outline: 'none', borderRadius: 5,
+                   padding: '4px 8px', boxSizing: 'border-box' }}
         />
-        <span style={{ fontSize: 11, color: col, fontWeight: 600, opacity: 0.7 }}>
-          {isHS ? 'Hauptstrasse (HS)' : isEqual ? 'Gleicher Rang' : 'Nebenstrasse (NS)'}
-        </span>
       </div>
 
       {/* Abbiegeströme */}
@@ -334,7 +337,8 @@ const LOS_DESC: Record<LevelOfService, string> = {
   F: 'Überlastet — Stau',
 }
 
-function VSS308PrintSheet({ nodeType, arms, result }: {
+function VSS308PrintSheet({ nodeName, nodeType, arms, result }: {
+  nodeName: string
   nodeType: NodeType
   arms: ArmInput[]
   result: ReturnType<typeof calculateVSS308>
@@ -361,7 +365,7 @@ function VSS308PrintSheet({ nodeType, arms, result }: {
     rt === 'HS' ? 'HS' : rt === 'NS' ? 'NS' : 'Gleich'
 
   return (
-    <div className="print-only" style={{ lineHeight: 1.4 }}>
+    <div style={{ lineHeight: 1.4 }}>
 
       {/* Kopfzeile */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
@@ -383,6 +387,10 @@ function VSS308PrintSheet({ nodeType, arms, result }: {
       {/* Objekt */}
       <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12 }}>
         <tbody>
+          <tr>
+            <td style={{ ...thL, width: '22%' }}>Bezeichnung</td>
+            <td style={tdL}>{nodeName || '—'}</td>
+          </tr>
           <tr>
             <td style={{ ...thL, width: '22%' }}>Knotentyp</td>
             <td style={tdL}>{NODE_TYPE_LABEL[nodeType]}</td>
@@ -574,6 +582,7 @@ const LEGEND_ITEMS: { abbr: string; unit?: string; desc: string }[] = [
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 
 export default function VSS308App() {
+  const [nodeName, setNodeName]   = useState('')
   const [nodeType, setNodeType]   = useState<NodeType>('4arm')
   const [arms, setArms]           = useState<ArmInput[]>(defaultArms('4arm'))
   const [showLegend, setShowLegend] = useState(false)
@@ -608,10 +617,16 @@ export default function VSS308App() {
     <>
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '16px 16px 40px' }}>
 
-      {/* Knotentyp-Auswahl */}
+      {/* Bezeichnung + Knotentyp-Auswahl */}
       <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb',
                     padding: '12px 16px', marginBottom: 16,
                     display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <input type="text" value={nodeName}
+          onChange={e => setNodeName(e.target.value)}
+          placeholder="Bezeichnung des Knotens"
+          style={{ flexBasis: '100%', padding: '5px 10px', borderRadius: 5,
+                   border: '1px solid #d1d5db', fontSize: 14, fontWeight: 600,
+                   color: '#1e293b' }} />
         <span style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginRight: 4 }}>
           Knotentyp:
         </span>
@@ -635,14 +650,8 @@ export default function VSS308App() {
       </div>
 
       <div className="layout-grid">
-        {/* Linke Spalte: Schematik + Arm-Cards */}
+        {/* Linke Spalte: Arm-Cards */}
         <div>
-          {/* Schematik */}
-          <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb',
-                        padding: 12, marginBottom: 16 }}>
-            {schematic}
-          </div>
-
           {/* Arm-Cards */}
           <div className={`arms-grid ${nodeType !== '3arm' ? 'arms-grid-4' : ''}`}>
             {activeArms.map((arm, i) => (
@@ -657,6 +666,27 @@ export default function VSS308App() {
         <div className="results-panel">
           <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb',
                         overflow: 'hidden' }}>
+
+            {/* Schematik */}
+            <div style={{ padding: 12, borderBottom: '1px solid #e5e7eb', background: '#fafafa' }}>
+              {schematic}
+            </div>
+
+            {/* Drucken */}
+            <div style={{ padding: '10px 12px', borderBottom: '1px solid #e5e7eb' }}>
+              <button onClick={() => {
+                const prev = document.title
+                document.title = `KnotenCheck – VSS 2011/308${nodeName ? ' – ' + nodeName : ''}`
+                window.addEventListener('afterprint', () => { document.title = prev }, { once: true })
+                window.print()
+              }}
+                style={{ width: '100%', padding: '7px 0', borderRadius: 6,
+                         border: '1px solid #1e3a5f', background: '#1e3a5f', color: '#fff',
+                         fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                Bewertungsblatt (Druckansicht)
+              </button>
+            </div>
+
             {/* Gesamt-LOS */}
             <div style={{ padding: '14px 16px', borderBottom: '1px solid #e5e7eb',
                           background: LOS_BG[overall] }}>
@@ -699,16 +729,6 @@ export default function VSS308App() {
                           background: '#fff7ed', border: '1px solid #fed7aa',
                           fontSize: 11, color: '#92400e', fontWeight: 600 }}>
               ⚠ Beta — Resultate mit Vorsicht verwenden.
-            </div>
-
-            {/* Drucken */}
-            <div style={{ margin: '0 12px 8px' }}>
-              <button onClick={() => window.print()}
-                style={{ width: '100%', padding: '8px 0', borderRadius: 6,
-                         border: '1px solid #1e3a5f', background: '#1e3a5f', color: '#fff',
-                         fontSize: 13, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.02em' }}>
-                Bewertungsblatt drucken / PDF
-              </button>
             </div>
 
             {/* Methodik-Hinweis */}
@@ -754,11 +774,18 @@ export default function VSS308App() {
       </div>
     </div>
 
-    <VSS308PrintSheet
-      nodeType={nodeType}
-      arms={activeArms}
-      result={result}
-    />
+    {createPortal(
+      <div className="print-portal" style={{ padding: '14mm 16mm', background: '#fff',
+                                             fontFamily: 'system-ui, Arial, sans-serif' }}>
+        <VSS308PrintSheet
+          nodeName={nodeName}
+          nodeType={nodeType}
+          arms={activeArms}
+          result={result}
+        />
+      </div>,
+      document.body
+    )}
     </>
   )
 }

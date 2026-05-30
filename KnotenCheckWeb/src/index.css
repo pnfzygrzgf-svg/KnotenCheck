@@ -112,8 +112,6 @@ code {
 
 /* ── Druck ────────────────────────────────────────────────────────────────── */
 
-.print-only { display: none; }
-
 @media print {
   @page { size: A4 portrait; margin: 14mm 16mm; }
 
@@ -121,19 +119,4 @@ code {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
-
-  body { visibility: hidden; background: white !important; }
-
-  .print-only {
-    display: block !important;
-    visibility: visible;
-    position: absolute;
-    top: 0; left: 0;
-    width: 100%;
-    font-family: system-ui, Arial, sans-serif;
-    font-size: 10pt;
-    color: #000;
-  }
-
-  .print-only * { visibility: visible; }
 }
