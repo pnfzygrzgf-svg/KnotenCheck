@@ -7,6 +7,7 @@ Werkzeug zur Leistungsbeurteilung von ungesteuerten Knoten innerorts. Drei Rechn
 > **Beta** — Resultate mit Vorsicht verwenden und durch eine Fachperson prüfen lassen.
 
 Vibecoding. Don't trust, verify!
+
 ---
 
 ## Rechner
