@@ -163,7 +163,7 @@ function ArmCard({ arm, index, armCount, qkFzh, onChange }: {
         <span style={{ fontSize: 11, color: '#9ca3af', width: 36 }}>Fz/h</span>
       </Row>
 
-      {/* Fussgänger */}
+      {/* Fussgänger*innen */}
       <Row label="Fussgängerquerungen FG"
            sub="Einfluss via f_F (Abb. 3/4). 0 = kein Einfluss">
         <NumInput value={arm.fg} onChange={v => upd('fg', v)} />
@@ -272,12 +272,12 @@ function EntryCard({ e, arm, armNumber }: { e: EntryResult; arm: ArmInput; armNu
 
 const LEGEND_ITEMS: { abbr: string; unit?: string; desc: string }[] = [
   { abbr: 'Fz/h',    desc: 'Fahrzeuge pro Stunde — Roheingabe Abbiegeströme' },
-  { abbr: 'FG/h',    desc: 'Fussgänger pro Stunde am Fussgängerstreifen der Einfahrt' },
+  { abbr: 'FG/h',    desc: 'Fussgänger*innen pro Stunde am Fussgängerstreifen der Einfahrt' },
   { abbr: 'PWE/h',   desc: 'Personenwageneinheiten pro Stunde — umgerechnet mit dem PW-Äquivalentfaktor f (Tab. 2)' },
   { abbr: 'f',       desc: 'PW-Äquivalentfaktor für die Einfahrt — abhängig von der Längsneigung (Tab. 2); Kreiselfahrbahn Q_K verwendet immer f = 1,1' },
   { abbr: 'Q_E', unit: 'PWE/h', desc: 'Einfahrtsvolumen — Summe aller Abbiegeströme des Arms, umgerechnet mit f (Tab. 2)' },
   { abbr: 'Q_K', unit: 'PWE/h', desc: 'Kreisfahrbahnbelastung — Querschnittsbelastung unmittelbar vor der Einfahrt, berechnet aus den Abbiegeströmen aller Arme (Abb. 10)' },
-  { abbr: 'L_E', unit: 'PWE/h', desc: 'Leistungsfähigkeit der Einfahrt — aus Abb. 6: 1141 − 0,578·Q_K (Typ 1/1) resp. 1455 − 0,537·Q_K (Typ 2/1+); mit Fussgänger: L_E × f_F' },
+  { abbr: 'L_E', unit: 'PWE/h', desc: 'Leistungsfähigkeit der Einfahrt — aus Abb. 6: 1141 − 0,578·Q_K (Typ 1/1) resp. 1455 − 0,537·Q_K (Typ 2/1+); mit Fussgänger*innen: L_E × f_F' },
   { abbr: 'f_F',     desc: 'Fussgängerkorrekturfaktor — Reduktion der Einfahrtskapazität durch querenden Fussgängerverkehr; bilinear interpoliert aus Abb. 3 (Typ 1/1) resp. Abb. 4 (Typ 2/1+)' },
   { abbr: 'R',  unit: 'PWE/h', desc: 'Reserve = L_E − Q_E; negativ bedeutet Überlast' },
   { abbr: 'VQS',     desc: 'Verkehrsqualitätsstufe A–F nach Tab. 3 (SN 640 024a): A ≤10s · B ≤20s · C ≤30s · D ≤45s · E >45s · F Überlast' },

@@ -41,7 +41,7 @@ Beurteilung von Kreisverkehrsanlagen.
 
 ### VSS 2011/308 — Ungesteuerter Knoten (Fz + Fg)
 
-Beurteilung von Einmündungen, Kreuzungen und Rechtsvortritt-Knoten unter Berücksichtigung von Fussgängern.
+Beurteilung von Einmündungen, Kreuzungen und Rechtsvortritt-Knoten unter Berücksichtigung von Fussgänger*innen.
 
 **Grundlage:** Forschungsbericht VSS 2011/308 — *Verkehrsablauf an ungesteuerten Knoten innerorts*, Menendez / Guler / Puffe, ETH Zürich, September 2015
 
@@ -65,7 +65,7 @@ Das Verfahren gilt für Einmündungen (drei Arme) und Kreuzungen (vier Arme).
 
 #### Was die Norm nicht berücksichtigt
 
-Die SN 640 022 berechnet ausschliesslich die Leistungsfähigkeit für **motorisierten Individualverkehr (MIV)**. Velofahrende und Fussgängerinnen und Fussgänger kommen im Berechnungsverfahren nicht vor. Wer die Qualität eines Knotens für den Fuss- und Veloverkehr beurteilen will, braucht andere Methoden — z. B. den Rechner VSS 2011/308 für Fussgänger.
+Die SN 640 022 berechnet ausschliesslich die Leistungsfähigkeit für **motorisierten Individualverkehr (MIV)**. Velofahrende und Fussgänger*innen kommen im Berechnungsverfahren nicht vor. Wer die Qualität eines Knotens für den Fuss- und Veloverkehr beurteilen will, braucht andere Methoden — z. B. den Rechner VSS 2011/308 für Fussgänger*innen.
 
 ---
 
@@ -199,7 +199,7 @@ Für jede Einfahrt i werden vier Grössen bestimmt:
 - **Q_K(i)** — Verkehrsstärke auf der Kreiselfahrbahn auf Höhe der Einfahrt i [PWE/h]
 - **Q_E(i)** — Einfahrtsvolumen [PWE/h]
 - **Q_A(i)** — Ausfahrtsvolumen [PWE/h]
-- **FG(i)** — Fussgänger am Fussgängerstreifen vor Einfahrt und Ausfahrt [FG/h]
+- **FG(i)** — Fussgänger*innen am Fussgängerstreifen vor Einfahrt und Ausfahrt [FG/h]
 
 Die Umrechnung von Fahrzeugen in PWE erfolgt mit den Faktoren aus Tabelle 2 (abhängig von Fahrzeugkategorie und Längsneigung der Einfahrt).
 
@@ -214,7 +214,7 @@ Die Grundleistungsfähigkeit L_E(i) hängt linear von der Kreiselfahrbahnbelastu
 2/1+:  L_E = 1455 − 0.537 · Q_K    (0 ≤ Q_K ≤ 2000 PWE/h)
 ```
 
-Sind querende Fussgänger vorhanden, wird L_E mit dem Korrekturfaktor f_F multipliziert (Abbildung 3 für 1/1, Abbildung 4 für 2/1+). f_F ist kleiner als 1 — querende Fussgänger reduzieren die Einfahrtsleistungsfähigkeit, der Effekt nimmt mit wachsendem Q_K ab.
+Sind querende Fussgänger*innen vorhanden, wird L_E mit dem Korrekturfaktor f_F multipliziert (Abbildung 3 für 1/1, Abbildung 4 für 2/1+). f_F ist kleiner als 1 — querende Fussgänger*innen reduzieren die Einfahrtsleistungsfähigkeit, der Effekt nimmt mit wachsendem Q_K ab.
 
 ---
 
@@ -270,7 +270,7 @@ mit T = 1.0 h (Betrachtungshorizont 1 Stunde), a = Q_E / L_E.
 
 #### Worum geht es?
 
-Der Forschungsbericht VSS 2011/308 ist eine empirisch validierte Vereinfachung und Erweiterung der Methodik aus VSS 2008/301. Im Unterschied zur SN 640 022 werden **Fussgänger** als Konfliktgrösse berücksichtigt. Alle Berechnungen erfolgen rein algebraisch — keine Diagramme zum Ablesen.
+Der Forschungsbericht VSS 2011/308 ist eine empirisch validierte Vereinfachung und Erweiterung der Methodik aus VSS 2008/301. Im Unterschied zur SN 640 022 werden **Fussgänger*innen** als Konfliktgrösse berücksichtigt. Alle Berechnungen erfolgen rein algebraisch — keine Diagramme zum Ablesen.
 
 Der Rechner deckt zweirangige und gleichrangige Knoten ab (kein Tram, kein Bus). Komplexe Knoten mit mehr als zwei Rängen oder Rückstauwirkung von Nachbarknoten sind nicht vollständig abgedeckt (Schritt 3, LSA-Korrektur, ist nicht implementiert — konservativ).
 

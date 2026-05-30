@@ -182,8 +182,8 @@ function ArmCard({ arm, index, nodeType, result, onChange }: {
         <NumInput value={arm.left} onChange={v => upd('left', v)} />
       </Row>
 
-      {/* Fussgänger */}
-      <SectionLabel title="Fussgänger" />
+      {/* Fussgänger*innen */}
+      <SectionLabel title="Fussgänger*innen" />
       <Row label="Fussgängerstreifen" sub="an dieser Einfahrt">
         <input type="checkbox" checked={arm.fg > 0}
           onChange={e => upd('fg', e.target.checked ? 100 : 0)}
@@ -321,12 +321,12 @@ function StreamsTable({ streams }: { streams: StreamResult[] }) {
 
 const LEGEND_ITEMS: { abbr: string; unit?: string; desc: string }[] = [
   { abbr: 'Fz/h',   desc: 'Fahrzeuge pro Stunde — Roheingabe Abbiegeströme' },
-  { abbr: 'Fg/h',   desc: 'Fussgänger pro Stunde am Fussgängerstreifen dieser Einfahrt' },
+  { abbr: 'Fg/h',   desc: 'Fussgänger*innen pro Stunde am Fussgängerstreifen dieser Einfahrt' },
   { abbr: 'HS',     desc: 'Hauptstrasse — Rang 1, hat Vortritt gegenüber NS-Fahrzeugen' },
-  { abbr: 'NS',     desc: 'Nebenstrasse — Rang 2, muss Rang-1-Ströme und Fussgänger abwarten' },
+  { abbr: 'NS',     desc: 'Nebenstrasse — Rang 2, muss Rang-1-Ströme und Fussgänger*innen abwarten' },
   { abbr: 'Q',  unit: 'Fz/h', desc: 'Belastung eines Stroms — Summe aller Fahrzeuge in dieser Bewegungsrichtung pro Stunde' },
   { abbr: 'S',  unit: 'Fz/h', desc: 'Sättigungsfluss — theoretisches Maximum ohne Konflikte: 1750 Fz/h für HS (Rang 1), 1650 Fz/h für NS (Rang 2)' },
-  { abbr: 'β',      desc: 'Reduktionsfaktor — Produkt aller β_i = (1 − y_i)³ über senkrechte Rang-1-Ströme (HS-Fz und/oder Fussgänger); Kap. 5, Gl. 12 (VSS 2011/308)' },
+  { abbr: 'β',      desc: 'Reduktionsfaktor — Produkt aller β_i = (1 − y_i)³ über senkrechte Rang-1-Ströme (HS-Fz und/oder Fussgänger*innen); Kap. 5, Gl. 12 (VSS 2011/308)' },
   { abbr: 'L',  unit: 'Fz/h', desc: 'Kapazität des Stroms — L = S × β (Szenario I, Kap. 5)' },
   { abbr: 'x',      desc: 'Auslastungsgrad = Q / L; x ≥ 1 bedeutet Überlast' },
   { abbr: 'w',  unit: 's',    desc: 'Mittlere Wartezeit — nach Gl. 1 (VSS 2011/308, S. 62); C = 0.5 für Rang 1, C = 1.0 für Rang 2 und gleichen Rang' },
