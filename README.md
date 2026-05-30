@@ -337,8 +337,6 @@ k = w [s] × L / 3600
 
 | Ordner | Inhalt |
 |---|---|
-| `KnotenCheckEngine/` | Swift Package — Berechnungslogik SN 640 022 |
-| `KnotenCheck/` | iOS-App (SwiftUI) |
 | `KnotenCheckWeb/` | Web-Rechner (React, TypeScript, Vite) |
 
 ## Lokal starten
