@@ -268,6 +268,224 @@ function EntryCard({ e, arm, armNumber }: { e: EntryResult; arm: ArmInput; armNu
   )
 }
 
+// ── Bewertungsblatt (Druckansicht) ────────────────────────────────────────────
+
+const LOS_DESC: Record<LevelOfService, string> = {
+  A: 'Sehr gut — keine Wartezeiten',
+  B: 'Gut — kurze Wartezeiten',
+  C: 'Befriedigend',
+  D: 'Ausreichend — merkliche Wartezeiten',
+  E: 'Mangelhaft — lange Wartezeiten',
+  F: 'Überlastet — Stau',
+}
+
+function PrintSheet({ nodeName, type, armCount, arms, qkFzh, result }: {
+  nodeName: string
+  type: RoundaboutType
+  armCount: number
+  arms: ArmInput[]
+  qkFzh: number[]
+  result: NonNullable<ReturnType<typeof calculateRoundabout>>
+}) {
+  const date = new Date().toLocaleDateString('de-CH', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const overall = result.overallLevelOfService
+
+  const worstIdx = result.entries.reduce((wi, e, i) => {
+    const r = ['A','B','C','D','E','F']
+    return r.indexOf(e.levelOfService) > r.indexOf(result.entries[wi].levelOfService) ? i : wi
+  }, 0)
+
+  const th: React.CSSProperties = {
+    padding: '3px 6px', border: '1px solid #bbb', background: '#ececec',
+    fontSize: 9, fontWeight: 700, textAlign: 'right', whiteSpace: 'nowrap',
+  }
+  const thL: React.CSSProperties = { ...th, textAlign: 'left' }
+  const td: React.CSSProperties = {
+    padding: '3px 6px', border: '1px solid #ddd', fontSize: 10, textAlign: 'right',
+  }
+  const tdL: React.CSSProperties = { ...td, textAlign: 'left' }
+
+  return (
+    <div className="print-only" style={{ lineHeight: 1.4 }}>
+
+      {/* Kopfzeile */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
+                    borderBottom: '2.5px solid #1e3a5f', paddingBottom: 6, marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: 17, fontWeight: 800, color: '#1e3a5f', letterSpacing: '-0.3px' }}>
+            Bewertungsblatt Kreisverkehr
+          </div>
+          <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>
+            SN 640 024a — Leistungsfähigkeit von Kreisverkehren (VSS)
+          </div>
+        </div>
+        <div style={{ textAlign: 'right', fontSize: 9, color: '#777' }}>
+          <div style={{ fontWeight: 700 }}>KnotenCheck</div>
+          <div>{date}</div>
+        </div>
+      </div>
+
+      {/* Objekt */}
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12 }}>
+        <tbody>
+          <tr>
+            <td style={{ ...thL, width: '18%' }}>Bezeichnung</td>
+            <td style={{ ...tdL, width: '32%' }}>{nodeName || '—'}</td>
+            <td style={{ ...thL, width: '16%' }}>Typ</td>
+            <td style={{ ...tdL, width: '22%' }}>
+              {type === '1/1' ? '1/1 — einstreifig' : '2/1+ — zweistreifige Einfahrt'}
+            </td>
+            <td style={{ ...thL, width: '6%' }}>Arme</td>
+            <td style={{ ...tdL }}>{armCount}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* Eingaben */}
+      <div style={{ fontWeight: 700, fontSize: 10, color: '#1e3a5f', textTransform: 'uppercase',
+                    letterSpacing: '0.06em', marginBottom: 3 }}>Eingaben</div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12 }}>
+        <thead>
+          <tr>
+            <th style={thL}>Arm</th>
+            <th style={thL}>Bezeichnung</th>
+            <th style={th}>Neigung</th>
+            <th style={th}>f</th>
+            <th style={th}>Rechts<br/>[Fz/h]</th>
+            {armCount === 4 && <th style={th}>Gerade<br/>[Fz/h]</th>}
+            <th style={th}>Links<br/>[Fz/h]</th>
+            <th style={th}>Q_E<br/>[Fz/h]</th>
+            <th style={th}>Q_E<br/>[PWE/h]</th>
+            <th style={th}>FG<br/>[FG/h]</th>
+          </tr>
+        </thead>
+        <tbody>
+          {arms.map((arm, i) => {
+            const pce   = PCE_ENTRY[arm.gradient]
+            const qeFzh = arm.right + arm.straight + arm.left
+            return (
+              <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f7f7f7' }}>
+                <td style={tdL}><strong>Arm {i + 1}</strong></td>
+                <td style={tdL}>{arm.name || '—'}</td>
+                <td style={td}>{arm.gradient}</td>
+                <td style={td}>{pce.toFixed(1)}</td>
+                <td style={td}>{arm.right}</td>
+                {armCount === 4 && <td style={td}>{arm.straight}</td>}
+                <td style={td}>{arm.left}</td>
+                <td style={td}>{qeFzh}</td>
+                <td style={td}>{Math.round(qeFzh * pce)}</td>
+                <td style={td}>{arm.fg}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+
+      {/* Ergebnisse */}
+      <div style={{ fontWeight: 700, fontSize: 10, color: '#1e3a5f', textTransform: 'uppercase',
+                    letterSpacing: '0.06em', marginBottom: 3 }}>Ergebnisse</div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 14 }}>
+        <thead>
+          <tr>
+            <th style={thL}>Arm</th>
+            <th style={th}>Q_E<br/>[PWE/h]</th>
+            <th style={th}>Q_K<br/>[PWE/h]</th>
+            <th style={th}>L_E −FG<br/>[PWE/h]</th>
+            <th style={th}>f_F</th>
+            <th style={th}>L_E +FG<br/>[PWE/h]</th>
+            <th style={th}>R<br/>[PWE/h]</th>
+            <th style={th}>x<br/>[%]</th>
+            <th style={th}>w<br/>[s]</th>
+            <th style={{ ...th, textAlign: 'center' }}>VQS</th>
+          </tr>
+        </thead>
+        <tbody>
+          {result.entries.map((e, i) => {
+            const overflow = !isFinite(e.delay)
+            return (
+              <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f7f7f7' }}>
+                <td style={tdL}>
+                  <strong>Arm {i + 1}</strong>
+                  {arms[i].name ? ` — ${arms[i].name}` : ''}
+                </td>
+                <td style={td}>{e.qe}</td>
+                <td style={td}>{e.qk}</td>
+                <td style={td}>{Math.round(e.leBase)}</td>
+                <td style={td}>{e.fF.toFixed(3)}</td>
+                <td style={td}>{Math.round(e.capacity)}</td>
+                <td style={{ ...td, color: e.reserve < 0 ? '#b91c1c' : '#15803d', fontWeight: 600 }}>
+                  {overflow ? '—' : Math.round(e.reserve)}
+                </td>
+                <td style={{ ...td, fontWeight: 600,
+                             color: e.utilizationDegree >= 1 ? '#b91c1c'
+                               : e.utilizationDegree >= 0.9 ? '#c2410c' : '#374151' }}>
+                  {isFinite(e.utilizationDegree) ? `${Math.round(e.utilizationDegree * 100)} %` : '> 100 %'}
+                </td>
+                <td style={td}>
+                  {overflow ? '> 999 s' : e.delay < 1 ? '< 1 s' : `ca. ${Math.round(e.delay)} s`}
+                </td>
+                <td style={{ ...td, textAlign: 'center', fontWeight: 800,
+                             background: LOS_BG[e.levelOfService],
+                             color: LOS_COLOR[e.levelOfService] }}>
+                  {e.levelOfService}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+
+      {/* Gesamtbeurteilung */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14,
+                    border: `2px solid ${LOS_COLOR[overall]}`, borderRadius: 5,
+                    padding: '8px 14px', marginBottom: 12,
+                    background: LOS_BG[overall] }}>
+        <div style={{ fontSize: 36, fontWeight: 800, color: LOS_COLOR[overall], lineHeight: 1,
+                      minWidth: 32, textAlign: 'center' }}>
+          {overall}
+        </div>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#111' }}>
+            Gesamtbeurteilung: Qualitätsstufe {overall}
+          </div>
+          <div style={{ fontSize: 10, color: '#444', marginTop: 1 }}>
+            {LOS_DESC[overall]}
+          </div>
+          <div style={{ fontSize: 9, color: '#666', marginTop: 2 }}>
+            Massgebende Einfahrt: Arm {worstIdx + 1}
+            {arms[worstIdx].name ? ` — ${arms[worstIdx].name}` : ''}
+            {' '}(VQS {result.entries[worstIdx].levelOfService},
+            {' '}ca. {Math.round(result.entries[worstIdx].delay)} s)
+          </div>
+        </div>
+      </div>
+
+      {/* Methodik */}
+      <div style={{ background: '#f5f5f5', border: '1px solid #ccc', borderRadius: 3,
+                    padding: '6px 10px', fontSize: 8.5, color: '#444', lineHeight: 1.6,
+                    marginBottom: 10 }}>
+        <strong style={{ color: '#222' }}>Methodik (SN 640 024a):</strong>
+        {' '}Q_E = Summe Abbiegeströme × f (Tab. 2, Längsneigung).
+        Q_K = Kreisfahrbahnquerschnitt aus Abbiegeströmen × 1,1 (Abb. 10).
+        L_E nach Abb. 6: 1141 − 0,578·Q_K (Typ 1/1) resp. 1455 − 0,537·Q_K (Typ 2/1+).
+        f_F nach Abb. 3/4 (bilinear interpoliert). Wartezeit w nach Kimber &amp; Hollis, T = 1,0 h.
+        VQS nach Tab. 3: A ≤10 s · B ≤20 s · C ≤30 s · D ≤45 s · E &gt;45 s · F Überlast.
+      </div>
+
+      {/* Fusszeile */}
+      <div style={{ borderTop: '1px solid #bbb', paddingTop: 5,
+                    display: 'flex', justifyContent: 'space-between',
+                    fontSize: 8, color: '#888' }}>
+        <span>
+          Berechnung nach SN 640 024a (VSS). Die Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.
+        </span>
+        <span>KnotenCheck · pnfzygrzgf-svg.github.io/KnotenCheck</span>
+      </div>
+
+    </div>
+  )
+}
+
 // ── Legende ───────────────────────────────────────────────────────────────────
 
 const LEGEND_ITEMS: { abbr: string; unit?: string; desc: string }[] = [
@@ -320,6 +538,7 @@ export default function RoundaboutApp() {
   const overall = result?.overallLevelOfService
 
   return (
+    <>
     <main style={{ maxWidth: 1100, margin: '0 auto', padding: '20px 16px' }}>
 
       {/* Knoten-Konfiguration */}
@@ -432,6 +651,14 @@ export default function RoundaboutApp() {
                 <div><strong>Wartezeit</strong> nach Kimber &amp; Hollis (Ref. [10]), T = 1,0 h</div>
                 <div><strong>VQS</strong> nach Tab. 3: A ≤ 10 s · B ≤ 20 s · C ≤ 30 s · D ≤ 45 s · E &gt; 45 s · F = Überlast</div>
               </div>
+
+              {/* Drucken */}
+              <button onClick={() => window.print()}
+                style={{ marginTop: 12, width: '100%', padding: '8px 0', borderRadius: 6,
+                         border: '1px solid #1e3a5f', background: '#1e3a5f', color: '#fff',
+                         fontSize: 13, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.02em' }}>
+                Bewertungsblatt drucken / PDF
+              </button>
             </>
           )}
 
@@ -475,5 +702,17 @@ export default function RoundaboutApp() {
         Berechnung nach SN 640 024a (VSS). Die Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.
       </footer>
     </main>
+
+    {result && (
+      <PrintSheet
+        nodeName={nodeName}
+        type={type}
+        armCount={armCount}
+        arms={activeArms}
+        qkFzh={qkFzh}
+        result={result}
+      />
+    )}
+    </>
   )
 }

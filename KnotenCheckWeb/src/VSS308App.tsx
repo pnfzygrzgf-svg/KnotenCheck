@@ -317,6 +317,243 @@ function StreamsTable({ streams }: { streams: StreamResult[] }) {
   )
 }
 
+// ── Bewertungsblatt (Druckansicht) ────────────────────────────────────────────
+
+const NODE_TYPE_LABEL: Record<NodeType, string> = {
+  '3arm':  'Einmündung (T-Knoten, 3 Arme)',
+  '4arm':  'Kreuzung (4 Arme)',
+  'equal': 'Gleicher Rang — Rechtsvortritt (4 Arme)',
+}
+
+const LOS_DESC: Record<LevelOfService, string> = {
+  A: 'Sehr gut — keine Wartezeiten',
+  B: 'Gut — kurze Wartezeiten',
+  C: 'Befriedigend',
+  D: 'Ausreichend — merkliche Wartezeiten',
+  E: 'Mangelhaft — lange Wartezeiten',
+  F: 'Überlastet — Stau',
+}
+
+function VSS308PrintSheet({ nodeType, arms, result }: {
+  nodeType: NodeType
+  arms: ArmInput[]
+  result: ReturnType<typeof calculateVSS308>
+}) {
+  const date    = new Date().toLocaleDateString('de-CH', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const overall = result.overallLevelOfService
+  const losRank = ['A','B','C','D','E','F']
+
+  const worstArm = result.arms.reduce((w, r) =>
+    losRank.indexOf(r.levelOfService) > losRank.indexOf(w.levelOfService) ? r : w,
+    result.arms[0])
+
+  const visibleStreams = result.streams.filter(s => s.Q > 0 && s.toArmIndex >= 0)
+
+  const th: React.CSSProperties = {
+    padding: '3px 6px', border: '1px solid #bbb', background: '#ececec',
+    fontSize: 9, fontWeight: 700, textAlign: 'right', whiteSpace: 'nowrap',
+  }
+  const thL: React.CSSProperties = { ...th, textAlign: 'left' }
+  const td: React.CSSProperties  = { padding: '3px 6px', border: '1px solid #ddd', fontSize: 10, textAlign: 'right' }
+  const tdL: React.CSSProperties = { ...td, textAlign: 'left' }
+
+  const roadLabel = (rt: RoadType) =>
+    rt === 'HS' ? 'HS' : rt === 'NS' ? 'NS' : 'Gleich'
+
+  return (
+    <div className="print-only" style={{ lineHeight: 1.4 }}>
+
+      {/* Kopfzeile */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end',
+                    borderBottom: '2.5px solid #1e3a5f', paddingBottom: 6, marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: 17, fontWeight: 800, color: '#1e3a5f', letterSpacing: '-0.3px' }}>
+            Bewertungsblatt Ungesteuerter Knoten
+          </div>
+          <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>
+            VSS 2011/308 — Verkehrsablauf an ungesteuerten Knoten innerorts (Menendez/Guler/Puffe)
+          </div>
+        </div>
+        <div style={{ textAlign: 'right', fontSize: 9, color: '#777' }}>
+          <div style={{ fontWeight: 700 }}>KnotenCheck</div>
+          <div>{date}</div>
+        </div>
+      </div>
+
+      {/* Objekt */}
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12 }}>
+        <tbody>
+          <tr>
+            <td style={{ ...thL, width: '22%' }}>Knotentyp</td>
+            <td style={tdL}>{NODE_TYPE_LABEL[nodeType]}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* Eingaben */}
+      <div style={{ fontWeight: 700, fontSize: 10, color: '#1e3a5f', textTransform: 'uppercase',
+                    letterSpacing: '0.06em', marginBottom: 3 }}>Eingaben</div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12 }}>
+        <thead>
+          <tr>
+            <th style={thL}>Arm</th>
+            <th style={thL}>Bezeichnung</th>
+            <th style={th}>Typ</th>
+            <th style={th}>Rechts<br/>[Fz/h]</th>
+            {nodeType !== '3arm' && <th style={th}>Gerade<br/>[Fz/h]</th>}
+            <th style={th}>Links<br/>[Fz/h]</th>
+            <th style={th}>FG<br/>[Fg/h]</th>
+          </tr>
+        </thead>
+        <tbody>
+          {arms.map((arm, i) => (
+            <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f7f7f7' }}>
+              <td style={tdL}><strong>{armLabel(i)}</strong></td>
+              <td style={tdL}>{arm.name || '—'}</td>
+              <td style={{ ...td, textAlign: 'center', fontWeight: 600 }}>{roadLabel(arm.roadType)}</td>
+              <td style={td}>{arm.right}</td>
+              {nodeType !== '3arm' && <td style={td}>{arm.straight}</td>}
+              <td style={td}>{arm.left}</td>
+              <td style={td}>{arm.fg || '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Ergebnisse pro Arm */}
+      <div style={{ fontWeight: 700, fontSize: 10, color: '#1e3a5f', textTransform: 'uppercase',
+                    letterSpacing: '0.06em', marginBottom: 3 }}>Ergebnisse — Einfahrten (Mittelwert)</div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12 }}>
+        <thead>
+          <tr>
+            <th style={thL}>Arm</th>
+            <th style={th}>Q<br/>[Fz/h]</th>
+            <th style={th}>S<br/>[Fz/h]</th>
+            <th style={th}>β</th>
+            <th style={th}>L<br/>[Fz/h]</th>
+            <th style={th}>x</th>
+            <th style={th}>w<br/>[s]</th>
+            <th style={th}>k<br/>[Fz]</th>
+            <th style={{ ...th, textAlign: 'center' }}>LOS</th>
+          </tr>
+        </thead>
+        <tbody>
+          {result.arms.map((r, i) => (
+            <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f7f7f7' }}>
+              <td style={tdL}>
+                <strong>{armLabel(r.armIndex)}</strong>
+                {r.name ? ` — ${r.name}` : ''}
+              </td>
+              <td style={td}>{r.qFz}</td>
+              <td style={td}>{r.saturation}</td>
+              <td style={td}>{r.beta.toFixed(3)}</td>
+              <td style={td}>{Math.round(r.capacity)}</td>
+              <td style={{ ...td, fontWeight: 600,
+                           color: r.utilizationDegree >= 1 ? '#b91c1c'
+                             : r.utilizationDegree >= 0.9 ? '#c2410c' : '#374151' }}>
+                {isFinite(r.utilizationDegree) ? r.utilizationDegree.toFixed(2) : '> 1'}
+              </td>
+              <td style={td}>{isFinite(r.delay) ? `ca. ${Math.round(r.delay)} s` : '> 999 s'}</td>
+              <td style={td}>{isFinite(r.queue) ? r.queue.toFixed(1) : '—'}</td>
+              <td style={{ ...td, textAlign: 'center', fontWeight: 800,
+                           background: LOS_BG[r.levelOfService], color: LOS_COLOR[r.levelOfService] }}>
+                {r.levelOfService}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Ströme */}
+      {visibleStreams.length > 0 && (<>
+        <div style={{ fontWeight: 700, fontSize: 10, color: '#1e3a5f', textTransform: 'uppercase',
+                      letterSpacing: '0.06em', marginBottom: 3 }}>Ströme (Kap. 5)</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 14 }}>
+          <thead>
+            <tr>
+              <th style={thL}>Strom</th>
+              <th style={th}>Typ</th>
+              <th style={th}>Q<br/>[Fz/h]</th>
+              <th style={th}>β</th>
+              <th style={th}>L<br/>[Fz/h]</th>
+              <th style={th}>x</th>
+              <th style={th}>w<br/>[s]</th>
+              <th style={{ ...th, textAlign: 'center' }}>LOS</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleStreams.map((s, i) => (
+              <tr key={s.id} style={{ background: i % 2 === 0 ? '#fff' : '#f7f7f7' }}>
+                <td style={{ ...tdL, fontWeight: 700,
+                             color: s.roadType === 'HS' ? '#1d4ed8'
+                               : s.roadType === 'NS' ? '#c2410c' : '#4b5563' }}>
+                  {s.id}
+                </td>
+                <td style={{ ...td, textAlign: 'center' }}>{roadLabel(s.roadType)}</td>
+                <td style={td}>{s.Q}</td>
+                <td style={td}>{s.beta.toFixed(3)}</td>
+                <td style={td}>{Math.round(s.capacity)}</td>
+                <td style={{ ...td, fontWeight: 600,
+                             color: s.utilizationDegree >= 1 ? '#b91c1c'
+                               : s.utilizationDegree >= 0.9 ? '#c2410c' : '#374151' }}>
+                  {isFinite(s.utilizationDegree) ? s.utilizationDegree.toFixed(2) : '> 1'}
+                </td>
+                <td style={td}>{isFinite(s.delay) ? `ca. ${Math.round(s.delay)} s` : '> 999 s'}</td>
+                <td style={{ ...td, textAlign: 'center', fontWeight: 800,
+                             background: LOS_BG[s.levelOfService], color: LOS_COLOR[s.levelOfService] }}>
+                  {s.levelOfService}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </>)}
+
+      {/* Gesamtbeurteilung */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14,
+                    border: `2px solid ${LOS_COLOR[overall]}`, borderRadius: 5,
+                    padding: '8px 14px', marginBottom: 12,
+                    background: LOS_BG[overall] }}>
+        <div style={{ fontSize: 36, fontWeight: 800, color: LOS_COLOR[overall],
+                      lineHeight: 1, minWidth: 32, textAlign: 'center' }}>
+          {overall}
+        </div>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#111' }}>
+            Gesamtbeurteilung: Qualitätsstufe {overall}
+          </div>
+          <div style={{ fontSize: 10, color: '#444', marginTop: 1 }}>{LOS_DESC[overall]}</div>
+          <div style={{ fontSize: 9, color: '#666', marginTop: 2 }}>
+            Massgebender Arm: {armLabel(worstArm.armIndex)}
+            {worstArm.name ? ` — ${worstArm.name}` : ''}
+            {' '}(LOS {worstArm.levelOfService}
+            {isFinite(worstArm.delay) ? `, ca. ${Math.round(worstArm.delay)} s` : ', Überlast'})
+          </div>
+        </div>
+      </div>
+
+      {/* Methodik */}
+      <div style={{ background: '#f5f5f5', border: '1px solid #ccc', borderRadius: 3,
+                    padding: '6px 10px', fontSize: 8.5, color: '#444', lineHeight: 1.6,
+                    marginBottom: 10 }}>
+        <strong style={{ color: '#222' }}>Methodik (VSS 2011/308, Kap. 5):</strong>
+        {' '}Pro Strom: β = ∏(1 − y_i)³ über alle senkrechten Rang-1-Ströme (HS-Fz und/oder Fg, Ein- und Ausfahrt).
+        L = S × β (Szenario I). S = 1750 Fz/h (HS), 1650 Fz/h (NS).
+        Wartezeit nach Gl. 1 (S. 62): C = 0.5 (Rang 1), C = 1.0 (Rang 2 / gleicher Rang).
+        Einfahrten-Werte: Volumen-gewichtete Mittel. LOS: A ≤10 s · B ≤20 s · C ≤30 s · D ≤45 s · E &gt;45 s · F Überlast.
+      </div>
+
+      {/* Fusszeile */}
+      <div style={{ borderTop: '1px solid #bbb', paddingTop: 5,
+                    display: 'flex', justifyContent: 'space-between', fontSize: 8, color: '#888' }}>
+        <span>Berechnung nach VSS 2011/308. Die Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.</span>
+        <span>KnotenCheck · pnfzygrzgf-svg.github.io/KnotenCheck</span>
+      </div>
+
+    </div>
+  )
+}
+
 // ── Legende ───────────────────────────────────────────────────────────────────
 
 const LEGEND_ITEMS: { abbr: string; unit?: string; desc: string }[] = [
@@ -368,6 +605,7 @@ export default function VSS308App() {
   const activeArms = nodeType === '3arm' ? arms.slice(0, 3) : arms
 
   return (
+    <>
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '16px 16px 40px' }}>
 
       {/* Knotentyp-Auswahl */}
@@ -463,6 +701,16 @@ export default function VSS308App() {
               ⚠ Beta — Resultate mit Vorsicht verwenden.
             </div>
 
+            {/* Drucken */}
+            <div style={{ margin: '0 12px 8px' }}>
+              <button onClick={() => window.print()}
+                style={{ width: '100%', padding: '8px 0', borderRadius: 6,
+                         border: '1px solid #1e3a5f', background: '#1e3a5f', color: '#fff',
+                         fontSize: 13, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.02em' }}>
+                Bewertungsblatt drucken / PDF
+              </button>
+            </div>
+
             {/* Methodik-Hinweis */}
             <div style={{ margin: '0 12px 12px', padding: '10px 12px', borderRadius: 8,
                           background: '#f8fafc', border: '1px solid #e2e8f0',
@@ -505,5 +753,12 @@ export default function VSS308App() {
         </div>
       </div>
     </div>
+
+    <VSS308PrintSheet
+      nodeType={nodeType}
+      arms={activeArms}
+      result={result}
+    />
+    </>
   )
 }
