@@ -317,11 +317,29 @@ function StreamsTable({ streams }: { streams: StreamResult[] }) {
   )
 }
 
+// ── Legende ───────────────────────────────────────────────────────────────────
+
+const LEGEND_ITEMS: { abbr: string; unit?: string; desc: string }[] = [
+  { abbr: 'Fz/h',   desc: 'Fahrzeuge pro Stunde — Roheingabe Abbiegeströme' },
+  { abbr: 'Fg/h',   desc: 'Fussgänger pro Stunde am Fussgängerstreifen dieser Einfahrt' },
+  { abbr: 'HS',     desc: 'Hauptstrasse — Rang 1, hat Vortritt gegenüber NS-Fahrzeugen' },
+  { abbr: 'NS',     desc: 'Nebenstrasse — Rang 2, muss Rang-1-Ströme und Fussgänger abwarten' },
+  { abbr: 'Q',  unit: 'Fz/h', desc: 'Belastung eines Stroms — Summe aller Fahrzeuge in dieser Bewegungsrichtung pro Stunde' },
+  { abbr: 'S',  unit: 'Fz/h', desc: 'Sättigungsfluss — theoretisches Maximum ohne Konflikte: 1750 Fz/h für HS (Rang 1), 1650 Fz/h für NS (Rang 2)' },
+  { abbr: 'β',      desc: 'Reduktionsfaktor — Produkt aller β_i = (1 − y_i)³ über senkrechte Rang-1-Ströme (HS-Fz und/oder Fussgänger); Kap. 5, Gl. 12 (VSS 2011/308)' },
+  { abbr: 'L',  unit: 'Fz/h', desc: 'Kapazität des Stroms — L = S × β (Szenario I, Kap. 5)' },
+  { abbr: 'x',      desc: 'Auslastungsgrad = Q / L; x ≥ 1 bedeutet Überlast' },
+  { abbr: 'w',  unit: 's',    desc: 'Mittlere Wartezeit — nach Gl. 1 (VSS 2011/308, S. 62); C = 0.5 für Rang 1, C = 1.0 für Rang 2 und gleichen Rang' },
+  { abbr: 'k',  unit: 'Fz',   desc: 'Staulänge = w × L / 3600 — mittlere Anzahl wartender Fahrzeuge' },
+  { abbr: 'LOS',    desc: 'Qualitätsstufe A–F nach VSS 2011/308: A ≤10s · B ≤20s · C ≤30s · D ≤45s · E >45s · F Überlast' },
+]
+
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 
 export default function VSS308App() {
-  const [nodeType, setNodeType] = useState<NodeType>('4arm')
-  const [arms, setArms]         = useState<ArmInput[]>(defaultArms('4arm'))
+  const [nodeType, setNodeType]   = useState<NodeType>('4arm')
+  const [arms, setArms]           = useState<ArmInput[]>(defaultArms('4arm'))
+  const [showLegend, setShowLegend] = useState(false)
 
   function handleNodeTypeChange(t: NodeType) {
     setNodeType(t)
@@ -454,6 +472,34 @@ export default function VSS308App() {
               für alle senkrechten Fg-Ströme (Ein- und Ausfahrt).
               L = S·β (Szenario I). Einfahrten-Werte sind Volumen-gewichtete Mittel.
               C = 0.5 für Rang 1, C = 1.0 für Rang 2.
+            </div>
+
+            {/* Legende */}
+            <div style={{ margin: '0 12px 12px' }}>
+              <button onClick={() => setShowLegend(v => !v)}
+                style={{ width: '100%', textAlign: 'left', padding: '7px 12px',
+                         borderRadius: 6, border: '1px solid #e2e8f0', background: '#f8fafc',
+                         fontSize: 11, fontWeight: 600, color: '#475569', cursor: 'pointer',
+                         display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Legende — Abkürzungen</span>
+                <span style={{ fontSize: 10, color: '#94a3b8' }}>{showLegend ? '▲' : '▼'}</span>
+              </button>
+              {showLegend && (
+                <div style={{ border: '1px solid #e2e8f0', borderTop: 'none',
+                              borderRadius: '0 0 6px 6px', background: '#fff', overflow: 'hidden' }}>
+                  {LEGEND_ITEMS.map(item => (
+                    <div key={item.abbr}
+                      style={{ display: 'flex', gap: 8, padding: '6px 12px',
+                               borderBottom: '1px solid #f1f5f9', alignItems: 'baseline' }}>
+                      <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 12,
+                                     color: '#1e40af', whiteSpace: 'nowrap', minWidth: 60 }}>
+                        {item.abbr}{item.unit && <span style={{ fontWeight: 400, color: '#94a3b8' }}> [{item.unit}]</span>}
+                      </span>
+                      <span style={{ fontSize: 11, color: '#475569', lineHeight: 1.5 }}>{item.desc}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

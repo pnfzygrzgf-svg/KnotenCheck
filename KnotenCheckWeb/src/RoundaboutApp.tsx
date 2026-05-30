@@ -268,12 +268,28 @@ function EntryCard({ e, arm, armNumber }: { e: EntryResult; arm: ArmInput; armNu
   )
 }
 
+// ── Legende ───────────────────────────────────────────────────────────────────
+
+const LEGEND_ITEMS: { abbr: string; unit?: string; desc: string }[] = [
+  { abbr: 'Fz/h',    desc: 'Fahrzeuge pro Stunde — Roheingabe Abbiegeströme' },
+  { abbr: 'FG/h',    desc: 'Fussgänger pro Stunde am Fussgängerstreifen der Einfahrt' },
+  { abbr: 'PWE/h',   desc: 'Personenwageneinheiten pro Stunde — umgerechnet mit dem PW-Äquivalentfaktor f (Tab. 2)' },
+  { abbr: 'f',       desc: 'PW-Äquivalentfaktor für die Einfahrt — abhängig von der Längsneigung (Tab. 2); Kreiselfahrbahn Q_K verwendet immer f = 1,1' },
+  { abbr: 'Q_E', unit: 'PWE/h', desc: 'Einfahrtsvolumen — Summe aller Abbiegeströme des Arms, umgerechnet mit f (Tab. 2)' },
+  { abbr: 'Q_K', unit: 'PWE/h', desc: 'Kreisfahrbahnbelastung — Querschnittsbelastung unmittelbar vor der Einfahrt, berechnet aus den Abbiegeströmen aller Arme (Abb. 10)' },
+  { abbr: 'L_E', unit: 'PWE/h', desc: 'Leistungsfähigkeit der Einfahrt — aus Abb. 6: 1141 − 0,578·Q_K (Typ 1/1) resp. 1455 − 0,537·Q_K (Typ 2/1+); mit Fussgänger: L_E × f_F' },
+  { abbr: 'f_F',     desc: 'Fussgängerkorrekturfaktor — Reduktion der Einfahrtskapazität durch querenden Fussgängerverkehr; bilinear interpoliert aus Abb. 3 (Typ 1/1) resp. Abb. 4 (Typ 2/1+)' },
+  { abbr: 'R',  unit: 'PWE/h', desc: 'Reserve = L_E − Q_E; negativ bedeutet Überlast' },
+  { abbr: 'VQS',     desc: 'Verkehrsqualitätsstufe A–F nach Tab. 3 (SN 640 024a): A ≤10s · B ≤20s · C ≤30s · D ≤45s · E >45s · F Überlast' },
+]
+
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 
 export default function RoundaboutApp() {
   const [type, setType]         = useState<RoundaboutType>('1/1')
   const [armCount, setArmCount] = useState<3 | 4>(4)
   const [nodeName, setNodeName] = useState('')
+  const [showLegend, setShowLegend] = useState(false)
   const [arms, setArms]         = useState<ArmInput[]>([
     defaultArm(), defaultArm(), defaultArm(), defaultArm(),
   ])
@@ -372,7 +388,7 @@ export default function RoundaboutApp() {
             ⚠ Beta — Resultate mit Vorsicht verwenden.
           </div>
 
-          {overall ? (
+          {overall && (
             <>
               {/* Gesamtbeurteilung */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -417,7 +433,37 @@ export default function RoundaboutApp() {
                 <div><strong>VQS</strong> nach Tab. 3: A ≤ 10 s · B ≤ 20 s · C ≤ 30 s · D ≤ 45 s · E &gt; 45 s · F = Überlast</div>
               </div>
             </>
-          ) : (
+          )}
+
+          {/* Legende */}
+          <div style={{ marginTop: 12 }}>
+            <button onClick={() => setShowLegend(v => !v)}
+              style={{ width: '100%', textAlign: 'left', padding: '7px 12px',
+                       borderRadius: 6, border: '1px solid #e2e8f0', background: '#f8fafc',
+                       fontSize: 11, fontWeight: 600, color: '#475569', cursor: 'pointer',
+                       display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>Legende — Abkürzungen</span>
+              <span style={{ fontSize: 10, color: '#94a3b8' }}>{showLegend ? '▲' : '▼'}</span>
+            </button>
+            {showLegend && (
+              <div style={{ border: '1px solid #e2e8f0', borderTop: 'none', borderRadius: '0 0 6px 6px',
+                            background: '#fff', overflow: 'hidden' }}>
+                {LEGEND_ITEMS.map(item => (
+                  <div key={item.abbr}
+                    style={{ display: 'flex', gap: 8, padding: '6px 12px',
+                             borderBottom: '1px solid #f1f5f9', alignItems: 'baseline' }}>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 12,
+                                   color: '#1e40af', whiteSpace: 'nowrap', minWidth: 60 }}>
+                      {item.abbr}{item.unit && <span style={{ fontWeight: 400, color: '#94a3b8' }}> [{item.unit}]</span>}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#475569', lineHeight: 1.5 }}>{item.desc}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {!overall && (
             <p style={{ color: '#9ca3af', textAlign: 'center', padding: 32 }}>
               Bitte Abbiegeströme eingeben.
             </p>
