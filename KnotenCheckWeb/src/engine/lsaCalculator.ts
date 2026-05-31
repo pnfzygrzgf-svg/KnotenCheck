@@ -31,14 +31,21 @@ function getTabEntry(row: Tab2Row, phaseCount: 2 | 3): Tab2Entry {
 //         q7=C→B, q8=C→A, q9=C→D, q10=D→C, q11=D→B, q12=D→A
 const PHASE_PLANS: Record<string, ReadonlyArray<ReadonlyArray<string>>> = {
   '3-2': [['q2','q3','q7','q8'], ['q4','q6']],
-  '3-3': [['q2','q3','q8'], ['q7'], ['q4','q6']],
+  // 3-Arm 3-Phasen: Überlappungsplan — q3 in Phase 1+2, q6 in Phase 2+3, q8 in Phase 1+3
+  '3-3': [['q2','q3','q8'], ['q3','q4','q6'], ['q6','q7','q8']],
   '4-2': [['q1','q2','q3','q7','q8','q9'], ['q4','q5','q6','q10','q11','q12']],
   '4-3': [['q2','q3','q8','q9'], ['q5','q6','q11','q12'], ['q1','q4','q7','q10']],
 }
 
+// Für Pläne mit Überlappungsphasen: nur diese Ströme bestimmen Q_krit je Phase.
+// Überlappende Ströme erhalten λ_effektiv = Σ(λ aller Phasen, in denen sie grün sind).
+const CRITICAL_STREAM_IDS: Partial<Record<string, ReadonlyArray<ReadonlyArray<string>>>> = {
+  '3-3': [['q2'], ['q4'], ['q7']],
+}
+
 export const PHASE_PLAN_LABELS: Record<string, string[]> = {
   '3-2': ['Phase 1 — Hauptstrasse (A↔C)', 'Phase 2 — Nebenstrasse (B)'],
-  '3-3': ['Phase 1 — Hauptstrasse (A→C, C→A)', 'Phase 2 — C→B (geschützt)', 'Phase 3 — Nebenstrasse (B)'],
+  '3-3': ['Phase 1 — A→C, A→B, C→A', 'Phase 2 — A→B, B→A, B→C', 'Phase 3 — B→C, C→B, C→A'],
   '4-2': ['Phase 1 — Hauptstrasse (A↔C)', 'Phase 2 — Nebenstrasse (B↔D)'],
   '4-3': ['Phase 1 — A↔C (gerade + rechts)', 'Phase 2 — B↔D (gerade + rechts)', 'Phase 3 — Linksabbieger (alle)'],
 }
@@ -169,9 +176,13 @@ export function calculateLSA(input: LSAInput): LSAResult {
   const planKey  = `${input.armCount}-${input.phaseCount}`
   const plan     = PHASE_PLANS[planKey] ?? PHASE_PLANS['4-3']
   const planLbls = PHASE_PLAN_LABELS[planKey] ?? []
+  const critPlan = CRITICAL_STREAM_IDS[planKey]
 
-  // Q_krit per phase = max stream volume in that phase
-  const qKritPP = plan.map(ids => Math.max(0, ...ids.map(id => sv[id] ?? 0)))
+  // Q_krit per phase: bei Überlappungsplänen nur kritische Ströme, sonst alle
+  const qKritPP = plan.map((ids, i) => {
+    const critIds = critPlan ? critPlan[i] : ids
+    return Math.max(0, ...critIds.map(id => sv[id] ?? 0))
+  })
   const sumQKrit = qKritPP.reduce((a, b) => a + b, 0)
 
   // Z-Auswahl (Tab. 2): kleinste Z mit qKritMax > ΣQ_krit (Ziffer 11.2)
@@ -200,21 +211,35 @@ export function calculateLSA(input: LSAInput): LSAResult {
     }
   })
 
-  // Wartezeit und LOS je Knotenstrom
-  const streams: StreamResult[] = []
-  for (const ph of phases) {
-    for (const id of ph.streamIds) {
-      const Q = sv[id] ?? 0
-      const { w1, w0, wm, X } = streamDelay(Q, ph.lambda, Z)
-      streams.push({
-        id, label: STREAM_LABELS[id] ?? id,
-        phaseIndex: ph.phaseIndex,
-        Q, tGr: ph.tGr, lambda: ph.lambda, L: ph.L,
-        X, w1, w0, wm,
-        los: losFromDelay(wm),
-        isCritical: Q > 0 && ph.qKrit > 0 && Q >= ph.qKrit,
-      })
+  // Strom → Phasen-Zuordnung (für Überlappungen: ein Strom in mehreren Phasen)
+  const streamToPhases = new Map<string, number[]>()
+  plan.forEach((ids, i) => {
+    for (const id of ids) {
+      if (!streamToPhases.has(id)) streamToPhases.set(id, [])
+      streamToPhases.get(id)!.push(i)
     }
+  })
+
+  // Wartezeit und LOS je Knotenstrom (jeder Strom exakt einmal)
+  // Überlappende Ströme erhalten λ_effektiv = Σ(λ aller Phasen, in denen sie grün sind)
+  const streams: StreamResult[] = []
+  for (const [id, phaseIndices] of streamToPhases) {
+    const Q              = sv[id] ?? 0
+    const effectiveLambda = phaseIndices.reduce((sum, i) => sum + phases[i].lambda, 0)
+    const effectiveTGr    = Z * effectiveLambda
+    const { w1, w0, wm, X } = streamDelay(Q, effectiveLambda, Z)
+    const primaryIdx     = phaseIndices[0]
+    const critIds        = critPlan ? critPlan[primaryIdx] : plan[primaryIdx]
+    const isCritical     = Q > 0 && qKritPP[primaryIdx] > 0 &&
+                           critIds.includes(id) && Q >= qKritPP[primaryIdx]
+    streams.push({
+      id, label: STREAM_LABELS[id] ?? id,
+      phaseIndex: primaryIdx,
+      Q, tGr: effectiveTGr, lambda: effectiveLambda, L: effectiveLambda * S,
+      X, w1, w0, wm,
+      los: losFromDelay(wm),
+      isCritical,
+    })
   }
 
   const losRank: LevelOfService[] = ['A','B','C','D','E','F']

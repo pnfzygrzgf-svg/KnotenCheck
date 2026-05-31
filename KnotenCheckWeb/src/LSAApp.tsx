@@ -3,6 +3,11 @@ import { calculateLSA } from './engine/lsaCalculator'
 import type { ArmInput, LSAResult, LevelOfService, StreamResult } from './engine/lsaCalculator'
 import { IntersectionSchematic } from './IntersectionSchematic'
 import einmuendungSvg from './assets/einmuendung.svg'
+import phase3arm3p1 from './assets/3arm_3phasen_p1.svg'
+import phase3arm3p2 from './assets/3arm_3phasen_p2.svg'
+import phase3arm3p3 from './assets/3arm_3phasen_p3.svg'
+
+const PHASE_SVGS_3_3 = [phase3arm3p1, phase3arm3p2, phase3arm3p3]
 
 // ── Fahrzeugzusammensetzung (VSS 40 023a Ziff. 10.2) ─────────────────────────
 interface VehicleMix {
@@ -474,11 +479,11 @@ function ResultsPanel({ result }: { result: LSAResult }) {
         <StreamTable streams={streams} />
       </div>
 
-      {/* Beta-Hinweis */}
+      {/* Hinweis: unvollständig */}
       <div style={{ margin: '0 12px 8px', padding: '7px 12px', borderRadius: 6,
-                    background: '#fff7ed', border: '1px solid #fed7aa',
-                    fontSize: 11, color: '#92400e', fontWeight: 600 }}>
-        ⚠ Beta — Resultate mit Vorsicht verwenden.
+                    background: '#fef2f2', border: '1px solid #fca5a5',
+                    fontSize: 11, color: '#991b1b', fontWeight: 600 }}>
+        🚧 Unvollständig umgesetzt!
       </div>
 
       {/* Methodik-Hinweis */}
@@ -541,6 +546,15 @@ export default function LSAApp() {
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '16px 16px 40px' }}>
 
+      {/* Hinweis: unvollständige Umsetzung */}
+      <div style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 8,
+                    background: '#fef2f2', border: '1.5px solid #fca5a5',
+                    fontSize: 13, color: '#991b1b', fontWeight: 600,
+                    display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 16 }}>🚧</span>
+        Dieser Rechner ist noch nicht vollständig umgesetzt.
+      </div>
+
       {/* Knotentyp + Phasenplan */}
       <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb',
                     padding: '12px 16px', marginBottom: 16 }}>
@@ -586,10 +600,22 @@ export default function LSAApp() {
         {/* Phasenplan-Diagramme */}
         <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: 10,
                       display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          {result.phases.map(ph => (
-            <PhaseDiagramCard key={ph.phaseIndex}
-              streamIds={ph.streamIds} label={ph.label} armCount={armCount} />
-          ))}
+          {armCount === 3 && phaseCount === 3
+            ? result.phases.map((ph, i) => (
+                <div key={ph.phaseIndex} style={{ display: 'flex', flexDirection: 'column',
+                                                  alignItems: 'center', gap: 4,
+                                                  flex: 1, minWidth: 180 }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: '#374151',
+                                textAlign: 'center', lineHeight: 1.3 }}>{ph.label}</div>
+                  <img src={PHASE_SVGS_3_3[i]} alt={ph.label}
+                       style={{ width: '100%', maxWidth: 300, height: 'auto', display: 'block' }} />
+                </div>
+              ))
+            : result.phases.map(ph => (
+                <PhaseDiagramCard key={ph.phaseIndex}
+                  streamIds={ph.streamIds} label={ph.label} armCount={armCount} />
+              ))
+          }
         </div>
       </div>
 

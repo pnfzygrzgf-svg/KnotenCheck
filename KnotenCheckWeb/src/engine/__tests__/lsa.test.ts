@@ -81,20 +81,18 @@ describe('calculateLSA — Z-Auswahl nach Tab. 2', () => {
   })
 
   // ΣQ_krit=1200, 3-phasig → qKritMax(Z=45)=1200 nicht strikt grösser → Z=50
+  // Überlappungsplan '3-3': kritische Ströme sind q2, q4, q7
   test('ΣQ_krit=1200 3ph → Z=50', () => {
-    // q8=600, q7=275 (aber 3-ph Plan: q7 in Phase2 allein, q4/q6 in Phase3)
-    // Wähle q8=600, q7=400, q4=0, q6=200 → ΣQ_krit=600+400+200=1200
+    // q2=600, q4=400, q7=200 → ΣQ_krit=600+400+200=1200
     const r = calculateLSA({
       armCount: 3, phaseCount: 3,
       arms: [
         { name: '', left: 0, straight: 600, right: 0 },   // A: q2=600
-        { name: '', left: 400, straight: 0, right: 0 },   // C: q7=400
-        { name: '', left: 0, straight: 0, right: 200 },   // B: q6=200
+        { name: '', left: 200, straight: 0, right: 0 },   // C: q7=200
+        { name: '', left: 400, straight: 0, right: 0 },   // B: q4=400
       ],
     })
-    // Phase1: q2=600,q3=0,q8=0 → Q_krit=600
-    // Phase2: q7=400 → Q_krit=400
-    // Phase3: q4=0,q6=200 → Q_krit=200
+    // Phase1 krit: q2=600, Phase2 krit: q4=400, Phase3 krit: q7=200
     // ΣQ_krit=1200 → qKritMax(Z=45,3ph)=1200, nicht strikt > → Z=50
     expect(r.sumQKrit).toBe(1200)
     expect(r.Z).toBe(50)
@@ -105,9 +103,9 @@ describe('calculateLSA — Z-Auswahl nach Tab. 2', () => {
     const r = calculateLSA({
       armCount: 3, phaseCount: 3,
       arms: [
-        { name: '', left: 0, straight: 601, right: 0 },
-        { name: '', left: 400, straight: 0, right: 0 },
-        { name: '', left: 0, straight: 0, right: 200 },
+        { name: '', left: 0, straight: 601, right: 0 },   // A: q2=601
+        { name: '', left: 200, straight: 0, right: 0 },   // C: q7=200
+        { name: '', left: 400, straight: 0, right: 0 },   // B: q4=400
       ],
     })
     expect(r.sumQKrit).toBe(1201)
@@ -135,12 +133,12 @@ describe('calculateLSA — Z-Auswahl nach Tab. 2', () => {
     const r = calculateLSA({
       armCount: 3, phaseCount: 3,
       arms: [
-        { name: '', left: 0, straight: 1000, right: 0 },
-        { name: '', left: 500, straight: 0, right: 0 },
-        { name: '', left: 0, straight: 0, right: 200 },
+        { name: '', left: 0, straight: 1000, right: 0 },  // A: q2=1000
+        { name: '', left: 500, straight: 0, right: 0 },   // C: q7=500
+        { name: '', left: 400, straight: 0, right: 0 },   // B: q4=400
       ],
     })
-    // ΣQ_krit = 1000+500+200 = 1700 > 1575
+    // ΣQ_krit = q2+q4+q7 = 1000+400+500 = 1900 > 1575
     expect(r.overloaded).toBe(true)
     expect(r.Z).toBe(120)
   })
@@ -201,6 +199,68 @@ describe('calculateLSA — Integration 4-Arm 3-phasig symmetrisch', () => {
     const q3 = result.streams.find(s => s.id === 'q3')!  // Phase1 unkrit
     expect(q2.isCritical).toBe(true)
     expect(q3.isCritical).toBe(false)
+  })
+})
+
+// ── 3-Arm 3-Phasen Überlappungsplan ──────────────────────────────────────────
+// Plan: Phase1=[q2,q3,q8], Phase2=[q3,q4,q6], Phase3=[q6,q7,q8]
+// Kritisch: q2 (P1), q4 (P2), q7 (P3)
+// Überlappend: q3 (P1+P2), q6 (P2+P3), q8 (P1+P3)
+
+describe('calculateLSA — 3-Arm 3-phasig Überlappungsplan', () => {
+  const input: LSAInput = {
+    armCount: 3, phaseCount: 3,
+    arms: [
+      { name: 'A', left: 0, straight: 400, right: 150 },  // q2=400, q3=150
+      { name: 'C', left: 200, straight: 350, right: 0 },  // q7=200, q8=350
+      { name: 'B', left: 300, straight: 0,   right: 100 }, // q4=300, q6=100
+    ],
+  }
+  const result = calculateLSA(input)
+
+  test('sumQKrit = q2+q4+q7 = 900', () => expect(result.sumQKrit).toBe(900))
+  test('Z = 45', () => expect(result.Z).toBe(45))
+  test('3 Phasen', () => expect(result.phases.length).toBe(3))
+  test('Phase 0 qKrit = q2 = 400', () => expect(result.phases[0].qKrit).toBe(400))
+  test('Phase 1 qKrit = q4 = 300', () => expect(result.phases[1].qKrit).toBe(300))
+  test('Phase 2 qKrit = q7 = 200', () => expect(result.phases[2].qKrit).toBe(200))
+
+  test('q3 λ = λ_Phase1 + λ_Phase2', () => {
+    const q3 = result.streams.find(s => s.id === 'q3')!
+    expect(q3.lambda).toBeCloseTo(result.phases[0].lambda + result.phases[1].lambda, 10)
+  })
+  test('q6 λ = λ_Phase2 + λ_Phase3', () => {
+    const q6 = result.streams.find(s => s.id === 'q6')!
+    expect(q6.lambda).toBeCloseTo(result.phases[1].lambda + result.phases[2].lambda, 10)
+  })
+  test('q8 λ = λ_Phase1 + λ_Phase3', () => {
+    const q8 = result.streams.find(s => s.id === 'q8')!
+    expect(q8.lambda).toBeCloseTo(result.phases[0].lambda + result.phases[2].lambda, 10)
+  })
+
+  test('Überlappungsströme q3, q6, q8 nicht kritisch', () => {
+    for (const id of ['q3', 'q6', 'q8']) {
+      expect(result.streams.find(s => s.id === id)!.isCritical).toBe(false)
+    }
+  })
+  test('Kritische Ströme q2, q4, q7 korrekt markiert', () => {
+    for (const id of ['q2', 'q4', 'q7']) {
+      expect(result.streams.find(s => s.id === id)!.isCritical).toBe(true)
+    }
+  })
+  test('Jeder Strom exakt einmal im Ergebnis', () => {
+    const ids = result.streams.map(s => s.id)
+    expect(ids.length).toBe(new Set(ids).size)
+  })
+  test('Alle 6 Ströme vorhanden', () => {
+    const ids = new Set(result.streams.map(s => s.id))
+    for (const id of ['q2','q3','q4','q6','q7','q8']) expect(ids.has(id)).toBe(true)
+  })
+  test('Überlappungsströme haben höhere Kapazität als nicht-überlappende', () => {
+    // q3 (2 Phasen) hat mehr Kapazität als q2 (1 Phase) bei gleichem Z
+    const q2 = result.streams.find(s => s.id === 'q2')!
+    const q3 = result.streams.find(s => s.id === 'q3')!
+    expect(q3.L).toBeGreaterThan(q2.L)
   })
 })
 

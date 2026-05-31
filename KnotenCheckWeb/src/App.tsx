@@ -668,7 +668,7 @@ export default function App() {
               { key: 'sn022',  label: 'SN 640 022',  sub: 'Einmündung, Kreuzung' },
               { key: 'sn024a', label: 'SN 640 024a', sub: 'Kreisverkehr' },
               { key: 'vss308', label: 'VSS 2011/308', sub: 'Ungesteuerter Knoten' },
-              { key: 'lsa',    label: 'SN 640 023a',  sub: 'LSA-Knoten' },
+              { key: 'lsa',    label: 'SN 640 023a',  sub: 'LSA-Knoten (unvollständig)' },
             ] as const).map(m => (
               <button key={m.key} onClick={() => setMode(m.key)}
                 className={`mode-btn ${mode === m.key ? 'active' : 'inactive'}`}>
