@@ -150,13 +150,16 @@ export function MixedLaneHint({ index, arm, opposingHSSeparateLane }: {
 
 // ── ArmCard ────────────────────────────────────────────────────────────────────
 
-export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, onChange, footer, geometryLocked }: {
+export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, onChange, footer, geometryLocked, hideMixedLane }: {
   arm: ArmConfiguration; index: number; isHS: boolean; armCount: number
   opposingHSSeparateLane: boolean
   onChange: (a: ArmConfiguration) => void
   footer?: React.ReactNode
   // Nur Verkehrsmengen editierbar; Neigung & Geometrie stammen aus der Basis-Konfiguration
   geometryLocked?: boolean
+  // Mischstreifen-Kombination (F21) ausblenden — z. B. im Simulations-Rechner,
+  // der die NS-Ströme ohnehin immer an einer gemeinsamen Haltlinie simuliert.
+  hideMixedLane?: boolean
 }) {
   const lbl  = armLabel(index)
   const col  = isHS ? '#1d4ed8' : '#c2410c'
@@ -289,7 +292,7 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
                sub="q6 / q12 entfällt aus Linkseinbieger-Konfliktformel F7/F8">
             <Ckbx checked={arm.hasRightTurnTriangleIsland} onChange={v => upd('hasRightTurnTriangleIsland', v)} />
           </Row>
-          {isNS4arm && (
+          {isNS4arm && !hideMixedLane && (
             <>
               <div style={{ padding: '7px 14px 4px', borderBottom: '1px solid #f3f4f6' }}>
                 <div style={{ fontSize: 13, color: '#374151' }}>Mischstreifen-Kombination</div>

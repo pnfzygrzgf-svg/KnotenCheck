@@ -43,7 +43,7 @@ export interface StochasticConfig {
   T?:           number   // Simulationsdauer [s], default 3600
   erlangK?:     number   // Erlang-Ordnung für t_c (1 = deterministisch), default 2
   useCowan?:    boolean  // Cowan-M3-Zeitlücken (Kolonnen) statt Exponential, default true
-  cowanA?:      number   // Platoon-Faktor A (Troutbeck & Brilon, FHWA 1997, Kap. 8, Tab. 8.1), default 7.0
+  cowanA?:      number   // Platoon-Faktor A (Troutbeck & Brilon, FHWA 1997, Kap. 8, Gl. 8.23; A = 6–9), default 7.0
   cowanTm?:     number   // Physikalischer Mindestabstand t_m [s], default 1.8
   storageB?:    number   // Arm-B-Stauraum [Fz], default Infinity
   storageD?:    number   // Arm-D-Stauraum [Fz], default Infinity

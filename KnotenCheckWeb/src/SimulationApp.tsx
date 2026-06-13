@@ -281,7 +281,7 @@ function IntervalCard({ iv, baseArms, armCount, index, onUpdate, onRemove }: {
         <div style={{ padding: '8px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
           {arms.map((arm, i) => (
             <ArmCard key={arm.id} arm={arm} index={i} isHS={i < 2}
-              armCount={armCount} geometryLocked
+              armCount={armCount} geometryLocked hideMixedLane
               opposingHSSeparateLane={i >= 2 ? (baseArms[i === 2 ? 0 : 1]?.hasSeparateTurnLane ?? false) : false}
               onChange={a => setArm(i, a)} />
           ))}
@@ -551,7 +551,7 @@ export default function SimulationApp() {
             const leg = pedestrians[pedKey] ?? defaultLeg()
             return (
               <ArmCard key={arm.id} arm={arm} index={i} isHS={i < 2}
-                armCount={armCount}
+                armCount={armCount} hideMixedLane
                 opposingHSSeparateLane={i >= 2 ? (baseArms[i === 2 ? 0 : 1]?.hasSeparateTurnLane ?? false) : false}
                 onChange={a => setArm(i, a)}
                 footer={

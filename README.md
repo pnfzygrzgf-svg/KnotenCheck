@@ -546,7 +546,6 @@ Die Simulation ergänzt den analytischen Rechner um vier Aspekte:
 - **Troutbeck & Brilon (FHWA 1997, Kap. 8)** liefert die Gap-Acceptance-Theorie: Erlang-Verteilung für Fahrerstreuung, Cowan-M3-Headwaymodell für Kolonnenbildung.
 - **VSS 2011/308** liefert die Gruppengrösse ρ. Die Halbierung der Sperrzeit bei Mittelinseln stützt sich auf Art. 47 Abs. 3 VRV (jede Streifenhälfte gilt als selbständiger Streifen).
 
-Nicht implementiert: VISSIM-Fahrzeugphysik, Koordination mit benachbarten LSA-Platoons.
 
 ### User-Eingaben und ihre Wirkung
 
@@ -565,9 +564,15 @@ Nicht implementiert: VISSIM-Fahrzeugphysik, Koordination mit benachbarten LSA-Pl
 
 ### Ablauf
 
+**Grundidee: Lückenakzeptanz.** Ein Fahrzeug, das von der Nebenstrasse einbiegen will, beobachtet den vortrittsberechtigten Hauptstrom und fährt erst los, wenn die Zeitlücke zwischen zwei Hauptstrom-Fahrzeugen gross genug ist. «Gross genug» heisst: mindestens so lang wie die **Grenzzeitlücke t_c**. Folgen mehrere wartende Fahrzeuge in derselben Lücke nach, brauchen sie untereinander die kürzere **Folgezeitlücke t_f**. Die ganze Simulation besteht im Kern darin, diesen Vorgang für jedes einzelne Fahrzeug nachzuspielen — die folgenden Schritte liefern jeweils einen Baustein dazu.
+
 **Schritt 1 — Strom-Topologie und qpi (aus SN 640 022)**
 
 Die Ränge und Konfliktvolumen qpi werden nach den SN-640-022-Formeln F1–F8 berechnet: welcher Strom muss welchem anderen Vortritt lassen, und wie gross ist das massgebende Hauptstromvolumen je Nebenstrom. qpi kodiert bereits alle Rangabhängigkeiten.
+
+*Verkehrlich:* qpi ist die Menge an Hauptstromverkehr, der ein bestimmter Nebenstrom Vortritt gewähren muss. Je grösser qpi, desto dichter der Hauptstrom — und desto seltener entsteht eine Lücke, die zum Einbiegen reicht. Ein separater Abbiegestreifen oder eine Dreiecksinsel nimmt einzelne Ströme aus diesem Konfliktvolumen heraus und erleichtert so das Einbiegen.
+
+*Zu den Einheiten — Fz/h vs. PWE/h:* PWE/h (Personenwagen-Einheiten) ist das *gewichtete* Verkehrsvolumen, bei dem schwere Fahrzeuge mehr zählen als ein Personenwagen (ein Lastwagen ≈ 1.5–2 PWE, weil er mehr Platz und Zeit braucht; Umrechnung mit den Faktoren aus Tab. 1/2 der SN 640 022, inkl. Längsneigung). Die Simulation nutzt bewusst beide Grössen: Das **Konfliktvolumen qpi rechnet in Fz/h** (echte Fahrzeuge), denn jedes reale Fahrzeug erzeugt genau eine Zeitlücke im Hauptstrom — und die Abb.-2-Kurven der Norm sind ebenfalls über Fz/h definiert. Die **eigene Belastung des Nebenstroms und die Kapazität rechnen in PWE/h** (gewichtet). Beide Werte werden vor der Simulation aus derselben Eingabe gebildet und je an der passenden Stelle verwendet.
 
 **Schritt 2 — Hauptstrom-Zeitlücken generieren (Cowan M3)**
 
@@ -581,6 +586,10 @@ Gebunden (1−alpha): h = tm = 1.8 s
 Frei     (alpha):   h = tm + Exp(lambda)
 ```
 
+(A = 7.0 ist der mittlere Wert der publizierten Spanne A = 6–9 aus Gl. 8.23.)
+
+*Verkehrlich:* Echter Verkehr kommt nicht gleichmässig getröpfelt, sondern in **Kolonnen** (Pulks) — etwa wenn eine vorgelagerte Ampel mehrere Fahrzeuge gleichzeitig losschickt. Innerhalb einer Kolonne fahren die Fahrzeuge dicht hintereinander (kein Abstand, der zum Einbiegen reicht); zwischen den Kolonnen entstehen dafür grosse Lücken. Das einfache Exponentialmodell tut so, als käme jedes Fahrzeug für sich zufällig an — es übersieht diese Lücken und unterschätzt bei viel Verkehr die Einbiegechancen. Cowan M3 bildet die Realität ab: **α** ist der Anteil «freier» Fahrzeuge (Kolonnenführer mit echtem Abstand); er sinkt mit steigendem Verkehr, weil sich dann mehr Fahrzeuge in Kolonnen einreihen. **t_m = 1.8 s** ist der Drängelabstand *innerhalb* einer Kolonne. **Exp(λ)** ist der zufällige Zusatzabstand *zwischen* den freien Fahrzeugen. Genau diese grossen Zwischen-Kolonnen-Lücken nutzt der wartende Nebenstrom.
+
 **Schritt 2b — Fussgänger*innen-Blocking-Events (optional)**
 
 Sind Fussgänger*innen an einem HS-Fussgängerstreifen konfiguriert, werden Sperrzeiten in den Konfliktstrom eingefügt. Fussgänger*innen-Gruppen kommen Poisson-verteilt mit Rate `fg/3600` [Gruppen/s]; jede Gruppe blockiert den HS für:
@@ -588,6 +597,8 @@ Sind Fussgänger*innen an einem HS-Fussgängerstreifen konfiguriert, werden Sper
 ```
 t_block = max(5 s, ρ × 1.5 s)        Mittelinsel: × 0.5 (Art. 47 Abs. 3 VRV)
 ```
+
+*Verkehrlich:* Quert eine Fussgängergruppe den Hauptstrassen-Streifen, muss der Hauptstrom anhalten. t_block ist die Dauer dieser Sperre — je grösser die Gruppe (ρ), desto länger. Für den wartenden Nebenstrom ist das ein **Geschenk**: Während der Hauptstrom steht, entsteht eine erzwungene Lücke, die zum Einbiegen genutzt werden kann (sofern t_block ≥ t_c). Eine Mittelinsel halbiert die Sperrzeit, weil die Fahrbahnhälften nacheinander statt gleichzeitig blockiert werden.
 
 Während t_block ist der HS gesperrt — eine erzwungene Lücke für wartende NS-Fahrzeuge. HS-Fahrzeuge, die in dieser Zeit ankämen, stauen sich danach als Cluster (Mindestabstand t_m). Der NS-Einbieger kann die Sperrzeit nutzen, wenn t_block ≥ t_c. Dieser **positive Kapazitätseffekt** tritt bei stark belasteten HS-Strassen auf und ist der Grund, weshalb Fussgängerstreifen auf der Hauptstrasse bei hohem HS-Volumen die Einbiege-Qualität verbessern können.
 
@@ -597,6 +608,8 @@ Zusätzlich wirkt jeder Fussgängerstreifen als **Direktsperre**: Jeder Fahrzeug
 
 Jeder Fahrer hat einen persönlichen t_c-Wert, gezogen aus einer Erlang-Verteilung um den Nominalwert (HBS 2015 S5, Tabelle S5-5). Das modelliert Fahrerstreuung: aggressive Fahrer akzeptieren kürzere Lücken, vorsichtige brauchen längere. Erlang-verteilte, fahrerkonsistente t_c-Werte folgen dem Ansatz von Brilon, Troutbeck & Koenig (1999); dort wird für t_c eine verschobene Erlang-Verteilung mit k=5 verwendet — der Default k=2 in KnotenCheck ist eine eigene Wahl mit grösserer Streuung. Gezogene Werte werden auf minimal 1.0 s begrenzt.
 
+*Verkehrlich:* Nicht jeder Fahrer braucht dieselbe Lücke — der forsche fädelt schon in eine knappe 4-Sekunden-Lücke ein, der vorsichtige wartet auf 8 Sekunden. Würde die Simulation für alle denselben festen t_c verwenden, wäre dieses reale Verhalten verfälscht. Stattdessen erhält jedes Fahrzeug einen eigenen, zufällig gezogenen t_c-Wert. Die **Erlang-Ordnung k** steuert dabei, wie stark die Fahrer sich unterscheiden: kleines k = breite Streuung (sehr unterschiedliche Fahrer), grosses k = alle ähnlich (bei k → ∞ wieder ein fester Wert). Jeder Fahrer behält seinen einmal gezogenen Wert bis zur Abfahrt — er ist in sich konsistent.
+
 **Schritt 4 — Lückensuche**
 
 ```
@@ -605,15 +618,21 @@ Lücke ≥ tc_i  → einfahren
 Wartezeit = Abfahrtszeit − Ankunftszeit
 ```
 
+*Verkehrlich:* Das ist die eigentliche Lückenakzeptanz-Entscheidung aus der Grundidee, jetzt pro Fahrzeug durchgespielt. Das Fahrzeug prüft die ankommenden Hauptstrom-Lücken der Reihe nach: zu kleine lässt es verstreichen, die erste ausreichend grosse nutzt es zum Einfahren. Die Wartezeit ist schlicht die Zeit zwischen Ankunft an der Haltlinie und Abfahrt.
+
 Die Folgezeitlücke t_f wird nur dann auf die Abfahrtszeit aufgeschlagen, wenn das Fahrzeug mindestens eine Lücke ablehnen musste (Einfädeln hinter einem Konfliktfahrzeug); ein frei einfahrendes Fahrzeug fährt ohne t_f-Aufschlag ab. Zwischen aufeinanderfolgenden Nebenstrom-Fahrzeugen, die dieselbe grosse Lücke nutzen, erzwingt die Simulation keinen t_f-Mindestabstand — Warteschlangen fliessen dadurch schneller ab, als es die Gap-Acceptance-Theorie vorsieht (Sättigungsabfluss 3600/t_f je Lücke). Das führt insbesondere bei hoher Auslastung zu tieferen Wartezeiten als nach Kimber & Hollis.
 
 **Schritt 5 — Gemeinsame Haltlinie (NS-Arme simultan)**
 
 Die NS-Ströme eines Arms (z. B. Arm B: Ströme 4, 5, 6) teilen eine gemeinsame Haltlinie und werden **simultan** simuliert: Ein kombinierter Poisson-Prozess erzeugt Fahrzeuge mit der Gesamtrate aller Ströme; jedes Fahrzeug wird proportional zu den Einzelvolumen einem Strom zugewiesen. Wenn Strom 4 (Linkseinbieger, hoher qpi) die Haltlinie blockiert, wartet auch der nachfolgende Strom-6-Rechtseinbieger — auch wenn dieser selbst eine freie Lücke hätte.
 
+*Verkehrlich:* An einer gemeinsamen Haltlinie steht nur ein Fahrzeug vorne — wer dahinter steht, kommt erst dran, wenn der Vordermann weg ist. Ein Linkseinbieger, der lange auf seine Lücke wartet, hält damit auch den Rechtseinbieger hinter sich auf, obwohl dieser längst hätte fahren können. In der Realität lösen getrennte Abbiegestreifen dieses Problem — **die Simulation modelliert jedoch immer eine einzige gemeinsame Haltlinie je Nebenstrassen-Arm**, unabhängig von der Spuraufteilung. Die Geometrie-Flags (separater Abbiegestreifen, Dreiecksinsel) wirken in der Simulation nur über das Konfliktvolumen qpi, nicht über die Haltlinien-Gruppierung. Wer getrennte Spuren abbilden will, beurteilt die betroffenen Ströme im analytischen SN-640-022-Rechner (Mischstreifen-Kombination).
+
 **Schritt 6 — Stauraum (optional)**
 
 Ist ein maximaler Stauraum gesetzt, werden Fahrzeuge bei vollem Aufstellbereich abgewiesen (modelliert kurze Aufstellflächen).
+
+*Verkehrlich:* Hat die Nebenstrasse nur eine kurze Aufstellfläche vor der Haltlinie (z. B. eine kurze Abbiegetasche), passen dort nur wenige Fahrzeuge hinein. Ist sie voll, kann kein weiteres nachrücken — es blockiert dann andernorts (z. B. die durchgehende Spur). Diese Option begrenzt die Warteschlange entsprechend.
 
 **Schritt 7 — Läufe wiederholen**
 
@@ -623,11 +642,14 @@ Die Schritte 2–6 werden für die konfigurierte Anzahl Läufe wiederholt (Stand
 
 Fahrzeuge, die am Intervallende noch warten, werden als Anfangsrückstau ins nächste Intervall übertragen. So wirkt sich eine überlastete Spitzenstunde auf die Folgestunde aus.
 
+*Verkehrlich:* Stau verschwindet nicht pünktlich mit dem Stundenende. Wer um 17:59 noch in der Schlange steht, steht um 18:00 immer noch da — und verlängert die Wartezeiten der Folgestunde. Eine Betrachtung von genau einer Stunde (wie die Analytik) übersieht das; mehrere aneinandergereihte Intervalle geben den Rückstau realistisch weiter.
+
 **Was die Simulation nicht macht:**
 - Keine t_c/t_f-Schätzung aus Felddaten — Werte (HBS 2015) sind vorgegeben, überschreibbar
 - Kein Fahrzeugfolgemodell — Fahrzeuge sind Punkte ohne Länge
 - Keine LSA-Koordination — benachbarte Ampeln erzeugen keine Platoons
 - G_i und L_i aus SN 640 022 werden nicht verwendet — nur qpi
+- Keine getrennte Haltlinie je Spur — alle NS-Ströme eines Arms teilen immer eine gemeinsame Haltlinie (die Mischstreifen-Kombination F21 wird in der Simulation nicht abgebildet und ist daher ausgeblendet)
 
 ### Mehrere Zeitintervalle und Carry-over
 
@@ -682,6 +704,8 @@ Bei mehreren Intervallen zeigt eine Ganglinie-Tabelle die Entwicklung über den 
 ### Streuung der Wartezeiten
 
 Auch wenn der analytische Mittelwert stimmt, streuen real beobachtete Wartezeiten stark: Brilon (2008, TRR 2071) zeigt per Simulation, dass die Standardabweichung der mittleren Wartezeit zwischen 15-Minuten-Intervallen typisch bei **σ ≈ 0.7 × Mittelwert** liegt — bei Auslastung x < 0.8 sogar darüber. Ein analytisch ermittelter Mittelwert von 20 s kann in der Praxis also ein 15-Minuten-Intervall mit 10 s und eines mit 30 s umfassen; empirische Validierung von Wartezeitformeln ist entsprechend schwierig. Die Simulation macht diese Streuung sichtbar (±σ, P50/P85/P95, Histogramm) — der analytische Rechner nicht.
+
+*Verkehrlich:* Die **Standardabweichung σ** ist ein Mass dafür, wie weit die einzelnen Wartezeiten um den Mittelwert schwanken. σ ≈ 0.7 × Mittelwert heisst: Die tatsächlichen Wartezeiten liegen typisch um rund 70 % des Mittelwerts darüber oder darunter — ein Mittelwert von 20 s ist also kein verlässlicher Einzelwert, sondern die Mitte einer breiten Spanne. Genau deshalb gibt die Simulation nicht nur eine Zahl aus, sondern die ganze Verteilung: Der **P85-Wert** (85 % der Fahrzeuge warten kürzer) ist für die Planung oft aussagekräftiger als der Mittelwert, weil er die ungünstigen Fälle einschliesst.
 
 ### Technische Umsetzung
 
