@@ -544,7 +544,8 @@ Die Simulation ergänzt den analytischen Rechner um vier Aspekte:
 - **SN 640 022** liefert: Ränge der Verkehrsströme, qpi-Konfliktstromberechnung (F1–F8), Fahrzeugkategorien (PCE). Die SN 640 022 definiert t_c und t_f nicht — sie arbeitet mit Kapazitätskurven (Abb. 2). Die SN 640 022 kennt keine Fussgänger*innen.
 - **HBS 2015, Kap. S5, Tabelle S5-5 (Zeichen 205 StVO)** liefert die Grenzzeitlücken t_c und Folgezeitlücken t_f je Manöver.
 - **Troutbeck & Brilon (FHWA 1997, Kap. 8)** liefert die Gap-Acceptance-Theorie: Erlang-Verteilung für Fahrerstreuung, Cowan-M3-Headwaymodell für Kolonnenbildung.
-- **VSS 2011/308** liefert die Gruppengrösse ρ. Die Halbierung der Sperrzeit bei Mittelinseln stützt sich auf Art. 47 Abs. 3 VRV (jede Streifenhälfte gilt als selbständiger Streifen).
+- **VSS 2011/308** liefert die Gruppengrösse ρ — sie steuert die *Häufigkeit* der Fussgänger-Sperrungen (eine Gruppe quert gemeinsam = ein Ereignis für ρ Personen), konsistent mit `S_Fg = 900·ρ` der Norm.
+- **VSS 40 240** liefert die Gehgeschwindigkeit v_FG = 0.80 m/s (konservativ für ältere Menschen und Menschen mit Behinderung); sie bestimmt die *Dauer* einer Sperrung aus der Fahrbahnbreite. Die Halbierung bei Mittelinseln stützt sich auf Art. 47 Abs. 3 VRV (jede Streifenhälfte gilt als selbständiger Streifen); der Mittelinsel-Schwellenwert ab 8.5 m auf VSS 40 241.
 
 
 ### User-Eingaben und ihre Wirkung
@@ -554,7 +555,7 @@ Die Simulation ergänzt den analytischen Rechner um vier Aspekte:
 | **Knotentyp** (3/4 Arme) | Bestimmt welche Ströme existieren und welche qpi-Formeln gelten |
 | **Volumen je Arm/Richtung** | Bestimmt qpi (Konfliktvolumen) und Ankunftsrate der NS-Fahrzeuge |
 | **Geometrie-Flags** | Modifizieren qpi (z. B. separater Abbiegestreifen reduziert wirksames Konfliktvolumen) |
-| **Fussgänger fg, ρ, Mittelinsel** | Je Arm konfigurierbar. HS-Streifen fügen Sperrzeiten in den Konfliktstrom ein → erzwungene Lücken für NS-Einbieger. Zusätzlich sperrt jeder Streifen die Ströme direkt, die ihn am Abfahrts- oder Ankunftsarm überfahren. Mittelinsel halbiert die Sperrzeit |
+| **Fussgänger fg, ρ, Fahrbahnbreite, Mittelinsel** | Je Arm konfigurierbar. HS-Streifen fügen Sperrzeiten in den Konfliktstrom ein → erzwungene Lücken für NS-Einbieger. Zusätzlich sperrt jeder Streifen die Ströme direkt, die ihn am Abfahrts- oder Ankunftsarm überfahren. **ρ** steuert die Häufigkeit (fg/ρ), **Fahrbahnbreite** (Standard 8 m) die Dauer (Breite/0.80 m/s), **Mittelinsel** halbiert die Dauer |
 | **Mehrere Zeitintervalle** | Fahrzeuge, die am Ende eines Intervalls noch warten, werden als Rückstau ins nächste übertragen |
 | **Anzahl Läufe** | Mehr Läufe = stabilere Statistik, längere Rechenzeit |
 | **Cowan M3 / Exponential** | Kolonnenbildung im HS ein-/ausschalten; Cowan ist bei qpi > 600 Fz/h deutlich realistischer |
@@ -592,13 +593,15 @@ Frei     (alpha):   h = tm + Exp(lambda)
 
 **Schritt 2b — Fussgänger*innen-Blocking-Events (optional)**
 
-Sind Fussgänger*innen an einem HS-Fussgängerstreifen konfiguriert, werden Sperrzeiten in den Konfliktstrom eingefügt. Fussgänger*innen-Gruppen kommen Poisson-verteilt mit Rate `fg/3600` [Gruppen/s]; jede Gruppe blockiert den HS für:
+Sind Fussgänger*innen an einem HS-Fussgängerstreifen konfiguriert, werden Sperrzeiten in den Konfliktstrom eingefügt. Fussgänger*innen-**Gruppen** kommen Poisson-verteilt; jede Gruppe blockiert den HS für die Querungsdauer:
 
 ```
-t_block = max(5 s, ρ × 1.5 s)        Mittelinsel: × 0.5 (Art. 47 Abs. 3 VRV)
+Häufigkeit:  λ = (fg / ρ) / 3600                              [Gruppen/s]
+Dauer:       t_block = Fahrbahnbreite / 0.80 m/s × (Mittelinsel ? 0.5 : 1)   [s]
+             Standard: 8 m → 10 s   (mit Mittelinsel 5 s)
 ```
 
-*Verkehrlich:* Quert eine Fussgängergruppe den Hauptstrassen-Streifen, muss der Hauptstrom anhalten. t_block ist die Dauer dieser Sperre — je grösser die Gruppe (ρ), desto länger. Für den wartenden Nebenstrom ist das ein **Geschenk**: Während der Hauptstrom steht, entsteht eine erzwungene Lücke, die zum Einbiegen genutzt werden kann (sofern t_block ≥ t_c). Eine Mittelinsel halbiert die Sperrzeit, weil die Fahrbahnhälften nacheinander statt gleichzeitig blockiert werden.
+*Verkehrlich:* Quert eine Fussgängergruppe den Hauptstrassen-Streifen, muss der Hauptstrom anhalten. Für den wartenden Nebenstrom ist das ein **Geschenk**: Während der Hauptstrom steht, entsteht eine erzwungene Lücke zum Einbiegen (sofern t_block ≥ t_c). Zwei Grössen bestimmen den Effekt getrennt: **Die Dauer** einer Sperre ist die Zeit, die Fussgänger*innen zum Queren brauchen — Fahrbahnbreite geteilt durch die Gehgeschwindigkeit 0.80 m/s (VSS 40 240, bewusst langsam für ältere Menschen und Menschen mit Behinderung). Die **Gruppengrösse ρ** verlängert die Sperre *nicht* (eine Gruppe quert gemeinsam), sondern macht Sperrungen *seltener*: Bei fg = 100 Fg/h und ρ = 1 gibt es 100 Sperrungen pro Stunde, bei ρ = 2 nur noch 50. Eine **Mittelinsel** halbiert die Sperrdauer, weil nur noch die halbe Fahrbahn am Stück gequert wird (Art. 47 Abs. 3 VRV). Standardmässig wird mit 8 m Fahrbahnbreite gerechnet (→ 10 s); alternativ lässt sich eine eigene Breite eingeben (ab 8.5 m weist die Norm VSS 40 241 eine Mittelinsel an).
 
 Während t_block ist der HS gesperrt — eine erzwungene Lücke für wartende NS-Fahrzeuge. HS-Fahrzeuge, die in dieser Zeit ankämen, stauen sich danach als Cluster (Mindestabstand t_m). Der NS-Einbieger kann die Sperrzeit nutzen, wenn t_block ≥ t_c. Dieser **positive Kapazitätseffekt** tritt bei stark belasteten HS-Strassen auf und ist der Grund, weshalb Fussgängerstreifen auf der Hauptstrasse bei hohem HS-Volumen die Einbiege-Qualität verbessern können.
 
@@ -726,7 +729,7 @@ Konfigurierbar per `StochasticConfig`:
 | `storageB` | ∞ | Arm-B-Stauraum [Fz] |
 | `storageD` | ∞ | Arm-D-Stauraum [Fz] |
 | `gapOverrides` | `{}` | t_c / t_f je Manövertyp überschreiben |
-| `pedestrians` | — | Fussgänger*innen-Blocking-Events (fg [Fg/h], ρ, Mittelinsel je Arm A/B/C/D) |
+| `pedestrians` | — | Fussgänger*innen-Blocking-Events je Arm A/B/C/D: fg [Fg/h], ρ (Häufigkeit fg/ρ), fahrbahnbreite [m] (Dauer Breite/0.80 m/s; default 8 m), mittelinsel (halbiert) |
 
 Multi-Intervall-API: `runStochasticSN640022Multi(intervals, flags, config)` — nimmt ein Array von `SimInterval`-Objekten (`label`, `volumes`, `T`) und gibt `StochasticMultiResult` zurück (pro Intervall: Ergebnis + Carry-over-Zähler).
 

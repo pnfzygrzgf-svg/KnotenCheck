@@ -3,6 +3,7 @@ import einmuendungSvg from './assets/einmuendung.svg'
 import kreuzungSvg    from './assets/kreuzung.svg'
 import {
   runStochasticSN640022, runStochasticSN640022Multi, GAP_PARAMS, GAP_PARAMS_SN640022,
+  pedBlockingTime, V_FG, DEFAULT_FAHRBAHNBREITE, MITTELINSEL_GRENZE_M,
 } from './engine/stochasticSN640022'
 import type {
   StochasticConfig, StochasticSN640022Result, StochasticMultiResult,
@@ -98,19 +99,24 @@ function PedFooter({ leg, isHS, onChange }: {
         </span>
         {!isHS && leg.enabled && (
           <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 'auto' }}>
-            nur Erfassung, kein Sim-Effekt
+            nur Direktsperre (kein Gap-Effekt)
           </span>
         )}
       </div>
 
       {/* Eingabefelder */}
-      {leg.enabled && (
+      {leg.enabled && (() => {
+        const breitMode = leg.fahrbahnbreite !== undefined
+        const breite    = leg.fahrbahnbreite ?? DEFAULT_FAHRBAHNBREITE
+        const tBlock    = pedBlockingTime(leg)
+        const freq      = leg.rho > 0 ? leg.fg / leg.rho : leg.fg   // Sperrungen/h
+        return (
         <>
           <Row label="Fussgänger*innen" sub="VSS 2011/308 · Fg/h am Fussgängerstreifen">
             <NumInput value={leg.fg} onChange={v => onChange({ ...leg, fg: v })} max={2000} />
             <span style={{ fontSize: 11, color: '#9ca3af', width: 30 }}>Fg/h</span>
           </Row>
-          <Row label="Gruppengrösse ρ" sub="mittlere Anzahl gleichzeitig querender Fg">
+          <Row label="Gruppengrösse ρ" sub="steuert die Häufigkeit der Sperrungen (fg/ρ), nicht die Dauer">
             <select value={leg.rho}
               onChange={e => onChange({ ...leg, rho: Number(e.target.value) })}
               style={{ fontSize: 13, padding: '3px 6px', borderRadius: 4,
@@ -122,20 +128,33 @@ function PedFooter({ leg, isHS, onChange }: {
               ))}
             </select>
           </Row>
-          <Row label="Mittelinsel" sub="Art. 47 Abs. 3 VRV — Streifen baulich geteilt">
-            <Ckbx checked={leg.mittelinsel} onChange={v => onChange({ ...leg, mittelinsel: v })} />
+          <Row label="Eigene Fahrbahnbreite" sub={`aus = Standard ${DEFAULT_FAHRBAHNBREITE} m; bestimmt die Sperrdauer`}>
+            <Ckbx checked={breitMode}
+              onChange={v => onChange({ ...leg, fahrbahnbreite: v ? DEFAULT_FAHRBAHNBREITE : undefined })} />
           </Row>
-          {isHS && (
-            <div style={{ padding: '4px 14px 8px', fontSize: 10, color: '#6b7280' }}>
-              Sperrzeit: max(5 s, ρ × 1.5 s){leg.mittelinsel ? ' × 0.5 (Mittelinsel)' : ''} ={' '}
-              <strong>
-                {(Math.max(5.0, leg.rho * 1.5) * (leg.mittelinsel ? 0.5 : 1.0)).toFixed(1)} s
-              </strong>
-              {' '}je Gruppe
+          {breitMode && (
+            <Row label="Fahrbahnbreite" sub={`Querung mit v_FG = ${V_FG.toFixed(2)} m/s (VSS 40 240)`}>
+              <NumInput value={breite} onChange={v => onChange({ ...leg, fahrbahnbreite: v })} max={30} />
+              <span style={{ fontSize: 11, color: '#9ca3af', width: 30 }}>m</span>
+            </Row>
+          )}
+          {breitMode && breite >= MITTELINSEL_GRENZE_M && (
+            <div style={{ margin: '0 14px 8px', padding: '6px 9px', borderRadius: 5,
+                          background: '#fef3c7', border: '1px solid #fde047',
+                          fontSize: 10, color: '#854d0e', lineHeight: 1.5 }}>
+              Ab {MITTELINSEL_GRENZE_M} m Fahrbahnbreite ist gemäss VSS 40 241 eine Mittelinsel erforderlich.
             </div>
           )}
+          <Row label="Mittelinsel" sub="Art. 47 Abs. 3 VRV — Streifen baulich geteilt → halbe Breite">
+            <Ckbx checked={leg.mittelinsel} onChange={v => onChange({ ...leg, mittelinsel: v })} />
+          </Row>
+          <div style={{ padding: '4px 14px 8px', fontSize: 10, color: '#6b7280' }}>
+            Sperrzeit: {breite} m / {V_FG.toFixed(2)} m/s{leg.mittelinsel ? ' × 0.5 (Mittelinsel)' : ''} ={' '}
+            <strong>{tBlock.toFixed(1)} s</strong> je Gruppe · ≈ <strong>{Math.round(freq)}</strong> Sperrungen/h
+          </div>
         </>
-      )}
+        )
+      })()}
     </div>
   )
 }

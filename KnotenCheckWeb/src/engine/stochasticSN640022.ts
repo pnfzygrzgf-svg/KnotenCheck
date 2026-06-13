@@ -27,8 +27,25 @@ export interface GapOverrides {
 export interface PedestrianLegConfig {
   enabled:     boolean  // Fussgängerstreifen am Arm vorhanden
   fg:          number   // Fussgänger*innen [Fg/h] am Fussgängerstreifen
-  rho:         number   // mittlere Gruppengrösse (1–5)
-  mittelinsel: boolean  // Art. 47 Abs. 3 VRV: Insel teilt Streifen → Blockierzeit halbiert
+  rho:         number   // mittlere Gruppengrösse (1–5) — steuert die Häufigkeit der
+                        // Sperrungen: λ = (fg/ρ)/3600 Gruppen/s (nicht die Dauer)
+  mittelinsel: boolean  // Art. 47 Abs. 3 VRV: Insel teilt Streifen → Sperrzeit halbiert
+  fahrbahnbreite?: number  // [m] zu querende Fahrbahnbreite; undefined → Standard 8 m
+}
+
+// Gehgeschwindigkeit für die Sperrzeit (VSS 40 240, konservativ: ältere Menschen /
+// Menschen mit Behinderung). Bewusst tiefer als die 1.2 m/s der LSA-Räumzeit (VSS 40 837).
+export const V_FG = 0.80                  // m/s
+export const DEFAULT_FAHRBAHNBREITE = 8   // m — Standardfall (Option 1)
+export const MITTELINSEL_GRENZE_M = 8.5   // m — ab hier Mittelinsel nötig (VSS 40 241)
+
+// Sperrzeit, während der eine querende Fussgängergruppe den Hauptstrom blockiert.
+// Querungsdauer der Fahrbahn bei v_FG; Mittelinsel halbiert die wirksame Breite
+// (jede Hälfte gilt als selbständiger Streifen, Art. 47 Abs. 3 VRV).
+// Unabhängig von der Gruppengrösse ρ (die Gruppe quert gemeinsam).
+export function pedBlockingTime(leg: { fahrbahnbreite?: number; mittelinsel: boolean }): number {
+  const w = leg.fahrbahnbreite ?? DEFAULT_FAHRBAHNBREITE
+  return (w / V_FG) * (leg.mittelinsel ? 0.5 : 1)
 }
 
 export interface PedestrianConfig {
@@ -154,7 +171,7 @@ function sampleHeadway(lambdaFz: number, cfg: FullConfig): number {
 function generateConflicts(
   lambdaFz: number,
   cfg: FullConfig,
-  pedMod?: { lambdaFg: number; rho: number; mittelinsel: boolean },
+  pedMod?: { lambdaFg: number; tBlock: number },
 ): number[] {
   // Ohne Fussgänger: klassische Implementierung
   if (!pedMod || pedMod.lambdaFg <= 0) {
@@ -168,7 +185,7 @@ function generateConflicts(
     return arr
   }
 
-  const t_block = Math.max(5.0, pedMod.rho * 1.5) * (pedMod.mittelinsel ? 0.5 : 1.0)
+  const t_block = pedMod.tBlock
 
   // Sperrzeiten [start, end] generieren
   const blocks: [number, number][] = []
@@ -226,8 +243,9 @@ function generateDirectBlocks(
   const raw: [number, number][] = []
   for (const leg of legs) {
     if (!leg?.enabled || leg.fg <= 0) continue
-    const t_block = Math.max(5.0, leg.rho * 1.5) * (leg.mittelinsel ? 0.5 : 1.0)
-    const lambda  = leg.fg / 3600
+    const t_block = pedBlockingTime(leg)
+    // Häufigkeit der Sperrungen: Gruppen pro Sekunde = (fg / ρ) / 3600
+    const lambda  = leg.fg / ((leg.rho || 1) * 3600)
     let t = 0
     while (true) {
       t += -Math.log(Math.random()) / lambda
@@ -294,7 +312,7 @@ function findDeparture(
 function simulateStream(
   q: number, qpi: number, tc: number, tf: number,
   cfg: FullConfig,
-  pedMod?: { lambdaFg: number; rho: number; mittelinsel: boolean },
+  pedMod?: { lambdaFg: number; tBlock: number },
   crossingLegs?: (PedestrianLegConfig | undefined)[],
 ): number[] {
   if (q <= 0 || qpi <= 0) return []
@@ -336,7 +354,7 @@ function simulateArm(
   streams: ArmStreamDef[],
   storage: number,
   cfg: FullConfig,
-  pedMod?: { lambdaFg: number; rho: number; mittelinsel: boolean },
+  pedMod?: { lambdaFg: number; tBlock: number },
   preBacklog?: number,
 ): { delayMap: Map<number, number[]>; avgEndBacklog: number } {
   const delayMap = new Map<number, number[]>()
@@ -522,8 +540,9 @@ function runInternal(
   // Gap-Effekt (HS-Fussgängerstreifen erzeugen Lücken im Konfliktstrom):
   // Arm A → schafft Lücken in q2+q3 → profitieren: NS-B-Ströme (4,5,6) + Strom 7 (C→B)
   // Arm C → schafft Lücken in q8+q9 → profitieren: NS-D-Ströme (10,11,12) + Strom 1 (A→D)
-  const pedModA = legA ? { lambdaFg: legA.fg / 3600, rho: legA.rho, mittelinsel: legA.mittelinsel } : undefined
-  const pedModC = legC ? { lambdaFg: legC.fg / 3600, rho: legC.rho, mittelinsel: legC.mittelinsel } : undefined
+  // lambdaFg = Häufigkeit der Sperrungen [Gruppen/s] = (fg / ρ) / 3600; tBlock = Querungsdauer
+  const pedModA = legA ? { lambdaFg: legA.fg / ((legA.rho || 1) * 3600), tBlock: pedBlockingTime(legA) } : undefined
+  const pedModC = legC ? { lambdaFg: legC.fg / ((legC.rho || 1) * 3600), tBlock: pedBlockingTime(legC) } : undefined
 
   // Crossing-Zuweisung: jeder Strom wird an seinem Abfahrt- UND Ankunftsarm
   // direkt durch den dortigen Fussgängerstreifen gesperrt.

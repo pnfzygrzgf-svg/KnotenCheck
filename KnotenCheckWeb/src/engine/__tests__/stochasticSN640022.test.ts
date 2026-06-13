@@ -4,7 +4,7 @@
 import { describe, test, expect } from 'vitest'
 import {
   runStochasticSN640022, runStochasticSN640022Multi,
-  sampleErlang, sampleCowanM3, GAP_PARAMS_SN640022,
+  sampleErlang, sampleCowanM3, GAP_PARAMS_SN640022, pedBlockingTime,
 } from '../stochasticSN640022'
 import { analyzeSN640022 } from '../sn640022Calculator'
 import type { SimInterval } from '../stochasticSN640022'
@@ -403,4 +403,50 @@ describe('Preset SN 640 022 (implizit) — Siegloch vs. Abb. 2', () => {
       }
     })
   }
+})
+
+// ── Fussgänger-Sperrzeit: querungsbasiert (v_FG = 0.80 m/s) ──────────────────
+// t_block = Fahrbahnbreite / 0.80 × (Mittelinsel ? 0.5 : 1); ρ-unabhängig.
+describe('pedBlockingTime', () => {
+  test('Standard (undefined → 8 m) → 10 s', () => {
+    expect(pedBlockingTime({ mittelinsel: false })).toBeCloseTo(10, 5)
+  })
+  test('8 m + Mittelinsel → 5 s', () => {
+    expect(pedBlockingTime({ fahrbahnbreite: 8, mittelinsel: true })).toBeCloseTo(5, 5)
+  })
+  test('12 m → 15 s', () => {
+    expect(pedBlockingTime({ fahrbahnbreite: 12, mittelinsel: false })).toBeCloseTo(15, 5)
+  })
+  test('unabhängig von ρ (kein rho-Argument)', () => {
+    // Gleiche Breite → gleiche Dauer, egal welche Gruppengrösse anderswo gilt
+    expect(pedBlockingTime({ fahrbahnbreite: 8, mittelinsel: false }))
+      .toBe(pedBlockingTime({ fahrbahnbreite: 8, mittelinsel: false }))
+  })
+})
+
+// ρ steuert die Häufigkeit: höheres ρ → weniger (aber gleich lange) Sperrungen →
+// weniger erzwungene HS-Lücken → geringerer positiver Kapazitätseffekt für den NS.
+// Strom 6 (B→C) gewählt, weil seine Direktsperren legB/legC nutzen, NICHT legA —
+// so misst der Test isoliert den Gap-Effekt von Arm A (ohne Direktsperr-Überlagerung).
+describe('Fussgänger: höheres ρ → schwächerer Gap-Effekt (Strom 6)', () => {
+  // 3-Arm, stark belasteter HS; B nur Rechtseinbieger (Strom 6)
+  const v = [[0, 750, 0], [750, 0, 0], [0, 200, 0]]
+  const run = (rho: number) => {
+    // Mittel über mehrere Läufe-Sets zur Rauschdämpfung
+    const vals = Array.from({ length: 5 }, () =>
+      runStochasticSN640022(v, noFlags, undefined, {
+        runs: 200,
+        pedestrians: {
+          armA: { enabled: true, fg: 200, rho, mittelinsel: false },
+          armC: { enabled: false, fg: 0, rho: 1, mittelinsel: false },
+        },
+      })!.streams.find(s => s.streamNumber === 6)!.stats!.mean)
+    return vals.reduce((a, b) => a + b, 0) / vals.length
+  }
+
+  test('Strom 6: Mittel bei ρ=1 ≤ Mittel bei ρ=5 (mehr Lücken bei kleinen Gruppen)', () => {
+    const mLow  = run(1)   // viele Sperrungen → viele Lücken → kürzere Wartezeit
+    const mHigh = run(5)   // wenige Sperrungen → weniger Lücken → längere Wartezeit
+    expect(mLow).toBeLessThanOrEqual(mHigh + 0.5)  // kleine Toleranz für Reststreuung
+  })
 })
