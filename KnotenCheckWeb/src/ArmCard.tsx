@@ -150,7 +150,7 @@ export function MixedLaneHint({ index, arm, opposingHSSeparateLane }: {
 
 // ── ArmCard ────────────────────────────────────────────────────────────────────
 
-export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, onChange, footer, geometryLocked, hideMixedLane }: {
+export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, onChange, footer, geometryLocked, hideMixedLane, live }: {
   arm: ArmConfiguration; index: number; isHS: boolean; armCount: number
   opposingHSSeparateLane: boolean
   onChange: (a: ArmConfiguration) => void
@@ -160,6 +160,9 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
   // Mischstreifen-Kombination (F21) ausblenden — z. B. im Simulations-Rechner,
   // der die NS-Ströme ohnehin immer an einer gemeinsamen Haltlinie simuliert.
   hideMixedLane?: boolean
+  // Zahlenfelder live aktualisieren (jeder Tastendruck) statt erst bei Blur —
+  // im Simulations-Rechner aktiviert, damit Karten-Total, f und PW% live mitlaufen.
+  live?: boolean
 }) {
   const lbl  = armLabel(index)
   const col  = isHS ? '#1d4ed8' : '#c2410c'
@@ -209,7 +212,7 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
       <SectionLabel title="Verkehrsmengen" />
       {movements.map(m => (
         <Row key={m.key} label={m.label}>
-          <NumInput value={arm[m.key] as number} onChange={v => upd(m.key, v)} />
+          <NumInput value={arm[m.key] as number} onChange={v => upd(m.key, v)} live={live} />
           <span style={{ fontSize: 11, color: '#9ca3af', width: 30 }}>Fz/h</span>
         </Row>
       ))}
@@ -249,7 +252,7 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
             ...(arm.gradient === '±0%' ? [{ key: 'pctFR' as const, label: 'FR – Fahrräder' }] : []),
           ]).map(r => (
             <Row key={r.key} label={r.label}>
-              <NumInput value={mix[r.key]} onChange={v => updMix(r.key, v)} min={0} max={100} width={60} />
+              <NumInput value={mix[r.key]} onChange={v => updMix(r.key, v)} min={0} max={100} width={60} live={live} />
               <span style={{ fontSize: 11, color: '#9ca3af', width: 16 }}>%</span>
             </Row>
           ))}
@@ -281,7 +284,7 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
           </Row>
           {arm.rightLaneVolume !== undefined && (
             <Row label="Belastung rechter Fahrstreifen">
-              <NumInput value={arm.rightLaneVolume} onChange={v => upd('rightLaneVolume', v)} />
+              <NumInput value={arm.rightLaneVolume} onChange={v => upd('rightLaneVolume', v)} live={live} />
               <span style={{ fontSize: 11, color: '#9ca3af', width: 30 }}>Fz/h</span>
             </Row>
           )}

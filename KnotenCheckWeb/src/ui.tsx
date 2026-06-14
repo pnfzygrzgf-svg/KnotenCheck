@@ -54,8 +54,11 @@ export function LOSBadge({ los }: { los: LevelOfService }) {
   )
 }
 
-export function NumInput({ value, onChange, min = 0, max = 9999, width = 72 }: {
+export function NumInput({ value, onChange, min = 0, max = 9999, width = 72, live = false }: {
   value: number; onChange: (v: number) => void; min?: number; max?: number; width?: number
+  // live = true: meldet jeden Tastendruck (für Felder mit Live-Berechnungsanzeige);
+  // sonst wird der Wert erst beim Verlassen des Felds (onBlur) übernommen.
+  live?: boolean
 }) {
   const [raw, setRaw] = useState(() => value === 0 ? '' : String(value))
   const [synced, setSynced] = useState(value)
@@ -63,7 +66,12 @@ export function NumInput({ value, onChange, min = 0, max = 9999, width = 72 }: {
   return (
     <input type="number" inputMode="decimal" min={min} max={max}
       value={raw} placeholder="0"
-      onChange={e => setRaw(e.target.value)}
+      onChange={e => {
+        setRaw(e.target.value)
+        if (live && e.target.value !== '') {
+          onChange(Math.max(min, Math.min(max, Number(e.target.value) || 0)))
+        }
+      }}
       onBlur={() => {
         const n = raw === '' ? 0 : Math.max(min, Math.min(max, Number(raw) || 0))
         setRaw(n === 0 ? '' : String(n))

@@ -113,7 +113,7 @@ function PedFooter({ leg, isHS, onChange }: {
         return (
         <>
           <Row label="Fussgänger*innen" sub="VSS 2011/308 · Fg/h am Fussgängerstreifen">
-            <NumInput value={leg.fg} onChange={v => onChange({ ...leg, fg: v })} max={2000} />
+            <NumInput value={leg.fg} onChange={v => onChange({ ...leg, fg: v })} max={2000} live />
             <span style={{ fontSize: 11, color: '#9ca3af', width: 30 }}>Fg/h</span>
           </Row>
           <Row label="Gruppengrösse ρ" sub="steuert die Häufigkeit der Sperrungen (fg/ρ), nicht die Dauer">
@@ -134,7 +134,7 @@ function PedFooter({ leg, isHS, onChange }: {
           </Row>
           {breitMode && (
             <Row label="Fahrbahnbreite" sub={`Querung mit v_FG = ${V_FG.toFixed(2)} m/s (VSS 40 240)`}>
-              <NumInput value={breite} onChange={v => onChange({ ...leg, fahrbahnbreite: v })} max={30} />
+              <NumInput value={breite} onChange={v => onChange({ ...leg, fahrbahnbreite: v })} max={30} live />
               <span style={{ fontSize: 11, color: '#9ca3af', width: 30 }}>m</span>
             </Row>
           )}
@@ -300,7 +300,7 @@ function IntervalCard({ iv, baseArms, armCount, index, onUpdate, onRemove }: {
         <div style={{ padding: '8px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
           {arms.map((arm, i) => (
             <ArmCard key={arm.id} arm={arm} index={i} isHS={i < 2}
-              armCount={armCount} geometryLocked hideMixedLane
+              armCount={armCount} geometryLocked hideMixedLane live
               opposingHSSeparateLane={i >= 2 ? (baseArms[i === 2 ? 0 : 1]?.hasSeparateTurnLane ?? false) : false}
               onChange={a => setArm(i, a)} />
           ))}
@@ -570,7 +570,7 @@ export default function SimulationApp() {
             const leg = pedestrians[pedKey] ?? defaultLeg()
             return (
               <ArmCard key={arm.id} arm={arm} index={i} isHS={i < 2}
-                armCount={armCount} hideMixedLane
+                armCount={armCount} hideMixedLane live
                 opposingHSSeparateLane={i >= 2 ? (baseArms[i === 2 ? 0 : 1]?.hasSeparateTurnLane ?? false) : false}
                 onChange={a => setArm(i, a)}
                 footer={
