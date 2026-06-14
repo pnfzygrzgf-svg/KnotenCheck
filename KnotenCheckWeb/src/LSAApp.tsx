@@ -1374,7 +1374,7 @@ export default function LSAApp() {
   const result = useMemo<LSAResultV2|null>(() => {
     if (lanes.length===0 || phases.length===0) return null
     return calculateLSAV2({ armCount, volumes, lanes, phases, targetLos, manualZ: manualZ > 0 ? manualZ : undefined, tZ })
-  }, [armCount, volumes, lanes, phases, targetLos, tZ])
+  }, [armCount, volumes, lanes, phases, targetLos, tZ, manualZ])
 
   return (
     <>
