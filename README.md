@@ -62,7 +62,9 @@ Das Verfahren gilt für Einmündungen (drei Arme) und Kreuzungen (vier Arme).
 
 Zuerst werden alle Fahrzeugbewegungen am Knoten erfasst: Wer kommt woher, und fährt wohin? Jede Bewegung — Linksabbiegen, Geradeausfahren, Rechtsabbiegen — wird als eigener «Verkehrsstrom» betrachtet.
 
-Weil ein Lastwagen mehr Platz und Zeit beansprucht als ein Personenwagen, werden alle Fahrzeuge in eine gemeinsame Einheit umgerechnet: **Personenwagen-Einheiten pro Stunde (PWE/h)**. Dabei spielt auch die Strassenneigung eine Rolle — ein Lastwagen an einem Hang entspricht mehr PWE/h als in der Ebene.
+Weil ein Lastwagen mehr Platz und Zeit beansprucht als ein Personenwagen, wird die **eigene Belastung jedes Stroms** in **Personenwagen-Einheiten pro Stunde (PWE/h)** umgerechnet (Ziffer 8). Dabei spielt auch die Strassenneigung eine Rolle — ein Lastwagen an einem Hang entspricht mehr PWE/h als in der Ebene.
+
+Das **Konfliktvolumen des Hauptstroms** (siehe Schritt 3) wird dagegen in echten **Fahrzeugen pro Stunde (Fz/h)** gezählt: Jedes Fahrzeug erzeugt im Hauptstrom genau eine Lücke — unabhängig von seiner Grösse. PWE/h gilt damit überall (eigene Belastung, G, L, Reserve), nur das massgebende Hauptstromvolumen qpi bleibt in Fz/h.
 
 ### Schritt 2: Rangfolge bestimmen
 
@@ -77,9 +79,9 @@ Je höher der Rang, desto mehr Fahrzeuge müssen «durchgelassen» werden, bevor
 
 ### Schritt 3: Grundleistungsfähigkeit G ablesen
 
-Für jeden Strom ab Rang 2 wird die **Grundleistungsfähigkeit G** bestimmt. Sie gibt an, wie viele Fahrzeuge pro Stunde maximal einbiegen oder kreuzen könnten, wenn der Nebenstrassen-Strom die einzige Einschränkung wäre.
+Für jeden Strom ab Rang 2 wird die **Grundleistungsfähigkeit G** bestimmt. Sie gibt an, wie viele Personenwagen-Einheiten pro Stunde (**PWE/h**) maximal einbiegen oder kreuzen könnten, wenn der Nebenstrassen-Strom die einzige Einschränkung wäre.
 
-G hängt davon ab, wie viele Fahrzeuge auf dem Hauptstrom fahren: Je mehr Fahrzeuge den Weg «blockieren», desto seltener gibt es eine freie Lücke — und desto tiefer ist G. Die Werte werden direkt aus einem Diagramm der Norm (Abbildung 2) entnommen.
+G hängt davon ab, wie dicht der Hauptstrom ist — am **Konfliktvolumen qpi** (gezählt in **Fz/h**): Je mehr Fahrzeuge den Weg «blockieren», desto seltener gibt es eine freie Lücke — und desto tiefer ist G (in PWE/h). Die Werte werden direkt aus einem Diagramm der Norm (Abbildung 2) entnommen.
 
 ### Schritt 4: Tatsächliche Leistungsfähigkeit L berechnen
 
@@ -87,9 +89,9 @@ Ströme mit Rang 3 und 4 müssen nicht nur auf einen, sondern auf mehrere Vorran
 
 ### Schritt 5: Auslastungsgrad und Reserve berechnen
 
-- **Auslastungsgrad a = Verkehr / Leistungsfähigkeit**  
+- **Auslastungsgrad a = Verkehr / Leistungsfähigkeit** *(beide in PWE/h)*  
   Ein Wert von 1,0 bedeutet: Die Kapazitätsgrenze ist erreicht — ab hier entsteht dauerhafter Stau.
-- **Belastungsreserve R = Leistungsfähigkeit − Verkehr**
+- **Belastungsreserve R = Leistungsfähigkeit − Verkehr** *(in PWE/h)*
 
 ### Schritt 6: Wartezeit berechnen
 
@@ -244,7 +246,7 @@ Der Forschungsbericht *Verkehrsablauf an ungesteuerten Knoten innerorts unter Be
 Der Rechner deckt zweirangige und gleichrangige Knoten ab (Tram und Bus Eigentrasse sind nicht implementiert). Komplexe Knoten mit mehr als zwei Rängen oder Rückstauwirkung von Nachbarknoten sind nicht vollständig abgedeckt.
 
 **Funktionen des Rechners:**
-- Einmündung (T-Knoten), Kreuzung (4 Arme) und Gleicher Rang (Rechtsvortritt)
+- Einmündung (T-Knoten) und Kreuzung (4 Arme)
 - Fussgängervolumen am Fussgängerstreifen je Arm, inkl. Gruppengrösse ρ und Mittelinsel
 - Pro-Strom-Kapazität nach Kap. 5 (Ein- und Ausfahrts-Fg je Bewegungsrichtung)
 - Qualitätsstufen A–F je Strom, je Arm (Mittelwert) sowie Gesamt-QS
