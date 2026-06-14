@@ -293,7 +293,7 @@ export default function SN022App() {
         <div className={`arms-grid${cfg.arms.length === 4 ? ' arms-grid-4' : ''}`}>
           {cfg.arms.map((arm, i) => (
             <ArmCard key={arm.id} arm={arm} index={i} isHS={i < 2}
-              armCount={cfg.arms.length}
+              armCount={cfg.arms.length} live
               opposingHSSeparateLane={
                 i === 2 ? (cfg.arms[0]?.hasSeparateTurnLane ?? false)
               : i === 3 ? (cfg.arms[1]?.hasSeparateTurnLane ?? false)

@@ -77,25 +77,25 @@ function ArmCard({ arm, index, armCount, qkFzh, onChange }: {
       {/* Abbiegeströme */}
       <SectionLabel title={`Abbiegeströme Arm ${index + 1} (Abb. 10)`} />
       <Row label="1. Ausfahrt — rechts" sub={`→ Arm ${(index + 1) % armCount + 1}`}>
-        <NumInput value={arm.right} onChange={v => upd('right', v)} width={80} />
+        <NumInput live value={arm.right} onChange={v => upd('right', v)} width={80} />
         <span style={{ fontSize: 11, color: '#9ca3af', width: 36 }}>Fz/h</span>
       </Row>
       {armCount === 4 && (
         <Row label="2. Ausfahrt — geradeaus" sub={`→ Arm ${(index + 2) % armCount + 1}`}>
-          <NumInput value={arm.straight} onChange={v => upd('straight', v)} width={80} />
+          <NumInput live value={arm.straight} onChange={v => upd('straight', v)} width={80} />
           <span style={{ fontSize: 11, color: '#9ca3af', width: 36 }}>Fz/h</span>
         </Row>
       )}
       <Row label={armCount === 4 ? '3. Ausfahrt — links' : '2. Ausfahrt — links'}
            sub={`→ Arm ${(index + (armCount === 4 ? 3 : 2)) % armCount + 1}`}>
-        <NumInput value={arm.left} onChange={v => upd('left', v)} width={80} />
+        <NumInput live value={arm.left} onChange={v => upd('left', v)} width={80} />
         <span style={{ fontSize: 11, color: '#9ca3af', width: 36 }}>Fz/h</span>
       </Row>
 
       {/* Fussgänger*innen */}
       <Row label={`Fussgängerquerungen Fg${index + 1}`}
            sub="Einfluss via f_F (Abb. 3/4). 0 = kein Einfluss">
-        <NumInput value={arm.fg} onChange={v => upd('fg', v)} width={80} />
+        <NumInput live value={arm.fg} onChange={v => upd('fg', v)} width={80} />
         <span style={{ fontSize: 11, color: '#9ca3af', width: 36 }}>FG/h</span>
       </Row>
 

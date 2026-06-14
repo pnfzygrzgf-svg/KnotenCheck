@@ -169,7 +169,7 @@ function ArmCard({ arm, index, armCount, onChange }: {
           <div key={m.id} style={{ display:'flex', alignItems:'center', gap:8,
                                    padding:'6px 12px', borderBottom:'1px solid #f3f4f6' }}>
             <div style={{ flex:1, fontSize:13, color:'#374151' }}>{num}: {m.label}</div>
-            <NumInput value={(arm[m.direction as keyof UIArmInput] as number)??0}
+            <NumInput live value={(arm[m.direction as keyof UIArmInput] as number)??0}
               onChange={v => upd(m.direction as keyof UIArmInput, v)} />
           </div>
         )
@@ -193,7 +193,7 @@ function ArmCard({ arm, index, armCount, onChange }: {
           {([['pctLW','LW',2],['pctMR','MR',0.5],['pctFR','FR',0.25]] as const).map(([k,lbl2,f2]) => (
             <div key={k} style={{ display:'flex', alignItems:'center', gap:6, fontSize:12 }}>
               <span style={{ width:100, color:'#6b7280' }}>{lbl2} (f={f2})</span>
-              <NumInput value={arm.mix![k]} onChange={v => updMix(k,v)} max={100} width={52} />
+              <NumInput live value={arm.mix![k]} onChange={v => updMix(k,v)} max={100} width={52} />
               <span style={{ color:'#9ca3af' }}>%</span>
             </div>
           ))}
@@ -306,11 +306,11 @@ function LanePlanSection({ armCount, volumes, moveLane, onChange, fgsConfig, onF
                         FGS
                       </label>
                       {fgs.enabled && (<>
-                        <NumInput value={fgs.volume}
+                        <NumInput live value={fgs.volume}
                           onChange={v => onFgsChange(lbl, {...fgs, volume:v})}
                           width={60} />
                         <span style={{ fontSize:11, color:'#6b7280' }}>Fg/h</span>
-                        <NumInput value={fgs.length}
+                        <NumInput live value={fgs.length}
                           onChange={v => onFgsChange(lbl, {...fgs, length:v})}
                           max={50} width={46} />
                         <span style={{ fontSize:11, color:'#6b7280' }}>m</span>

@@ -116,17 +116,17 @@ function ArmCard({ arm, index, nodeType, result, onChange }: {
       <SectionLabel title="Abbiegeströme [Fz/h]" />
       {!isHSA3 && (
         <Row label="Linksabbiegen">
-          <NumInput value={arm.left} onChange={v => upd('left', v)} />
+          <NumInput live value={arm.left} onChange={v => upd('left', v)} />
         </Row>
       )}
       {!isNSB3 && (
         <Row label="Geradeaus">
-          <NumInput value={arm.straight} onChange={v => upd('straight', v)} />
+          <NumInput live value={arm.straight} onChange={v => upd('straight', v)} />
         </Row>
       )}
       {!isHSC3 && (
         <Row label="Rechtsabbiegen">
-          <NumInput value={arm.right} onChange={v => upd('right', v)} />
+          <NumInput live value={arm.right} onChange={v => upd('right', v)} />
         </Row>
       )}
 
@@ -141,7 +141,7 @@ function ArmCard({ arm, index, nodeType, result, onChange }: {
       {arm.fg > 0 && (
         <>
           <Row label="Fussgängervolumen" sub="[Fg/h]">
-            <NumInput value={arm.fg} onChange={v => upd('fg', v)} />
+            <NumInput live value={arm.fg} onChange={v => upd('fg', v)} />
           </Row>
           <Row label="Mittelinsel am Fussgängerstreifen" sub="Art. 47 Abs. 3 VRV">
             <input type="checkbox" checked={arm.mittelinsel ?? false}

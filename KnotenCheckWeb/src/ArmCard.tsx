@@ -183,6 +183,15 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
   const movements = getMovements(index, armCount)
   const isNS4arm  = !isHS && armCount === 4
 
+  // Welche Geometrie-Fussnoten sind überhaupt wirksam?
+  // T-Knoten (3 Arme): Nur Arm A (index 0) hat einen HS-Rechtsabbieger → Fn 1/2/3
+  // wirken nur dort; Arm C (index 1) hat keinen Rechtsabbieger. Arm B (NS) hat keinen
+  // gegenüberliegenden Linkseinbieger (Strom 10) → Fn 4 ist wirkungslos.
+  // Kreuzung (4 Arme): alle Arme haben Rechtsabbieger → alle Fussnoten wirksam.
+  const showHSGeom = isHS && (armCount === 4 || index === 0)
+  const showNSGeom = !isHS && armCount === 4
+  const showGeom   = showHSGeom || showNSGeom
+
   return (
     <div style={{ border: `1px solid ${bd}`, borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
 
@@ -265,7 +274,8 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
         </>
       )}
 
-      {/* Geometrie / Fussnoten */}
+      {/* Geometrie / Fussnoten — nur die im jeweiligen Knotentyp wirksamen */}
+      {showGeom && (<>
       <SectionLabel title="Geometrie (Fussnoten)" />
       {isHS ? (
         <>
@@ -324,6 +334,7 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
           )}
         </>
       )}
+      </>)}
       </>)}
 
       {footer}
