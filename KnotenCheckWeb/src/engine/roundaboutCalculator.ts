@@ -24,9 +24,9 @@ const FF_1_1: Record<number, [number, number][]> = {
 
 const FF_2_1PLUS: Record<number, [number, number][]> = {
   100: [[0, 0.89], [200, 0.90], [400, 0.93], [600, 0.95], [800, 0.97], [900, 1.00]],
-  200: [[0, 0.86], [200, 0.87], [400, 0.89], [600, 0.91], [800, 0.94], [1000, 0.96], [1200, 1.00]],
-  300: [[0, 0.83], [200, 0.84], [400, 0.86], [600, 0.87], [800, 0.90], [1000, 0.93], [1200, 0.96], [1400, 1.00]],
-  400: [[0, 0.80], [200, 0.81], [400, 0.82], [600, 0.84], [800, 0.86], [1000, 0.87], [1200, 0.915], [1400, 0.95]],
+  200: [[0, 0.86], [200, 0.87], [400, 0.89], [600, 0.91], [800, 0.94], [900, 0.95], [1000, 0.96], [1200, 1.00]],
+  300: [[0, 0.83], [200, 0.84], [400, 0.86], [600, 0.87], [800, 0.90], [900, 0.92], [1000, 0.93], [1200, 0.96], [1400, 1.00]],
+  400: [[0, 0.80], [200, 0.81], [400, 0.82], [600, 0.84], [800, 0.86], [900, 0.87], [1000, 0.88], [1200, 0.92], [1400, 0.95]],
 }
 
 // Stückweise lineare Interpolation einer [x, y]-Tabelle
@@ -77,10 +77,17 @@ export function basicCapacity(type: RoundaboutType, qk: number): number {
 // ── Ausfahrtsleistungsfähigkeit L_A — Abb. 5, SN 640 024a (Ziffer 10) ────────
 // L_A,MAX = 1400 PWE/h (ohne Fussgänger); querende Fussgänger reduzieren sie,
 // abhängig von der Ausfahrtsbreite B (3.5 m bzw. 4.5 m, Fussgängerstreifenlänge).
-// Stützpunkte aus Abb. 5 abgelesen; die 3.5-m-Kurve reproduziert die Tab.-5-Werte
-// des Anwendungsbeispiels (FG 100→1310, 250→1190, 300→1160, 0→1400) exakt.
-const LA_TABLE_3_5: [number, number][] = [[0, 1400], [100, 1310], [250, 1190], [300, 1160], [400, 1100]]
-const LA_TABLE_4_5: [number, number][] = [[0, 1400], [100, 1300], [200, 1200], [300, 1100], [400, 1010]]
+// Stützpunkte aus Abb. 5 abgelesen (Schritt 50 FG/h). Die 3.5-m-Kurve deckt sich mit
+// Tab. 5 des Anwendungsbeispiels (FG 100→1310, 300→1160, 0→1400; FG 250→1195 ggü.
+// gedruckt 1190, innerhalb Ablesetoleranz).
+const LA_TABLE_3_5: [number, number][] = [
+  [0, 1400], [50, 1355], [100, 1310], [150, 1270], [200, 1230],
+  [250, 1195], [300, 1160], [350, 1130], [400, 1095],
+]
+const LA_TABLE_4_5: [number, number][] = [
+  [0, 1400], [50, 1340], [100, 1280], [150, 1240], [200, 1190],
+  [250, 1140], [300, 1100], [350, 1055], [400, 1020],
+]
 export function exitCapacity(fg: number, wide = false): number {
   return lerpPoints(wide ? LA_TABLE_4_5 : LA_TABLE_3_5, Math.max(0, fg))
 }

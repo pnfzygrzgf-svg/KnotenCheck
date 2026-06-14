@@ -48,11 +48,13 @@ describe('computeQKfromTurnings (Abb. 10)', () => {
 
 // ── Ausfahrten-Check L_A (Tab. 5, Abb. 5, Ziffer 10) ─────────────────────────
 describe('exitCapacity L_A und Ausfahrten-Check (Tab. 5)', () => {
-  // L_A(FG) bei Ausfahrtsbreite 3.5 m — Stützpunkte aus dem Anwendungsbeispiel
-  test('FG=0   → 1400', () => approx(exitCapacity(0),   1400, 1))
-  test('FG=100 → 1310', () => approx(exitCapacity(100), 1310, 1))
-  test('FG=250 → 1190', () => approx(exitCapacity(250), 1190, 1))
-  test('FG=300 → 1160', () => approx(exitCapacity(300), 1160, 1))
+  // L_A(FG) — abgelesene Stützpunkte aus Abb. 5
+  test('3.5 m FG=0   → 1400', () => approx(exitCapacity(0),   1400, 1))
+  test('3.5 m FG=100 → 1310', () => approx(exitCapacity(100), 1310, 1))
+  test('3.5 m FG=250 → 1195', () => approx(exitCapacity(250), 1195, 1))
+  test('3.5 m FG=300 → 1160', () => approx(exitCapacity(300), 1160, 1))
+  test('4.5 m FG=100 → 1280', () => approx(exitCapacity(100, true), 1280, 1))
+  test('4.5 m FG=300 → 1100', () => approx(exitCapacity(300, true), 1100, 1))
   test('4.5 m steiler als 3.5 m', () => expect(exitCapacity(300, true)).toBeLessThan(exitCapacity(300, false)))
 
   const r = calculateRoundabout({

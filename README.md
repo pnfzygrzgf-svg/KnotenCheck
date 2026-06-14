@@ -260,13 +260,16 @@ Für Typ 2/2 liefert VSS 2005/301 kein f_F (zu wenig Fussgänger*innen an den Me
 | FG [FG/h] | B = 3,5 m | B = 4,5 m |
 |---:|---:|---:|
 | 0 | 1400 | 1400 |
-| 100 | 1310 | 1300 |
-| 200 | (interp.) | 1200 |
-| 250 | 1190 | (interp.) |
+| 50 | 1355 | 1340 |
+| 100 | 1310 | 1280 |
+| 150 | 1270 | 1240 |
+| 200 | 1230 | 1190 |
+| 250 | 1195 | 1140 |
 | 300 | 1160 | 1100 |
-| 400 | 1100 | 1010 |
+| 350 | 1130 | 1055 |
+| 400 | 1095 | 1020 |
 
-Die 3,5-m-Stützpunkte reproduzieren die Tabelle 5 des Anwendungsbeispiels exakt (FG 100 → 1310, 250 → 1190, 300 → 1160).
+Die 3,5-m-Stützpunkte decken sich mit Tabelle 5 des Anwendungsbeispiels (FG 100 → 1310, 300 → 1160, 0 → 1400); bei FG 250 ergibt die Kurvenablesung 1195 gegenüber gedruckt 1190 — innerhalb der Ablesetoleranz.
 
 **Wartezeit w — Abbildung 7 (Formel):**
 

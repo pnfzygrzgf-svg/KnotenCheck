@@ -37,10 +37,11 @@ interface ArmInput {
   left: number       // 3. Ausfahrt (Linksabbieger)    [Fz/h]
   fg: number         // Fussgängerquerungen            [FG/h]
   gradient: GradientPCE
+  exitWide: boolean  // Ausfahrtsbreite 4.5 m statt 3.5 m (Abb. 5)
 }
 
 function defaultArm(): ArmInput {
-  return { name: '', right: 0, straight: 0, left: 0, fg: 0, gradient: '±0%' }
+  return { name: '', right: 0, straight: 0, left: 0, fg: 0, gradient: '±0%', exitWide: false }
 }
 
 function ArmCard({ arm, index, armCount, qkFzh, onChange }: {
@@ -97,6 +98,16 @@ function ArmCard({ arm, index, armCount, qkFzh, onChange }: {
            sub="Einfluss via f_F (Einfahrt, Abb. 3/4) und L_A (Ausfahrt, Abb. 5). 0 = kein Einfluss">
         <NumInput live value={arm.fg} onChange={v => upd('fg', v)} width={80} />
         <span style={{ fontSize: 11, color: '#9ca3af', width: 36 }}>FG/h</span>
+      </Row>
+      <Row label="Ausfahrtsbreite B"
+           sub="Länge des Fussgängerstreifens an der Ausfahrt (Abb. 5). Wirkt auf L_A">
+        <select value={arm.exitWide ? '4.5' : '3.5'}
+          onChange={e => upd('exitWide', e.target.value === '4.5')}
+          style={{ fontSize: 13, padding: '3px 6px', borderRadius: 4,
+                   border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>
+          <option value="3.5">3,5 m</option>
+          <option value="4.5">4,5 m</option>
+        </select>
       </Row>
 
       {/* Längsneigung */}
@@ -226,6 +237,7 @@ function ExitCard({ e, arm, armNumber }: { e: ExitResult; arm: ArmInput; armNumb
         <div>
           <span style={{ color: '#9ca3af' }}>L_A </span>
           <strong>{Math.round(e.capacity)} PWE/h</strong>
+          <span style={{ color: '#9ca3af' }}> (B = {arm.exitWide ? '4,5' : '3,5'} m)</span>
         </div>
         <div style={{ gridColumn: '1 / -1' }}>
           <span style={{ color: '#9ca3af' }}>X = Q_A / L_A </span>
@@ -414,6 +426,7 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
             <th style={thL}>Arm</th>
             <th style={th}>Q_A<br/>[PWE/h]</th>
             <th style={th}>FG<br/>[FG/h]</th>
+            <th style={th}>B<br/>[m]</th>
             <th style={th}>L_A<br/>[PWE/h]</th>
             <th style={th}>x = Q_A/L_A<br/>[%]</th>
             <th style={{ ...th, textAlign: 'center' }}>Status</th>
@@ -427,6 +440,7 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
               </td>
               <td style={td}>{e.qa}</td>
               <td style={td}>{e.fg}</td>
+              <td style={td}>{arms[i].exitWide ? '4,5' : '3,5'}</td>
               <td style={td}>{Math.round(e.capacity)}</td>
               <td style={{ ...td, fontWeight: 600, color: e.overloaded ? '#b91c1c' : '#374151' }}>
                 {Math.round(e.utilizationDegree * 100)} %
@@ -572,8 +586,9 @@ export default function RoundaboutApp() {
     )
     const qk = qkFzh.map(v => Math.round(v * PCE_RING))
     const fg = activeArms.map(a => a.fg)
+    const exitWide = activeArms.map(a => a.exitWide)
     if (qe.every(v => v === 0)) return null
-    return calculateRoundabout({ type, qe, qk, fg, qa: qaPWE })
+    return calculateRoundabout({ type, qe, qk, fg, qa: qaPWE, exitWide })
   }, [type, armCount, JSON.stringify(activeArms), JSON.stringify(qkFzh), JSON.stringify(qaPWE)])
 
   const overall = result?.overallLevelOfService
