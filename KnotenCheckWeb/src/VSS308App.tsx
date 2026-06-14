@@ -655,8 +655,11 @@ export default function VSS308App() {
     importTool<{ nodeName: string; nodeType: NodeType; arms: ArmInput[] }>(
       'vss308', d => {
         setNodeName(d.nodeName ?? '')
-        setNodeType(d.nodeType ?? '4arm')
-        setArms((d.arms ?? defaultArms(d.nodeType ?? '4arm')).map(a => ({ ...a, rho: a.rho ?? 1, mittelinsel: a.mittelinsel ?? false })))
+        // 'equal' (Gleicher Rang) ist vorerst ausgeblendet → auf '4arm' abbilden,
+        // damit ältere gespeicherte Dateien nicht in einem unerreichbaren Modus landen.
+        const nt: NodeType = d.nodeType === 'equal' ? '4arm' : (d.nodeType ?? '4arm')
+        setNodeType(nt)
+        setArms((nt === d.nodeType ? (d.arms ?? defaultArms(nt)) : defaultArms(nt)).map(a => ({ ...a, rho: a.rho ?? 1, mittelinsel: a.mittelinsel ?? false })))
       }, showToast)
 
   function handleReset() {
@@ -703,7 +706,9 @@ export default function VSS308App() {
         {([
           ['3arm',  'Einmündung (3-Arm)'],
           ['4arm',  'Kreuzung (4-Arm)'],
-          ['equal', 'Gleicher Rang (Rechtsvortritt)'],
+          // 'Gleicher Rang (Rechtsvortritt)' vorerst ausgeblendet — das Modell ist
+          // noch nicht belastbar (lastunabhängige Kapazität, fragwürdige Paarung,
+          // inkonsistente Überlast-Anzeige, Fussgänger nicht berücksichtigt).
         ] as [NodeType, string][]).map(([key, label]) => (
           <button key={key}
             onClick={() => handleNodeTypeChange(key)}
