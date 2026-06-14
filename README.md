@@ -58,17 +58,13 @@ Das Verfahren gilt für Einmündungen (drei Arme) und Kreuzungen (vier Arme).
 
 **Was die Norm nicht berücksichtigt:** Die SN 640 022 berechnet ausschliesslich die Leistungsfähigkeit für **motorisierten Individualverkehr (MIV)**. Fussgänger*innen kommen im Berechnungsverfahren nicht vor. Wer die Qualität eines Knotens für den Fussverkehr beurteilen will, braucht andere Methoden — z. B. den Rechner [Ungesteuerter Knoten mit Fussgänger*innen](#ungesteuerter-knoten-mit-fussgängerinnen-vss-2011308).
 
-### Schritt 1: Verkehrsströme erfassen und gewichten
+Der Rechner folgt dem **generellen Vorgehen nach Ziffer 5** der SN 640 022 (sechs Schritte):
 
-Zuerst werden alle Fahrzeugbewegungen am Knoten erfasst: Wer kommt woher, und fährt wohin? Jede Bewegung — Linksabbiegen, Geradeausfahren, Rechtsabbiegen — wird als eigener «Verkehrsstrom» betrachtet.
+### Schritt 1: Regime und Rangfolge festlegen
 
-Weil ein Lastwagen mehr Platz und Zeit beansprucht als ein Personenwagen, wird die **eigene Belastung jedes Stroms** in **Personenwagen-Einheiten pro Stunde (PWE/h)** umgerechnet (Ziffer 8). Dabei spielt auch die Strassenneigung eine Rolle — ein Lastwagen an einem Hang entspricht mehr PWE/h als in der Ebene.
+Zuerst wird das **Regime** des Knotens festgelegt. Dieser Rechner behandelt den **vorfahrtgeregelten** Knoten — Fahrzeuge auf der Hauptstrasse haben Vortritt, Fahrzeuge von der Nebenstrasse warten. (Gleichrangige Knoten mit Rechtsvortritt sind nicht Teil dieses Verfahrens.)
 
-Das **Konfliktvolumen des Hauptstroms** (siehe Schritt 3) wird dagegen in echten **Fahrzeugen pro Stunde (Fz/h)** gezählt: Jedes Fahrzeug erzeugt im Hauptstrom genau eine Lücke — unabhängig von seiner Grösse. PWE/h gilt damit überall (eigene Belastung, G, L, Reserve), nur das massgebende Hauptstromvolumen qpi bleibt in Fz/h.
-
-### Schritt 2: Rangfolge bestimmen
-
-Die Norm teilt die Verkehrsströme in Ränge ein, je nachdem, wem gegenüber sie Vortritt gewähren müssen. Bei der Kreuzung (4 Arme) gibt es vier Ränge, bei der Einmündung (3 Arme) nur drei:
+Jede Fahrzeugbewegung — Linksabbiegen, Geradeausfahren, Rechtsabbiegen — wird als eigener «Verkehrsstrom» betrachtet und einem **Rang** zugeordnet, je nachdem, wem gegenüber sie Vortritt gewähren muss. Bei der Kreuzung (4 Arme) gibt es vier Ränge, bei der Einmündung (3 Arme) nur drei:
 
 - **Rang 1** — Hauptstrasse: freie Fahrt, kein Warten
 - **Rang 2** — Linksabbieger von der Hauptstrasse, Rechtseinbieger aus der Nebenstrasse: muss einem Konfliktvolumen ausweichen
@@ -77,29 +73,39 @@ Die Norm teilt die Verkehrsströme in Ränge ein, je nachdem, wem gegenüber sie
 
 Je höher der Rang, desto mehr Fahrzeuge müssen «durchgelassen» werden, bevor man selbst fahren darf — und desto kleiner ist die nutzbare Kapazität.
 
-### Schritt 3: Grundleistungsfähigkeit G ablesen
+### Schritt 2: Massgebende Belastungen pro Strom ermitteln
 
-Für jeden Strom ab Rang 2 wird die **Grundleistungsfähigkeit G** bestimmt. Sie gibt an, wie viele Personenwagen-Einheiten pro Stunde (**PWE/h**) maximal einbiegen oder kreuzen könnten, wenn der Nebenstrassen-Strom die einzige Einschränkung wäre.
+Für jeden Strom wird die **massgebende Belastung** bestimmt: Wer kommt woher und fährt wohin, und wie viele Fahrzeuge pro Stunde?
 
-G hängt davon ab, wie dicht der Hauptstrom ist — am **Konfliktvolumen qpi** (gezählt in **Fz/h**): Je mehr Fahrzeuge den Weg «blockieren», desto seltener gibt es eine freie Lücke — und desto tiefer ist G (in PWE/h). Die Werte werden direkt aus einem Diagramm der Norm (Abbildung 2) entnommen.
+Weil ein Lastwagen mehr Platz und Zeit beansprucht als ein Personenwagen, wird die **eigene Belastung jedes Stroms** in **Personenwagen-Einheiten pro Stunde (PWE/h)** umgerechnet (Ziffer 8). Dabei spielt auch die Strassenneigung eine Rolle — ein Lastwagen an einem Hang entspricht mehr PWE/h als in der Ebene. Diese PWE-Belastung Q ist später die eigene Nachfrage in Auslastungsgrad und Reserve (Schritt 6).
 
-### Schritt 4: Tatsächliche Leistungsfähigkeit L berechnen
+### Schritt 3: Massgebende Hauptstrombelastungen qpi ermitteln
 
-Ströme mit Rang 3 und 4 müssen nicht nur auf einen, sondern auf mehrere Vorrangströme gleichzeitig warten. Die tatsächliche Leistungsfähigkeit L ist deshalb kleiner als G: Sie wird mit der Wahrscheinlichkeit multipliziert, dass alle vorrangigen Ströme in dem Moment frei sind.
+Für jeden Strom ab Rang 2 wird das **massgebende Hauptstromvolumen qpi** berechnet — die Summe aller vortrittsberechtigten Ströme, denen er ausweichen muss (Formeln F1–F8 je nach Fahrbeziehung). qpi ist die x-Achse von Abbildung 2.
 
-### Schritt 5: Auslastungsgrad und Reserve berechnen
+qpi wird in echten **Fahrzeugen pro Stunde (Fz/h)** gezählt — nicht in PWE/h: Jedes Fahrzeug erzeugt im Hauptstrom genau eine Lücke, unabhängig von seiner Grösse. (PWE/h gilt überall sonst — eigene Belastung, G, L, Reserve —, nur qpi bleibt in Fz/h.)
 
-- **Auslastungsgrad a = Verkehr / Leistungsfähigkeit** *(beide in PWE/h)*  
-  Ein Wert von 1,0 bedeutet: Die Kapazitätsgrenze ist erreicht — ab hier entsteht dauerhafter Stau.
-- **Belastungsreserve R = Leistungsfähigkeit − Verkehr** *(in PWE/h)*
+Die Geometrie verändert qpi:
+- **Mehrere Fahrstreifen / separater Abbiegestreifen auf der Hauptstrasse:** Wer von der Nebenstrasse einbiegt, muss hauptsächlich eine Lücke im nächstgelegenen Fahrstreifen abwarten — das reduziert das wirksame Konfliktvolumen.
+- **Dreiecksinsel für Rechtsabbieger:** Eine Dreiecksinsel trennt den Rechtsabbiegestreifen baulich ab; Rechtsabbieger zählen dann nicht mehr zum Konfliktvolumen der anderen Nebenstrassen-Ströme.
 
-### Schritt 6: Wartezeit berechnen
+### Schritt 4: Grundleistungsfähigkeit Gi ermitteln
 
-Die mittlere Wartezeit gibt an, wie lange ein Fahrzeug im Durchschnitt warten muss. Die Norm stellt sie nur grafisch dar (Abbildung 4, «nach Kimber, Hollis, 1979»). KnotenCheck berechnet sie mit der zeitabhängigen Wartezeitformel nach Brilon (2008), die die Kurven der Abbildung 4 reproduziert (siehe Technische Details).
+Aus qpi wird für jeden Strom ab Rang 2 die **Grundleistungsfähigkeit G** bestimmt (in **PWE/h**). Sie gibt an, wie viele PWE pro Stunde maximal einbiegen oder kreuzen könnten, wenn der betrachtete Strom die einzige Einschränkung wäre.
 
-### Schritt 7: Qualitätsstufe ablesen
+Je dichter der Hauptstrom (je grösser qpi), desto seltener gibt es eine freie Lücke — und desto tiefer ist G. Die Werte werden direkt aus einem Diagramm der Norm (Abbildung 2) entnommen (vier Kurven je Manöver; siehe Technische Details).
 
-Qualitätsstufen nach Tabelle 3, SN 640 022:
+### Schritt 5: Maximale Leistungsfähigkeit Li bzw. Lm und Wahrscheinlichkeit p₀,ᵢ
+
+- **Rang 2:** L = G (kein vorgelagerter Konflikt).
+- **Rang 3 und 4:** Diese Ströme können nur abfliessen, wenn die höherrangigen Ströme keinen Rückstau haben. L ist deshalb kleiner als G: G wird mit der **Wahrscheinlichkeit des staufreien Zustandes p₀,ᵢ** der übergeordneten Ströme multipliziert (bei Rang 4 zusätzlich um die statistische Abhängigkeit korrigiert, Abbildung 3).
+- **Mischstreifen Lm:** Benutzen mehrere Nebenstrom-Ströme dieselbe Spur (kein separater Abbiegestreifen), berechnet die Norm eine kombinierte Leistungsfähigkeit Lm nach Formel F21 (nachfragegewichteter harmonischer Mittelwert). Je stärker die einzelnen Ströme ausgelastet sind, desto tiefer fällt Lm aus.
+
+### Schritt 6: Belastungsreserve Ri und mittlere Wartezeit wi
+
+- **Auslastungsgrad a = Q / L** *(beide in PWE/h, dimensionslos)* — ein Wert von 1,0 bedeutet: Die Kapazitätsgrenze ist erreicht, ab hier entsteht dauerhafter Stau.
+- **Belastungsreserve R = L − Q** *(in PWE/h)* — negativ = Überlast.
+- **Mittlere Wartezeit w:** Die Norm stellt sie nur grafisch dar (Abbildung 4, «nach Kimber, Hollis, 1979»). KnotenCheck berechnet sie mit der zeitabhängigen Wartezeitformel nach Brilon (2008), die die Kurven der Abbildung 4 reproduziert (siehe Technische Details). Aus w folgt die **Qualitätsstufe** nach Tabelle 3:
 
 | QS | Wartezeit | Beurteilung |
 |---|---|---|
@@ -109,16 +115,6 @@ Qualitätsstufen nach Tabelle 3, SN 640 022:
 | D | 25–45 s | Ausreichend — Auslastung nahe der zulässigen Belastung |
 | E | > 45 s | Kritisch — instabiler Verkehrszustand, stark streuende Wartezeiten |
 | F | — | Überlastung — Zufluss grösser als Leistungsfähigkeit, wachsende Kolonnen |
-
-### Sonderfall: Mischstreifen
-
-Wenn auf der Nebenstrasse kein separater Abbiegestreifen vorhanden ist, benutzen mehrere Ströme dieselbe Spur. Die Norm berechnet für diesen «Mischstreifen» eine kombinierte Leistungsfähigkeit nach Formel F21 (harmonischer Mittelwert, gewichtet nach Auslastungsgrad). Je stärker die einzelnen Ströme ausgelastet sind, desto tiefer fällt die gemeinsame Leistungsfähigkeit aus.
-
-### Sonderfall: Geometrie
-
-**Mehrere Fahrstreifen auf der Hauptstrasse:** Wer von der Nebenstrasse einbiegt, muss hauptsächlich eine Lücke im nächstgelegenen Fahrstreifen abwarten. Das reduziert das wirksame Konfliktvolumen.
-
-**Dreiecksinsel für Rechtsabbieger:** Eine Dreiecksinsel trennt den Rechtsabbiegestreifen baulich ab. Rechtsabbieger tauchen dann nicht mehr als Teil des Konfliktvolumens der anderen Nebenstrassen-Ströme auf.
 
 ### Technische Details
 

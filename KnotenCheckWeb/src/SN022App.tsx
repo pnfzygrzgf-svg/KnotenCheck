@@ -86,6 +86,7 @@ const LEGEND_ITEMS: LegendItem[] = [
   { abbr: 'L',    unit: 'PWE/h', desc: 'Leistungsfähigkeit — für Rang-2-Ströme L = G; für Rang-3/4-Ströme L = p₀ · G, wobei p₀ die Wahrscheinlichkeit des staufreien Zustands des übergeordneten Stroms ist' },
   { abbr: 'p₀',        desc: 'Wahrscheinlichkeit staufreier Zustand — p₀ = 1 − a_i des übergeordneten Stroms; reduziert G bei Rang-3/4-Strömen zu L = p₀ · G [F12, F13, SN 640 022]' },
   { abbr: 'Lm',   unit: 'PWE/h', desc: 'Leistungsfähigkeit Mischstreifen — Kapazität eines gemeinsamen Fahrstreifens für mehrere NS-Ströme auf der Nebenstrasse (Ziffer 11, SN 640 022)' },
+  { abbr: 'Q',    unit: 'PWE/h', desc: 'Verkehrsnachfrage (eigene Belastung) des Stroms — gewichtete Nachfrage dieses Stroms; entspricht qᵢ der SN 640 022 (nicht zu verwechseln mit qpi)' },
   { abbr: 'R',    unit: 'PWE/h', desc: 'Reserve = L − Q; negativ = Überlast' },
   { abbr: 'a',         desc: 'Auslastungsgrad = Q / L (dimensionslos)' },
   { abbr: 'w',    unit: 's',     desc: 'Mittlere Wartezeit — nach Kimber-Hollis (SN 640 022)' },
