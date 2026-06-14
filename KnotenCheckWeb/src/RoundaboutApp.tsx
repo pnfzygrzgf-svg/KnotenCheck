@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { calculateRoundabout, computeQKfromTurnings } from './engine/roundaboutCalculator'
-import type { RoundaboutType, LevelOfService, EntryResult } from './engine/roundaboutCalculator'
+import { calculateRoundabout, computeQKfromTurnings, computeQAfromTurnings } from './engine/roundaboutCalculator'
+import type { RoundaboutType, LevelOfService, EntryResult, ExitResult } from './engine/roundaboutCalculator'
 import kreiselSvg from './assets/Kreisel.svg'
 import kreisel3ArmSvg from './assets/Kreisel_3_arm.svg'
 import { exportTool, importTool } from './saveLoad'
@@ -94,7 +94,7 @@ function ArmCard({ arm, index, armCount, qkFzh, onChange }: {
 
       {/* Fussgänger*innen */}
       <Row label={`Fussgängerquerungen Fg${index + 1}`}
-           sub="Einfluss via f_F (Abb. 3/4). 0 = kein Einfluss">
+           sub="Einfluss via f_F (Einfahrt, Abb. 3/4) und L_A (Ausfahrt, Abb. 5). 0 = kein Einfluss">
         <NumInput live value={arm.fg} onChange={v => upd('fg', v)} width={80} />
         <span style={{ fontSize: 11, color: '#9ca3af', width: 36 }}>FG/h</span>
       </Row>
@@ -191,6 +191,46 @@ function EntryCard({ e, arm, armNumber }: { e: EntryResult; arm: ArmInput; armNu
           {arm.fg > 0 && (
             <span style={{ marginLeft: 8, color: '#9ca3af' }}>(FG = {arm.fg} FG/h)</span>
           )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ExitCard({ e, arm, armNumber }: { e: ExitResult; arm: ArmInput; armNumber: number }) {
+  const col = utilizationColor(e.utilizationDegree)
+  const pct = Math.min(999, Math.round(e.utilizationDegree * 100))
+  return (
+    <div style={{ background: '#fff', borderRadius: 8,
+                  border: `1px solid ${e.overloaded ? '#dc2626' : '#e5e7eb'}`,
+                  marginBottom: 10, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '10px 14px', borderBottom: '1px solid #f3f4f6' }}>
+        <div>
+          <span style={{ fontWeight: 700, fontSize: 14, color: '#1e293b' }}>Arm {armNumber}</span>
+          {arm.name && <span style={{ fontSize: 12, color: '#6b7280', marginLeft: 8 }}>{arm.name}</span>}
+        </div>
+        <span style={{ fontSize: 15, fontWeight: 700, color: col }}>
+          {pct} %{e.overloaded ? ' · überlastet' : ''}
+        </span>
+      </div>
+      <div style={{ padding: '4px 14px 0' }}>
+        <UtilBar value={e.utilizationDegree} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 8px',
+                    padding: '8px 14px 10px', fontSize: 12, color: '#6b7280' }}>
+        <div>
+          <span style={{ color: '#9ca3af' }}>Q_A </span>
+          <strong style={{ color: '#374151' }}>{e.qa} PWE/h</strong>
+        </div>
+        <div>
+          <span style={{ color: '#9ca3af' }}>L_A </span>
+          <strong>{Math.round(e.capacity)} PWE/h</strong>
+        </div>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <span style={{ color: '#9ca3af' }}>X = Q_A / L_A </span>
+          <strong style={{ color: col }}>{e.utilizationDegree.toFixed(2)}</strong>
+          {arm.fg > 0 && <span style={{ marginLeft: 8, color: '#9ca3af' }}>(FG = {arm.fg} FG/h)</span>}
         </div>
       </div>
     </div>
@@ -365,6 +405,41 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
         </tbody>
       </table>
 
+      {/* Ausfahrten-Check (Ziffer 10, Abb. 5) */}
+      <div style={{ fontWeight: 700, fontSize: 10, color: '#1e3a5f', textTransform: 'uppercase',
+                    letterSpacing: '0.06em', marginBottom: 3 }}>Ausfahrten-Check (Abb. 5)</div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 14 }}>
+        <thead>
+          <tr>
+            <th style={thL}>Arm</th>
+            <th style={th}>Q_A<br/>[PWE/h]</th>
+            <th style={th}>FG<br/>[FG/h]</th>
+            <th style={th}>L_A<br/>[PWE/h]</th>
+            <th style={th}>x = Q_A/L_A<br/>[%]</th>
+            <th style={{ ...th, textAlign: 'center' }}>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {result.exits.map((e, i) => (
+            <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f7f7f7' }}>
+              <td style={tdL}>
+                <strong>Arm {i + 1}</strong>{arms[i].name ? ` — ${arms[i].name}` : ''}
+              </td>
+              <td style={td}>{e.qa}</td>
+              <td style={td}>{e.fg}</td>
+              <td style={td}>{Math.round(e.capacity)}</td>
+              <td style={{ ...td, fontWeight: 600, color: e.overloaded ? '#b91c1c' : '#374151' }}>
+                {Math.round(e.utilizationDegree * 100)} %
+              </td>
+              <td style={{ ...td, textAlign: 'center', fontWeight: 700,
+                           color: e.overloaded ? '#b91c1c' : '#15803d' }}>
+                {e.overloaded ? 'Überlast' : 'OK'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
       {/* Gesamtbeurteilung */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14,
                     border: `2px solid ${LOS_COLOR[overall]}`, borderRadius: 5,
@@ -398,7 +473,8 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
         {' '}Q_E = Summe Abbiegeströme × f (Tab. 2, Längsneigung).
         Q_K = Kreisfahrbahnquerschnitt aus Abbiegeströmen × 1,1 (Abb. 10).
         L_E: 1141 − 0,578·Q_K (1/1, SN 640 024a) | 1455 − 0,537·Q_K (2/1+, SN 640 024a) | 1639,9·e^(−0,0006·Q_K) (2/2, VSS 2005/301).
-        f_F nach Abb. 3/4 (bilinear interpoliert); Typ 2/2 verwendet Abb. 4 (mangels eigener Messwerte). Wartezeit w nach Kimber &amp; Hollis, T = 1,0 h.
+        f_F nach Abb. 3/4 (bilinear interpoliert); Typ 2/2 verwendet Abb. 4 (mangels eigener Messwerte).
+        Ausfahrten-Check (Ziffer 10, Abb. 5): Q_A ≤ L_A; L_A ≤ 1400 PWE/h, durch FG reduziert. Wartezeit w nach Kimber &amp; Hollis, T = 1,0 h.
         VQS nach Tab. 3: A ≤10 s · B ≤20 s · C ≤30 s · D ≤45 s · E &gt;45 s · F Überlast.
       </div>
 
@@ -426,9 +502,11 @@ const LEGEND_ITEMS: LegendItem[] = [
   { abbr: 'Q_E', unit: 'PWE/h', desc: 'Einfahrtsvolumen — Summe aller Abbiegeströme des Arms, umgerechnet mit f (Tab. 2)' },
   { abbr: 'Q_K', unit: 'PWE/h', desc: 'Kreisfahrbahnbelastung — Querschnittsbelastung unmittelbar vor der Einfahrt, aus den Knotenströmen gemäss Belastungsplan (Abb. 2, VSS 40 024a)' },
   { abbr: 'L_E', unit: 'PWE/h', desc: 'Leistungsfähigkeit der Einfahrt — 1141 − 0,578·Q_K (1/1, SN 640 024a), 1455 − 0,537·Q_K (2/1+, SN 640 024a), 1639,9·e^(−0,0006·Q_K) (2/2, VSS 2005/301); mit Fussgänger*innen: L_E × f_F' },
+  { abbr: 'Q_A', unit: 'PWE/h', desc: 'Ausfahrtsvolumen — Summe aller Bewegungen, die an diesem Arm den Kreisel verlassen (aus den Abbiegeströmen, mit f der Herkunftsarme gewichtet)' },
+  { abbr: 'L_A', unit: 'PWE/h', desc: 'Leistungsfähigkeit der Ausfahrt — max. 1400 PWE/h ohne Fussgänger*innen, reduziert durch querenden Fussgängerverkehr je nach Ausfahrtsbreite (Abb. 5, Ziffer 10). Bedingung: Q_A ≤ L_A an allen Ausfahrten' },
   { abbr: 'f_F',     desc: 'Fussgängerkorrekturfaktor — Reduktion der Einfahrtskapazität durch querenden Fussgängerverkehr; bilinear interpoliert aus Abb. 3 (Typ 1/1) resp. Abb. 4 (Typ 2/1+ und 2/2)' },
   { abbr: 'R',  unit: 'PWE/h', desc: 'Reserve = L_E − Q_E; negativ bedeutet Überlast' },
-  { abbr: 'X',        desc: 'Auslastungsgrad = Q_E / L_E; massgebend für 95%- und 99%-Rückstaulänge (Abb. 8/9, VSS 40 024a)' },
+  { abbr: 'X',        desc: 'Auslastungsgrad — Einfahrt X = Q_E / L_E, Ausfahrt X = Q_A / L_A; X ≥ 1 bedeutet Überlast' },
   { abbr: 'w',   unit: 's', desc: 'Mittlere Wartezeit der Motorfahrzeuge — aus Abb. 7 (VSS 40 024a) in Abhängigkeit von Belastungsreserve R und Leistungsfähigkeit L_E' },
   { abbr: 'VQS',     desc: 'Verkehrsqualitätsstufe A–F nach Tab. 3 (SN 640 024a): A ≤10s · B ≤20s · C ≤30s · D ≤45s · E >45s · F Überlast' },
 ]
@@ -480,6 +558,14 @@ export default function RoundaboutApp() {
     armCount,
   ), [armCount, JSON.stringify(activeArms.map(a => [a.right, a.straight, a.left]))])
 
+  // Q_A je Ausfahrt (PWE/h) — Bewegungen mit dem PCE ihres Herkunftsarms gewichtet
+  const qaPWE = useMemo(() => computeQAfromTurnings(
+    activeArms.map(a => a.right * PCE_ENTRY[a.gradient]),
+    activeArms.map(a => a.straight * PCE_ENTRY[a.gradient]),
+    activeArms.map(a => a.left * PCE_ENTRY[a.gradient]),
+    armCount,
+  ).map(Math.round), [armCount, JSON.stringify(activeArms)])
+
   const result = useMemo(() => {
     const qe = activeArms.map(a =>
       Math.round((a.right + a.straight + a.left) * PCE_ENTRY[a.gradient])
@@ -487,8 +573,8 @@ export default function RoundaboutApp() {
     const qk = qkFzh.map(v => Math.round(v * PCE_RING))
     const fg = activeArms.map(a => a.fg)
     if (qe.every(v => v === 0)) return null
-    return calculateRoundabout({ type, qe, qk, fg })
-  }, [type, armCount, JSON.stringify(activeArms), JSON.stringify(qkFzh)])
+    return calculateRoundabout({ type, qe, qk, fg, qa: qaPWE })
+  }, [type, armCount, JSON.stringify(activeArms), JSON.stringify(qkFzh), JSON.stringify(qaPWE)])
 
   const overall = result?.overallLevelOfService
 
@@ -634,6 +720,24 @@ export default function RoundaboutApp() {
                 <EntryCard key={i} e={e} arm={activeArms[i]} armNumber={i + 1} />
               ))}
 
+              {/* Ausfahrten-Check (Ziffer 10, Abb. 5) */}
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280',
+                            textTransform: 'uppercase', letterSpacing: '0.05em',
+                            margin: '18px 0 8px' }}>
+                Ausfahrten-Check (Abb. 5)
+              </div>
+              {result!.exitOverload && (
+                <div style={{ padding: '10px 13px', borderRadius: 8, marginBottom: 10,
+                              background: '#fef2f2', border: '1px solid #fecaca',
+                              fontSize: 12, color: '#991b1b', lineHeight: 1.5 }}>
+                  <strong>Ausfahrt überlastet (Q_A &gt; L_A).</strong> Der Verkehr kann den
+                  Kreisel nicht abfliessen — gemäss Ziffer 10 sind andere Knotenformen zu prüfen.
+                </div>
+              )}
+              {result!.exits.map((e, i) => (
+                <ExitCard key={i} e={e} arm={activeArms[i]} armNumber={i + 1} />
+              ))}
+
               {/* Methodik */}
               <div style={{ marginTop: 16, padding: '10px 13px', borderRadius: 8,
                             background: '#f8fafc', border: '1px solid #e2e8f0',
@@ -646,6 +750,7 @@ export default function RoundaboutApp() {
                 <div><strong>Q_K</strong> = Querschnitt vor Einfahrt, berechnet aus Abbiegeströmen × 1,1</div>
                 <div><strong>L_E</strong> 1141 − 0,578·Q_K (1/1) | 1455 − 0,537·Q_K (2/1+) | 1639,9·e^(−0,0006·Q_K) (2/2)</div>
                 <div><strong>f_F</strong> nach Abb. 3/4 — bilinear interpoliert (2/2: Abb. 4 analog)</div>
+                <div><strong>Q_A / L_A</strong> Ausfahrten-Check (Ziffer 10, Abb. 5): Q_A ≤ L_A an allen Ausfahrten; L_A ≤ 1400 PWE/h, durch FG reduziert</div>
                 <div><strong>Wartezeit</strong> nach Kimber &amp; Hollis (Ref. [10]), T = 1,0 h</div>
                 <div><strong>VQS</strong> nach Tab. 3: A ≤ 10 s · B ≤ 20 s · C ≤ 30 s · D ≤ 45 s · E &gt; 45 s · F = Überlast</div>
               </div>

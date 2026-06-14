@@ -179,7 +179,16 @@ Für jede Einfahrt i werden vier Grössen bestimmt:
 
 Die Umrechnung von Fahrzeugen in PWE erfolgt mit den **Pauschalfaktoren «Motorfahrzeuge»** aus Tabelle 2 (1,7 / 1,4 / 1,1 / 1,0 / 0,9 je nach Längsneigung der Einfahrt von +4 % bis −4 %; Kreiselfahrbahn immer 1,1). Die kategorienweisen Faktoren der Tabelle 2 (Fahrrad, Motorrad, PW, LW, LZ) sind nicht implementiert.
 
-### Schritt 2: Einfahrtsleistungsfähigkeit berechnen
+### Schritt 2: Ausfahrten-Check (Q_A ≤ L_A)
+
+Bevor die Einfahrten beurteilt werden, prüft die Norm (Ziffer 10), ob der Verkehr den Kreisel überhaupt **verlassen** kann: An jeder Ausfahrt muss das Ausfahrtsvolumen Q_A(i) unter der Ausfahrtsleistungsfähigkeit L_A(i) liegen.
+
+- **Q_A(i)** — Summe aller Bewegungen, die an Arm i den Kreisel verlassen (aus den Abbiegeströmen, mit f der Herkunftsarme gewichtet) [PWE/h]
+- **L_A(i)** — Ausfahrtsleistungsfähigkeit: maximal 1400 PWE/h ohne Fussgänger*innen, reduziert durch querenden Fussgängerverkehr je nach Ausfahrtsbreite B (3,5 m / 4,5 m), Abbildung 5, Seite 11.
+
+Ist **Q_A > L_A** an einer Ausfahrt, blockiert stockender Abfluss die Kreiselfahrbahn — gemäss Norm sind dann andere Knotenformen zu prüfen. KnotenCheck weist diesen Fall aus.
+
+### Schritt 3: Einfahrtsleistungsfähigkeit berechnen
 
 Die Grundleistungsfähigkeit L_E(i) hängt linear von der Kreiselfahrbahnbelastung Q_K(i) ab (Abbildung 6, Seite 12):
 
@@ -193,14 +202,14 @@ Vorbehalte aus VSS 2005/301 zur 2/2-Kurve: Bei Q_K > 1800 PWE/h beruht sie auf w
 
 Sind querende Fussgänger*innen vorhanden, wird L_E mit dem Korrekturfaktor f_F multipliziert (Abbildung 3, Seite 10 für 1/1, Abbildung 4, Seite 10 für 2/1+). f_F ist kleiner als 1 — querende Fussgänger*innen reduzieren die Einfahrtsleistungsfähigkeit, der Effekt nimmt mit wachsendem Q_K ab. Für Typ 2/2 liefert VSS 2005/301 keinen f_F (zu wenig Fussgänger*innen an den Untersuchungsstandorten); KnotenCheck verwendet die Abb.-4-Kurven (2/1+) analog.
 
-### Schritt 3: Auslastungsgrad und Reserve berechnen
+### Schritt 4: Auslastungsgrad und Reserve berechnen
 
 - **Auslastungsgrad X = Q_E / L_E**
 - **Belastungsreserve R = L_E − Q_E [PWE/h]**
 
 Als Dimensionierungsrichtwert empfiehlt die Norm R ≥ 100 PWE/h (entspricht Qualitätsstufe D).
 
-### Schritt 4: Wartezeit und Qualitätsstufe
+### Schritt 5: Wartezeit und Qualitätsstufe
 
 Die mittlere Wartezeit wird in Abhängigkeit von R und L_E bestimmt (Abbildung 7, Seite 15). Die Qualitätsstufen entsprechen Tabelle 3, Seite 14:
 
@@ -217,11 +226,49 @@ Massgebend für den Gesamtknoten ist der Arm mit der schlechtesten Qualitätsstu
 
 ### Technische Details
 
-**Einfahrtsleistungsfähigkeit L_E — Abbildung 6:** Die Norm gibt algebraische Regressionskurven an. KnotenCheck verwendet die Formeln direkt.
+Wie beim Rechner [Einmündung & Kreuzung](#einmündung-und-kreuzung-sn-640-022): Wo die Norm eine Gleichung angibt, wird sie direkt verwendet; wo nur Diagramme vorliegen, werden Stützpunkte abgelesen und interpoliert.
 
-**Korrekturfaktor f_F — Abbildungen 3 und 4:** f_F ist als Kurvenschar (Parameter FG = 100, 200, 300, 400 FG/h) in Abhängigkeit von Q_K dargestellt. KnotenCheck liest die Kurven als Stützpunkttabellen ab und interpoliert bilinear in der FG- und Q_K-Dimension.
+| Abbildung | Inhalt | Im Rechner |
+|---|---|---|
+| **Abb. 6** | L_E Einfahrtsleistungsfähigkeit | **Formel** (Regressionskurven der Norm) |
+| **Abb. 3** | f_F, einstreifige Einfahrt | **abgelesen** (Stützpunkte, bilinear interpoliert) |
+| **Abb. 4** | f_F, zweistreifige Einfahrt | **abgelesen** (Stützpunkte, bilinear interpoliert) |
+| **Abb. 5** | L_A Ausfahrtsleistungsfähigkeit | **abgelesen** (Stützpunkte, linear interpoliert) |
+| **Abb. 7** | w mittlere Wartezeit | **Formel** (zeitabhängig, wie SN 640 022) |
 
-**Wartezeit w — Abbildung 7:**
+**Einfahrtsleistungsfähigkeit L_E — Abbildung 6 (Formeln):** Die Norm gibt algebraische Regressionskurven an, KnotenCheck verwendet sie direkt:
+
+```
+1/1:   L_E = 1141 − 0,578·Q_K         (SN 640 024a, gültig 0 ≤ Q_K ≤ 1400)
+2/1+:  L_E = 1455 − 0,537·Q_K         (SN 640 024a, gültig 0 ≤ Q_K ≤ 2000)
+2/2:   L_E = 1639,9·e^(−0,0006·Q_K)   (VSS 2005/301, Abb. 4.25)
+```
+
+**Korrekturfaktor f_F — Abbildungen 3 und 4 (abgelesen):** f_F ist als Kurvenschar (Parameter FG = 100, 200, 300, 400 FG/h) über Q_K dargestellt. KnotenCheck liest die Kurven als Stützpunkttabellen ab und interpoliert bilinear (in FG und in Q_K); FG = 0 ergibt f_F = 1,0. f_F ist am kleinsten bei Q_K = 0 und steigt mit Q_K gegen 1,0. Startwerte (Q_K = 0):
+
+| FG [FG/h] | Abb. 3 (1-streifig) | Abb. 4 (2-streifig) |
+|---:|---:|---:|
+| 100 | 0,99 | 0,89 |
+| 200 | 0,93 | 0,86 |
+| 300 | 0,87 | 0,83 |
+| 400 | 0,81 | 0,80 |
+
+Für Typ 2/2 liefert VSS 2005/301 kein f_F (zu wenig Fussgänger*innen an den Messstandorten) — KnotenCheck verwendet die Abb.-4-Kurven (2/1+) analog.
+
+**Ausfahrtsleistungsfähigkeit L_A — Abbildung 5 (abgelesen):** L_A hängt von der querenden Fussgängerzahl FG und der Ausfahrtsbreite B ab (maximal 1400 PWE/h ohne Fussgänger*innen). Stückweise lineare Interpolation der abgelesenen Stützpunkte:
+
+| FG [FG/h] | B = 3,5 m | B = 4,5 m |
+|---:|---:|---:|
+| 0 | 1400 | 1400 |
+| 100 | 1310 | 1300 |
+| 200 | (interp.) | 1200 |
+| 250 | 1190 | (interp.) |
+| 300 | 1160 | 1100 |
+| 400 | 1100 | 1010 |
+
+Die 3,5-m-Stützpunkte reproduzieren die Tabelle 5 des Anwendungsbeispiels exakt (FG 100 → 1310, 250 → 1190, 300 → 1160).
+
+**Wartezeit w — Abbildung 7 (Formel):**
 
 Auch hier gibt die Norm nur Kurven an (Abbildung 7). KnotenCheck verwendet dieselbe zeitabhängige Wartezeitformel wie beim Rechner [Einmündung & Kreuzung](#einmündung-und-kreuzung-sn-640-022) (Brilon 2008, TRR 2071, Gl. 9, Fall D2+A2, plus Bedienzeit):
 

@@ -11,6 +11,8 @@ import {
   calculateRoundabout,
   computeQKfromOD,
   computeQKfromTurnings,
+  computeQAfromTurnings,
+  exitCapacity,
 } from '../roundaboutCalculator'
 
 const approx = (actual: number, expected: number, tol: number) =>
@@ -35,6 +37,40 @@ describe('computeQKfromTurnings (Abb. 10)', () => {
   test('Arm 2: Q_K = 770', () => approx(qk[1], 770, 1))
   test('Arm 3: Q_K = 690', () => approx(qk[2], 690, 1))
   test('Arm 4: Q_K = 480', () => approx(qk[3], 480, 1))
+
+  // dieselbe OD-Matrix muss die Ausfahrtsvolumen Q_A der Tab. 4 ergeben
+  const qa = computeQAfromTurnings(rights, straights, lefts, 4)
+  test('Q_A Arm 1 = 840 (Tab. 4)', () => approx(qa[0], 840, 1))
+  test('Q_A Arm 2 = 580 (Tab. 4)', () => approx(qa[1], 580, 1))
+  test('Q_A Arm 3 = 550 (Tab. 4)', () => approx(qa[2], 550, 1))
+  test('Q_A Arm 4 = 780 (Tab. 4)', () => approx(qa[3], 780, 1))
+})
+
+// ── Ausfahrten-Check L_A (Tab. 5, Abb. 5, Ziffer 10) ─────────────────────────
+describe('exitCapacity L_A und Ausfahrten-Check (Tab. 5)', () => {
+  // L_A(FG) bei Ausfahrtsbreite 3.5 m — Stützpunkte aus dem Anwendungsbeispiel
+  test('FG=0   → 1400', () => approx(exitCapacity(0),   1400, 1))
+  test('FG=100 → 1310', () => approx(exitCapacity(100), 1310, 1))
+  test('FG=250 → 1190', () => approx(exitCapacity(250), 1190, 1))
+  test('FG=300 → 1160', () => approx(exitCapacity(300), 1160, 1))
+  test('4.5 m steiler als 3.5 m', () => expect(exitCapacity(300, true)).toBeLessThan(exitCapacity(300, false)))
+
+  const r = calculateRoundabout({
+    type: '1/1', qe: [750, 470, 570, 960], qk: [600, 770, 690, 480],
+    fg: [100, 300, 250, 0], qa: [840, 580, 550, 780],
+  })
+  test('X = Q_A/L_A je Arm (Tab. 5)', () => {
+    approx(r.exits[0].utilizationDegree, 0.64, 0.01)
+    approx(r.exits[1].utilizationDegree, 0.50, 0.01)
+    approx(r.exits[2].utilizationDegree, 0.46, 0.01)
+    approx(r.exits[3].utilizationDegree, 0.56, 0.01)
+  })
+  test('keine Ausfahrt überlastet (alle X ≤ 0.64)', () => expect(r.exitOverload).toBe(false))
+  test('Überlast wird erkannt (Q_A > L_A)', () => {
+    const o = calculateRoundabout({ type: '1/1', qe: [100], qk: [100], fg: [0], qa: [1500] })
+    expect(o.exits[0].overloaded).toBe(true)
+    expect(o.exitOverload).toBe(true)
+  })
 })
 
 // ── Tab. 4: Kreisfahrbahnbelastung via OD-Umlegung ────────────────────────────

@@ -74,6 +74,34 @@ export function basicCapacity(type: RoundaboutType, qk: number): number {
   return Math.max(0, 1639.9 * Math.exp(-0.0006 * qk))
 }
 
+// ── Ausfahrtsleistungsfähigkeit L_A — Abb. 5, SN 640 024a (Ziffer 10) ────────
+// L_A,MAX = 1400 PWE/h (ohne Fussgänger); querende Fussgänger reduzieren sie,
+// abhängig von der Ausfahrtsbreite B (3.5 m bzw. 4.5 m, Fussgängerstreifenlänge).
+// Stützpunkte aus Abb. 5 abgelesen; die 3.5-m-Kurve reproduziert die Tab.-5-Werte
+// des Anwendungsbeispiels (FG 100→1310, 250→1190, 300→1160, 0→1400) exakt.
+const LA_TABLE_3_5: [number, number][] = [[0, 1400], [100, 1310], [250, 1190], [300, 1160], [400, 1100]]
+const LA_TABLE_4_5: [number, number][] = [[0, 1400], [100, 1300], [200, 1200], [300, 1100], [400, 1010]]
+export function exitCapacity(fg: number, wide = false): number {
+  return lerpPoints(wide ? LA_TABLE_4_5 : LA_TABLE_3_5, Math.max(0, fg))
+}
+
+// ── Ausfahrtsvolumen Q_A aus Abbiegeströmen (Umkehrung von Abb. 10) ──────────
+// Q_A[j] = Summe aller Bewegungen, die an Arm j ausfahren. Erhält die Einheit
+// der Eingabe-Arrays (Fz/h oder PWE/h, falls bereits gewichtet übergeben).
+//   right[i]    → fährt an Arm (i+1) aus
+//   straight[i] → fährt an Arm (i+2) aus   (nur 4-Arm)
+//   left[i]     → fährt an Arm (i+3) bzw. (i+2) aus   (4-/3-Arm)
+export function computeQAfromTurnings(
+  rights: number[], straights: number[], lefts: number[], armCount: 3 | 4
+): number[] {
+  const n = armCount
+  return Array.from({ length: n }, (_, j) =>
+    n === 4
+      ? rights[(j - 1 + n) % n] + straights[(j - 2 + n) % n] + lefts[(j - 3 + n) % n]
+      : rights[(j - 1 + n) % n] + lefts[(j - 2 + n) % n]
+  )
+}
+
 // ── Wartezeit — Abb. 7 (Ref. [10] = Kimber & Hollis 1979) ────────────────────
 // Formel: Brilon (2008), TRR 2071, Gl. 9 (Fall D2+A2) + Bedienzeit 3600/L,
 // T = 1.0 h — wie beim SN-640-022-Rechner (dort per Abb.-4-Ablesung verifiziert)
@@ -107,9 +135,20 @@ export interface EntryResult {
   levelOfService: LevelOfService
 }
 
+export interface ExitResult {
+  armIndex: number
+  qa: number                // Ausfahrtsvolumen [PWE/h]
+  fg: number                // Fussgängerbelastung [FG/h]
+  capacity: number          // L_A [PWE/h]
+  utilizationDegree: number // X = Q_A / L_A
+  overloaded: boolean       // Q_A > L_A → andere Knotenform suchen
+}
+
 export interface RoundaboutResult {
   type: RoundaboutType
   entries: EntryResult[]
+  exits: ExitResult[]
+  exitOverload: boolean     // mind. eine Ausfahrt überlastet (Q_A > L_A)
   overallLevelOfService: LevelOfService
 }
 
@@ -121,10 +160,12 @@ export interface RoundaboutInput {
   qe: number[]   // Einfahrtsvolumen [PWE/h]
   qk: number[]   // Kreisfahrbahnbelastung je Einfahrt [PWE/h]
   fg: number[]   // Fussgängerbelastung je Einfahrt [FG/h]
+  qa?: number[]      // Ausfahrtsvolumen [PWE/h] — für Ausfahrten-Check (Ziffer 10)
+  exitWide?: boolean[]  // Ausfahrtsbreite 4.5 m statt 3.5 m je Arm
 }
 
 export function calculateRoundabout(input: RoundaboutInput): RoundaboutResult {
-  const { type, qe, qk, fg } = input
+  const { type, qe, qk, fg, qa, exitWide } = input
 
   const entries: EntryResult[] = qe.map((q, i) => {
     const fF          = correctionFactorFF(type, fg[i], qk[i])
@@ -137,8 +178,16 @@ export function calculateRoundabout(input: RoundaboutInput): RoundaboutResult {
     return { armIndex: i, qe: q, qk: qk[i], fg: fg[i], fF, leBase, capacity, reserve, utilizationDegree: x, delay, levelOfService: los }
   })
 
+  // Ausfahrten-Check (Ziffer 10, Abb. 5): Q_A(i) ≤ L_A(i) an allen Ausfahrten
+  const exits: ExitResult[] = (qa ?? []).map((q, i) => {
+    const capacity = exitCapacity(fg[i], exitWide?.[i] ?? false)
+    const xa       = capacity > 0 ? q / capacity : Infinity
+    return { armIndex: i, qa: q, fg: fg[i], capacity, utilizationDegree: xa, overloaded: q > capacity }
+  })
+
   return {
-    type, entries,
+    type, entries, exits,
+    exitOverload: exits.some(e => e.overloaded),
     overallLevelOfService: worstLOS(entries.map(e => e.levelOfService)),
   }
 }
