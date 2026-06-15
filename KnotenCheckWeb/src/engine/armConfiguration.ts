@@ -57,6 +57,7 @@ export interface ArmConfiguration {
   hasSeparateTurnLane: boolean            // Fn 1
   rightLaneVolume?: number                // Fn 2
   hasRightTurnTriangleIsland: boolean     // Fn 3/4
+  hasLeftTurnLane?: boolean               // Ziffer 14 / F22: separater HS-Linksabbiegestreifen (Default: vorhanden)
   mixedLaneCombination: MixedLaneCombination  // nur NS-Arme in Kreuzung
 }
 
@@ -119,6 +120,8 @@ export function toSNLaneFlags(cfg: IntersectionConfiguration): SN640022LaneFlags
     armCTriangleIsland: c?.hasRightTurnTriangleIsland ?? false,
     armBRightIsland:    b?.hasRightTurnTriangleIsland ?? false,
     armDRightIsland:    d?.hasRightTurnTriangleIsland ?? false,
+    armALeftLane:       a?.hasLeftTurnLane ?? true,   // F22: aus = p0* (Rückstau HS)
+    armCLeftLane:       c?.hasLeftTurnLane ?? true,
   }
 }
 

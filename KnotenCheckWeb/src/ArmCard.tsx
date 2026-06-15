@@ -189,8 +189,11 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
   // gegenüberliegenden Linkseinbieger (Strom 10) → Fn 4 ist wirkungslos.
   // Kreuzung (4 Arme): alle Arme haben Rechtsabbieger → alle Fussnoten wirksam.
   const showHSGeom = isHS && (armCount === 4 || index === 0)
+  // HS-Linksabbieger (Strom 1/7) → separater Linksabbiegestreifen (Ziffer 14 / F22):
+  // T-Knoten nur Arm C (index 1, Strom 7); Kreuzung beide HS-Arme (Strom 1 und 7).
+  const showLeftLane = isHS && (armCount === 4 || index === 1)
   const showNSGeom = !isHS && armCount === 4
-  const showGeom   = showHSGeom || showNSGeom
+  const showGeom   = showHSGeom || showLeftLane || showNSGeom
 
   return (
     <div style={{ border: `1px solid ${bd}`, borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
@@ -279,6 +282,7 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
       <SectionLabel title="Geometrie (Fussnoten)" />
       {isHS ? (
         <>
+          {showHSGeom && (<>
           <Row label="Fn 1: Rechtsabbieger auf separatem Streifen"
                sub="q3 resp. q9 entfällt aus NS-Konfliktformeln F3–F8">
             <Ckbx checked={arm.hasSeparateTurnLane} onChange={v => upd('hasSeparateTurnLane', v)} />
@@ -287,8 +291,8 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
                sub="Zusätzlich: q3 / q9 entfällt aus F1, F2, F5, F6">
             <Ckbx checked={arm.hasRightTurnTriangleIsland} onChange={v => upd('hasRightTurnTriangleIsland', v)} />
           </Row>
-          <Row label="Fn 2: Separater Linksabbiegestreifen HS"
-               sub="NS muss nur dem rechten Fahrstreifen Vortritt geben (F3/F4)">
+          <Row label="Fn 2: Hauptstrasse mehrstreifig"
+               sub="Bei >1 Fahrstreifen zählt für q2 bzw. q8 nur die Belastung des rechten Fahrstreifens (F3/F4)">
             <Ckbx checked={arm.rightLaneVolume !== undefined}
               onChange={on => upd('rightLaneVolume', on ? 0 : undefined)} />
           </Row>
@@ -296,6 +300,13 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
             <Row label="Belastung rechter Fahrstreifen">
               <NumInput value={arm.rightLaneVolume} onChange={v => upd('rightLaneVolume', v)} live={live} />
               <span style={{ fontSize: 11, color: '#9ca3af', width: 30 }}>Fz/h</span>
+            </Row>
+          )}
+          </>)}
+          {showLeftLane && (
+            <Row label="Separater Linksabbiegestreifen (HS-Linksabbieger)"
+                 sub="Ohne eigenen Streifen blockiert der HS-Linksabbieger (Strom 1/7) den durchgehenden Verkehr → p₀* (Ziffer 14 / F22), senkt die NS-Kapazität">
+              <Ckbx checked={arm.hasLeftTurnLane ?? true} onChange={v => upd('hasLeftTurnLane', v)} />
             </Row>
           )}
         </>
