@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { Berechnungsblatt } from './Berechnungsblatt'
-import einmuendungSvg from './assets/einmuendung.svg'
+import { KnotenDiagramm } from './KnotenDiagramm'
 import kreuzungSvg    from './assets/kreuzung.svg'
 import { analyzeSN640022 } from './engine/sn640022Calculator'
 import {
@@ -246,6 +246,18 @@ export default function SN022App() {
     return analyzeSN640022(v, toSNLaneFlags(cfg), raw)
   }, [cfg])
 
+  // Daten fürs dynamische Knotenschema (Einmündung)
+  // Volumen aus der Eingabe (alle Bewegungen, Fz/h) — result.streams enthält nur Rang ≥ 2
+  const diagFlags = toSNLaneFlags(cfg)
+  const [armA, armC, armB] = cfg.arms
+  const diagVols = {
+    q2: armA?.straightVolume, q3: armA?.rightVolume,
+    q8: armC?.straightVolume, q7: armC?.leftVolume,
+    q4: armB?.leftVolume,     q6: armB?.rightVolume,
+  }
+  const diagLos = (n: number) =>
+    result?.streams.find(s => s.streamNumber === n)?.levelOfService
+
   const setArm = (i: number, arm: ArmConfiguration) =>
     setCfg(prev => { const arms = [...prev.arms]; arms[i] = arm; return { ...prev, arms } })
 
@@ -312,12 +324,24 @@ export default function SN022App() {
           {/* Schematik */}
           <div style={{ marginBottom: 16, borderRadius: 8, overflow: 'hidden',
                         border: '1px solid #e5e7eb', background: '#fafafa', padding: 8 }}>
-            <img
-              src={cfg.arms.length === 3 ? einmuendungSvg : kreuzungSvg}
-              alt={cfg.arms.length === 3 ? 'T-Knoten Schema' : 'Kreuzung Schema'}
-              style={{ width: '100%', height: 'auto', display: 'block',
-                       maxHeight: 280, objectFit: 'contain' }}
-            />
+            {cfg.arms.length === 3 ? (
+              <KnotenDiagramm
+                volumes={diagVols}
+                separateLaneA={diagFlags.armASeparateLane}
+                islandA={diagFlags.armATriangleIsland}
+                losByStream={result ? {
+                  q2: diagLos(2), q3: diagLos(3), q4: diagLos(4),
+                  q6: diagLos(6), q7: diagLos(7), q8: diagLos(8),
+                } : undefined}
+              />
+            ) : (
+              <img
+                src={kreuzungSvg}
+                alt="Kreuzung Schema"
+                style={{ width: '100%', height: 'auto', display: 'block',
+                         maxHeight: 280, objectFit: 'contain' }}
+              />
+            )}
           </div>
 
           {result
