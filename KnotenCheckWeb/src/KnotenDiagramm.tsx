@@ -2,8 +2,10 @@
 // Reines JSX-SVG. Pfeile bleiben je Arm im eigenen Zufahrtsbereich (kein Überqueren).
 // 4-Arm: ein generischer West-Arm, 4× um die Mitte rotiert (Geometrie DRY); Labels upright.
 
+import { useId } from 'react'
+
 export type Los = 'A' | 'B' | 'C' | 'D' | 'E' | 'F'
-type StreamKey =
+export type StreamKey =
   | 'q1' | 'q2' | 'q3' | 'q4' | 'q5' | 'q6'
   | 'q7' | 'q8' | 'q9' | 'q10' | 'q11' | 'q12'
 type Pt = readonly [number, number]
@@ -21,6 +23,10 @@ export interface KnotenDiagrammProps {
   leftLaneC?: boolean       // separater Linksabbiegestreifen C (q7)
   islandB?: boolean         // Fn 4: Dreiecksinsel B (q6) — nur Kreuzung
   islandD?: boolean         // Fn 4: Dreiecksinsel D (q12) — nur Kreuzung
+  // Fussgängerstreifen je Arm (VSS 2011/308) — Zebra + optionale Mittelinsel
+  crosswalkA?: boolean; crosswalkC?: boolean; crosswalkB?: boolean; crosswalkD?: boolean
+  mittelA?: boolean;    mittelC?: boolean;    mittelB?: boolean;    mittelD?: boolean
+  fgA?: number;         fgC?: number;         fgB?: number;         fgD?: number  // [Fg/h]
   width?: number | string
 }
 
@@ -59,6 +65,34 @@ const IslandTri = ({ at, rot = 0, w = 14, h = 18 }: { at: Pt; rot?: number; w?: 
              fill={ISLE} stroke={ISLE_S} strokeWidth="1" />
   </g>
 )
+// Fussgängerstreifen (Zebra), absolut platziert. at = Mitte; along = Fahrtrichtung der Strasse
+// ('h' = Querstrasse waagrecht, 'v' = senkrecht). mittel = unterteilende Mittelinsel
+// (grauer Balken auf der Strassenachse, Art. 47 Abs. 3 VRV). span = Strassenbreite, depth = Tiefe.
+const Zebra = ({ at, along, span = 52, depth = 16, mittel }:
+  { at: Pt; along: 'h' | 'v'; span?: number; depth?: number; mittel?: boolean }) => {
+  const [cx, cy] = at
+  const barH = 4.5
+  const offs = [-0.42, -0.25, -0.08, 0.08, 0.25, 0.42].map(f => f * span)  // quer zur Fahrt
+  const bar = (o: number, i: number) =>
+    along === 'h'
+      ? <rect key={i} x={cx - depth / 2} y={cy + o - barH / 2} width={depth} height={barH} rx="1" fill="#F4C518" />
+      : <rect key={i} x={cx + o - barH / 2} y={cy - depth / 2} width={barH} height={depth} rx="1" fill="#F4C518" />
+  return (
+    <g>
+      {offs.filter(o => !(mittel && Math.abs(o) < 0.12 * span)).map(bar)}
+      {mittel && (along === 'h'
+        ? <rect x={cx - depth / 2 - 5} y={cy - 6} width={depth + 10} height="12" rx="2" fill="#B9B7AE" stroke="#8A887F" strokeWidth="1" />
+        : <rect x={cx - 6} y={cy - depth / 2 - 5} width="12" height={depth + 10} rx="2" fill="#B9B7AE" stroke="#8A887F" strokeWidth="1" />)}
+    </g>
+  )
+}
+// Fussgängervolumen [Fg/h] als Pille am Streifen (gelb = Fussgänger-Thema)
+const FgLabel = ({ at, v }: { at: Pt; v: number }) => (
+  <g>
+    <rect x={at[0] - 16} y={at[1] - 9} width="32" height="16" rx="8" fill="#FFFFFF" stroke="#D4A800" strokeWidth="1.2" />
+    <text x={at[0]} y={at[1] + 3.5} textAnchor="middle" fontSize="11" fontWeight="700" fill="#8A6D00">{v}</text>
+  </g>
+)
 
 // ── Ankerpunkte Einmündung (viewBox 0 0 300 345) ─────────────────────────────
 const P = {
@@ -74,23 +108,31 @@ const P = {
   bToA: [134, 168], bToC: [186, 168],
   aCircle: [22, 125], cCircle: [278, 125], bCircle: [150, 284],
   islT: [125, 150], islR: [150, 150], islB: [150, 176],
-  lAC: [100, 130], lCA: [200, 94], lAB: [100, 170],
-  lCB: [200, 130], lBA: [140, 206], lBC: [190, 206],
+  lAC: [130, 130], lCA: [150, 94], lAB: [110, 170],
+  lCB: [170, 135], lBA: [140, 190], lBC: [190, 190],
 } as const
 
 export function KnotenDiagramm({
   armCount = 3, volumes = {}, losByStream = {},
   separateLaneA = false, islandA = false, leftLaneA = true,
   separateLaneC = false, islandC = false, leftLaneC = true,
-  islandB = false, islandD = false, width = '100%',
+  islandB = false, islandD = false,
+  crosswalkA = false, crosswalkC = false, crosswalkB = false, crosswalkD = false,
+  mittelA = false, mittelC = false, mittelB = false, mittelD = false,
+  fgA = 0, fgC = 0, fgB = 0, fgD = 0,
+  width = '100%',
 }: KnotenDiagrammProps) {
   const col = (s: StreamKey, fallback: string) =>
     losByStream[s] ? LOS_COLOR[losByStream[s]!] : fallback
   const fbc = (s: StreamKey) => col(s, RANG1.has(s) ? BLUE : GRAY)
   const lbl = (s: StreamKey) => volumes[s] ?? 0
 
+  // Eindeutige Marker-ID je Instanz — sonst kollidieren mehrere gleichzeitig
+  // gemountete Diagramme (SN 022 + VSS 308) auf #kd-arrow → Pfeilspitze fehlt.
+  const mid = 'kd-arrow-' + useId().replace(/:/g, '')
+
   const Arrow = ({ d, c, w = 2.8 }: { d: string; c: string; w?: number }) => (
-    <path d={d} fill="none" stroke={c} strokeWidth={w} strokeLinejoin="round" markerEnd="url(#kd-arrow)" />
+    <path d={d} fill="none" stroke={c} strokeWidth={w} strokeLinejoin="round" markerEnd={`url(#${mid})`} />
   )
   const Stem = ({ from, to }: { from: Pt; to: Pt }) => (
     <path d={M(from) + L(to)} fill="none" stroke={STEM} strokeWidth="5" strokeLinecap="round" />
@@ -102,7 +144,7 @@ export function KnotenDiagramm({
     </g>
   )
   const Marker = (
-    <marker id="kd-arrow" viewBox="0 0 10 10" refX="8" refY="5"
+    <marker id={mid} viewBox="0 0 10 10" refX="8" refY="5"
             markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,2.5 L10,5 L0,7.5 z" fill="context-stroke" />
     </marker>
@@ -133,6 +175,12 @@ export function KnotenDiagramm({
           <line x1="6" y1="180" x2="150" y2="180" /><line x1="210" y1="180" x2="354" y2="180" />
           <line x1="180" y1="6" x2="180" y2="150" /><line x1="180" y1="210" x2="180" y2="354" />
         </g>
+
+        {/* Fussgängerstreifen (am Stammende, nahe Knotenmitte) — unter den Pfeilen */}
+        {crosswalkA && <Zebra at={[92, 180]}  along="h" mittel={mittelA} />}
+        {crosswalkC && <Zebra at={[268, 180]} along="h" mittel={mittelC} />}
+        {crosswalkD && <Zebra at={[180, 92]}  along="v" mittel={mittelD} />}
+        {crosswalkB && <Zebra at={[180, 268]} along="v" mittel={mittelB} />}
 
         {/* Arme (Geometrie rotiert) */}
         {arms.map(a => {
@@ -174,19 +222,25 @@ export function KnotenDiagramm({
 
         {/* Werte (explizit platziert, neben den Pfeilen; Farbe = LOS/Rang-1-Blau) */}
         <g fontSize="13" textAnchor="middle">
-          <text x="150" y="170" fill={fbc('q2')}> {lbl('q2')}</text>
-          <text x="96" y="225" fill={fbc('q3')}> {lbl('q3')}</text>
-          <text x="96" y="145" fill={fbc('q1')}> {lbl('q1')}</text>
+          <text x="150" y="175" fill={fbc('q2')}> {lbl('q2')}</text>
+          <text x="110" y="225" fill={fbc('q3')}> {lbl('q3')}</text>
+          <text x="110" y="145" fill={fbc('q1')}> {lbl('q1')}</text>
           <text x="228" y="170" fill={fbc('q8')}> {lbl('q8')}</text>
-          <text x="262" y="145" fill={fbc('q9')}> {lbl('q9')}</text>
-          <text x="262" y="225" fill={fbc('q7')}> {lbl('q7')}</text>
+          <text x="250" y="145" fill={fbc('q9')}> {lbl('q9')}</text>
+          <text x="250" y="225" fill={fbc('q7')}> {lbl('q7')}</text>
           <text x="185" y="160" fill={fbc('q11')}> {lbl('q11')}</text>
-          <text x="120" y="108" fill={fbc('q12')}> {lbl('q12')}</text>
-          <text x="240" y="108" fill={fbc('q10')}> {lbl('q10')}</text>
+          <text x="135" y="110" fill={fbc('q12')}> {lbl('q12')}</text>
+          <text x="225" y="110" fill={fbc('q10')}> {lbl('q10')}</text>
           <text x="185" y="205" fill={fbc('q5')}> {lbl('q5')}</text>
-          <text x="120" y="256" fill={fbc('q4')}> {lbl('q4')}</text>
-          <text x="240" y="256" fill={fbc('q6')}> {lbl('q6')}</text>
+          <text x="135" y="256" fill={fbc('q4')}> {lbl('q4')}</text>
+          <text x="225" y="256" fill={fbc('q6')}> {lbl('q6')}</text>
         </g>
+
+        {/* Fussgängervolumen [Fg/h] am jeweiligen Streifen */}
+        {crosswalkA && fgA > 0 && <FgLabel at={[60, 180]}  v={fgA} />}
+        {crosswalkC && fgC > 0 && <FgLabel at={[300, 180]} v={fgC} />}
+        {crosswalkD && fgD > 0 && <FgLabel at={[180, 70]}  v={fgD} />}
+        {crosswalkB && fgB > 0 && <FgLabel at={[180, 290]} v={fgB} />}
       </svg>
     )
   }
@@ -207,6 +261,11 @@ export function KnotenDiagramm({
         <line x1="10" y1="125" x2="120" y2="125" /><line x1="180" y1="125" x2="290" y2="125" />
         <line x1="150" y1="156" x2="150" y2="298" />
       </g>
+
+      {/* Fussgängerstreifen (am Stammende, nahe Knotenmitte) */}
+      {crosswalkA && <Zebra at={[100, 125]} along="h" span={44} mittel={mittelA} />}
+      {crosswalkC && <Zebra at={[197, 125]} along="h" span={44} mittel={mittelC} />}
+      {crosswalkB && <Zebra at={[150, 202]} along="v" span={44} mittel={mittelB} />}
 
       {islandA && (
         <polygon points={pts(P.islT, P.islR, P.islB)} fill={ISLE} stroke={ISLE_S} strokeWidth="1" />
@@ -263,6 +322,11 @@ export function KnotenDiagramm({
         <text x={P.lBA[0]} y={P.lBA[1]} fill={fbc('q4')}> {lbl('q4')}</text>
         <text x={P.lBC[0]} y={P.lBC[1]} fill={fbc('q6')}> {lbl('q6')}</text>
       </g>
+
+      {/* Fussgängervolumen [Fg/h] am jeweiligen Streifen */}
+      {crosswalkA && fgA > 0 && <FgLabel at={[65, 125]}  v={fgA} />}
+      {crosswalkC && fgC > 0 && <FgLabel at={[230, 125]} v={fgC} />}
+      {crosswalkB && fgB > 0 && <FgLabel at={[152, 225]} v={fgB} />}
     </svg>
   )
 }

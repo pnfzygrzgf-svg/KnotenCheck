@@ -2,9 +2,8 @@ import { useState, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { calculateVSS308 } from './engine/vss2011308Calculator'
 import type { ArmInput, ArmResult, StreamResult, LevelOfService, RoadType } from './engine/vss2011308Calculator'
-import kreuzungSvg       from './assets/kreuzung.svg'
-import einmuendungSvg    from './assets/einmuendung.svg'
 import rechtsvorttrittSvg from './assets/rechtsvortritt.svg'
+import { KnotenDiagramm, type StreamKey, type Los } from './KnotenDiagramm'
 import { exportTool, importTool } from './saveLoad'
 import { LegendBox, type LegendItem } from './LegendBox'
 import { useToast, Toast } from './Toast'
@@ -676,12 +675,33 @@ export default function VSS308App() {
   const result = useMemo(() => calculateVSS308(calcInput), [calcInput])
   const overall = result.overallLevelOfService
 
+  // Ströme (from→to) auf die Diagramm-Stromnummern q1–q12 abbilden.
+  // Armindizes: 0=A, 1=C, 2=B, 3=D
+  const diagVols: Partial<Record<StreamKey, number>> = {}
+  const diagLos:  Partial<Record<StreamKey, Los>>    = {}
+  const QMAP: Record<string, StreamKey> = {
+    '0-3': 'q1', '0-1': 'q2', '0-2': 'q3', '2-0': 'q4',  '2-3': 'q5',  '2-1': 'q6',
+    '1-2': 'q7', '1-0': 'q8', '1-3': 'q9', '3-1': 'q10', '3-2': 'q11', '3-0': 'q12',
+  }
+  for (const s of result.streams) {
+    const q = QMAP[`${s.fromArmIndex}-${s.toArmIndex}`]
+    if (!q) continue
+    diagVols[q] = s.Q
+    diagLos[q]  = s.levelOfService as Los
+  }
+
   // Schematik
-  const schematic = nodeType === '3arm'
-    ? <img src={einmuendungSvg} alt="Einmündung" style={{ width: '100%', height: 'auto' }} />
-    : nodeType === 'equal'
+  const schematic = nodeType === 'equal'
     ? <img src={rechtsvorttrittSvg} alt="Rechtsvortritt" style={{ width: '100%', height: 'auto' }} />
-    : <img src={kreuzungSvg} alt="Kreuzung" style={{ width: '100%', height: 'auto', display: 'block' }} />
+    : <KnotenDiagramm armCount={nodeType === '3arm' ? 3 : 4}
+        volumes={diagVols} losByStream={diagLos}
+        leftLaneA={false} leftLaneC={false}
+        crosswalkA={arms[0]?.fg > 0} crosswalkC={arms[1]?.fg > 0}
+        crosswalkB={arms[2]?.fg > 0} crosswalkD={arms[3]?.fg > 0}
+        mittelA={!!arms[0]?.mittelinsel} mittelC={!!arms[1]?.mittelinsel}
+        mittelB={!!arms[2]?.mittelinsel} mittelD={!!arms[3]?.mittelinsel}
+        fgA={arms[0]?.fg} fgC={arms[1]?.fg} fgB={arms[2]?.fg} fgD={arms[3]?.fg}
+      />
 
   const activeArms = nodeType === '3arm' ? arms.slice(0, 3) : arms
 
