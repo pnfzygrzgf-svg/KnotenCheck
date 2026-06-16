@@ -4,7 +4,6 @@ import { useState, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { Berechnungsblatt } from './Berechnungsblatt'
 import { KnotenDiagramm } from './KnotenDiagramm'
-import kreuzungSvg    from './assets/kreuzung.svg'
 import { analyzeSN640022 } from './engine/sn640022Calculator'
 import {
   defaultIntersection, toSNVolumes, toSNRawVolumes, toSNLaneFlags,
@@ -249,14 +248,20 @@ export default function SN022App() {
   // Daten fürs dynamische Knotenschema (Einmündung)
   // Volumen aus der Eingabe (alle Bewegungen, Fz/h) — result.streams enthält nur Rang ≥ 2
   const diagFlags = toSNLaneFlags(cfg)
-  const [armA, armC, armB] = cfg.arms
+  const [armA, armC, armB, armD] = cfg.arms
   const diagVols = {
-    q2: armA?.straightVolume, q3: armA?.rightVolume,
-    q8: armC?.straightVolume, q7: armC?.leftVolume,
-    q4: armB?.leftVolume,     q6: armB?.rightVolume,
+    q1: armA?.leftVolume,     q2: armA?.straightVolume, q3: armA?.rightVolume,
+    q7: armC?.leftVolume,     q8: armC?.straightVolume, q9: armC?.rightVolume,
+    q4: armB?.leftVolume,     q5: armB?.straightVolume, q6: armB?.rightVolume,
+    q10: armD?.leftVolume,    q11: armD?.straightVolume, q12: armD?.rightVolume,
   }
-  const diagLos = (n: number) =>
+  const losNo = (n: number) =>
     result?.streams.find(s => s.streamNumber === n)?.levelOfService
+  const diagLos = losNo
+  const diagLosAll = {
+    q1: losNo(1), q2: losNo(2), q3: losNo(3), q4: losNo(4), q5: losNo(5), q6: losNo(6),
+    q7: losNo(7), q8: losNo(8), q9: losNo(9), q10: losNo(10), q11: losNo(11), q12: losNo(12),
+  }
 
   const setArm = (i: number, arm: ArmConfiguration) =>
     setCfg(prev => { const arms = [...prev.arms]; arms[i] = arm; return { ...prev, arms } })
@@ -329,17 +334,25 @@ export default function SN022App() {
                 volumes={diagVols}
                 separateLaneA={diagFlags.armASeparateLane}
                 islandA={diagFlags.armATriangleIsland}
+                leftLaneC={diagFlags.armCLeftLane}
                 losByStream={result ? {
                   q2: diagLos(2), q3: diagLos(3), q4: diagLos(4),
                   q6: diagLos(6), q7: diagLos(7), q8: diagLos(8),
                 } : undefined}
               />
             ) : (
-              <img
-                src={kreuzungSvg}
-                alt="Kreuzung Schema"
-                style={{ width: '100%', height: 'auto', display: 'block',
-                         maxHeight: 280, objectFit: 'contain' }}
+              <KnotenDiagramm
+                armCount={4}
+                volumes={diagVols}
+                losByStream={result ? diagLosAll : undefined}
+                separateLaneA={diagFlags.armASeparateLane}
+                islandA={diagFlags.armATriangleIsland}
+                leftLaneA={diagFlags.armALeftLane}
+                separateLaneC={diagFlags.armCSeparateLane}
+                islandC={diagFlags.armCTriangleIsland}
+                leftLaneC={diagFlags.armCLeftLane}
+                islandB={diagFlags.armBRightIsland}
+                islandD={diagFlags.armDRightIsland}
               />
             )}
           </div>
