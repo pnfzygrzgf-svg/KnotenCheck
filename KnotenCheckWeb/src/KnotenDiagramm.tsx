@@ -36,6 +36,9 @@ const LOS_COLOR: Record<Los, string> = {
 const BLUE = '#185FA5', GRAY = '#7A786F', TEAL = '#0F6E56', STEM = '#9C9A92'
 const LANE = '#E1F5EE', ISLE = '#C0DD97', ISLE_S = '#639922'
 const RANG1 = new Set<StreamKey>(['q2', 'q3', 'q8', 'q9'])  // freie HS-Ströme → blau
+// Ein Marker je möglicher Pfeilfarbe (statt fill="context-stroke" — das kennt Safari/iOS nicht).
+const cid = (c: string) => c.replace('#', '')
+const ARROW_COLORS = Array.from(new Set([...Object.values(LOS_COLOR), BLUE, GRAY, TEAL]))
 
 // ── Helfer ────────────────────────────────────────────────────────────────────
 const M = (p: Pt) => `M${p[0]} ${p[1]}`
@@ -132,7 +135,7 @@ export function KnotenDiagramm({
   const mid = 'kd-arrow-' + useId().replace(/:/g, '')
 
   const Arrow = ({ d, c, w = 2.8 }: { d: string; c: string; w?: number }) => (
-    <path d={d} fill="none" stroke={c} strokeWidth={w} strokeLinejoin="round" markerEnd={`url(#${mid})`} />
+    <path d={d} fill="none" stroke={c} strokeWidth={w} strokeLinejoin="round" markerEnd={`url(#${mid}-${cid(c)})`} />
   )
   const Stem = ({ from, to }: { from: Pt; to: Pt }) => (
     <path d={M(from) + L(to)} fill="none" stroke={STEM} strokeWidth="5" strokeLinecap="round" />
@@ -144,10 +147,14 @@ export function KnotenDiagramm({
     </g>
   )
   const Marker = (
-    <marker id={mid} viewBox="0 0 10 10" refX="8" refY="5"
-            markerWidth="8" markerHeight="8" orient="auto">
-      <path d="M0,2.5 L10,5 L0,7.5 z" fill="context-stroke" />
-    </marker>
+    <>
+      {ARROW_COLORS.map(c => (
+        <marker key={c} id={`${mid}-${cid(c)}`} viewBox="0 0 10 10" refX="8" refY="5"
+                markerWidth="8" markerHeight="8" orient="auto">
+          <path d="M0,2.5 L10,5 L0,7.5 z" fill={c} />
+        </marker>
+      ))}
+    </>
   )
 
   if (armCount === 4) {
