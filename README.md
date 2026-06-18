@@ -50,7 +50,7 @@ An einem Knoten ohne Lichtsignalanlage gilt eine klare Vorrangregel: Fahrzeuge a
 Das Verfahren gilt für Einmündungen (drei Arme) und Kreuzungen (vier Arme).
 
 **Funktionen des Rechners:**
-- Längsneigung und Fahrzeugkategorien
+- Umrechnung in PWE/h (Ziffer 8): Neigung + Fahrzeugkategorien, Fall 1 (Tab. 1) / Fall 2 (Tab. 2)
 - Dreiecksinsel, separater Rechts- und Linksabbiegestreifen
 - Mischstreifen-Kombination für Nebenstrasse
 - Qualitätsstufen A–F
@@ -166,6 +166,7 @@ Das Verfahren nach SN 640 024a gilt für Kleinkreisel mit einstreifiger Kreiself
 **Funktionen des Rechners:**
 - Kreiseltypen 1/1, 2/1+ und 2/2
 - Abbiegeströme je Zufahrt als Eingabe
+- PWE-Umrechnung (Tab. 2): Verkehrsmischung pauschal (Motorfahrzeuge) oder detailliert (Fahrzeugkategorien) + Längsneigung
 - Kapazität, Auslastungsgrad, Wartezeit und Qualitätsstufe je Zufahrt
 
 ### Schritt 1: Verkehrsströme erfassen
@@ -177,7 +178,11 @@ Für jede Einfahrt i werden vier Grössen bestimmt:
 - **Q_A(i)** — Ausfahrtsvolumen [PWE/h]
 - **FG(i)** — Fussgänger*innen am Fussgängerstreifen vor Einfahrt und Ausfahrt [FG/h]
 
-Die Umrechnung von Fahrzeugen in PWE erfolgt mit den **Pauschalfaktoren «Motorfahrzeuge»** aus Tabelle 2 (1,7 / 1,4 / 1,1 / 1,0 / 0,9 je nach Längsneigung der Einfahrt von +4 % bis −4 %; Kreiselfahrbahn immer 1,1). Die kategorienweisen Faktoren der Tabelle 2 (Fahrrad, Motorrad, PW, LW, LZ) sind nicht implementiert.
+Die Umrechnung von Fahrzeugen in PWE erfolgt mit Tabelle 2, wahlweise **pauschal** oder **detailliert** (je Einfahrt einstellbar):
+- **Pauschal:** Spalte «Motorfahrzeuge» (1,7 / 1,4 / 1,1 / 1,0 / 0,9 je nach Längsneigung der Einfahrt von +4 % bis −4 %).
+- **Detailliert:** gewichtetes Mittel der kategorienweisen Faktoren (Fahrrad/Mofa, Motorrad, PW, LW, LZ) bei der gewählten Neigung; PW = Restanteil. Fahrrad/Mofa nur bei ±0 % definiert.
+
+Die Kreiselfahrbahn Q_K verwendet immer die Werte bei Längsneigung ±0 % (Norm S. 9) — pauschal 1,1, detailliert die jeweilige Mischung bei ±0 %.
 
 ### Schritt 2: Ausfahrten-Check (Q_A ≤ L_A)
 
@@ -671,7 +676,7 @@ Wartezeit = Abfahrtszeit − Ankunftszeit
 
 *Verkehrlich:* Das ist die eigentliche Lückenakzeptanz-Entscheidung aus der Grundidee, jetzt pro Fahrzeug durchgespielt. Das Fahrzeug prüft die ankommenden Hauptstrom-Lücken der Reihe nach: zu kleine lässt es verstreichen, die erste ausreichend grosse nutzt es zum Einfahren. Die Wartezeit ist schlicht die Zeit zwischen Ankunft an der Haltlinie und Abfahrt.
 
-Die Folgezeitlücke t_f wird nur dann auf die Abfahrtszeit aufgeschlagen, wenn das Fahrzeug mindestens eine Lücke ablehnen musste (Einfädeln hinter einem Konfliktfahrzeug); ein frei einfahrendes Fahrzeug fährt ohne t_f-Aufschlag ab. Zwischen aufeinanderfolgenden Nebenstrom-Fahrzeugen, die dieselbe grosse Lücke nutzen, erzwingt die Simulation keinen t_f-Mindestabstand — Warteschlangen fliessen dadurch schneller ab, als es die Gap-Acceptance-Theorie vorsieht (Sättigungsabfluss 3600/t_f je Lücke). Das führt insbesondere bei hoher Auslastung zu tieferen Wartezeiten als nach Kimber & Hollis.
+Die Folgezeitlücke t_f wirkt an zwei Stellen: (1) ein Fahrzeug, das mindestens eine Lücke ablehnen musste (Einfädeln hinter einem Konfliktfahrzeug), fährt mit t_f-Aufschlag ab; (2) ein Fahrzeug, das bei Ankunft bereits hinter einem Vorgänger ansteht (Warteschlange), darf frühestens t_f nach dessen Abfahrt einfahren. Dadurch fliesst eine Warteschlange auch in einer grossen Hauptstromlücke nur mit dem Sättigungsabfluss 3600/t_f je Lücke ab — entsprechend der Definition der Folgezeitlücke als Kopffolge wartender Fahrzeuge in derselben Lücke (Troutbeck & Brilon, FHWA 1997, Kap. 8.4.1). Nur ein **frei** einfahrendes Fahrzeug (Server bei Ankunft frei, ausreichende Lücke ab Ankunft) fährt ohne t_f-Aufschlag ab — das vermeidet eine Überschätzung der Wartezeit bei gering belasteten Strömen.
 
 **Schritt 5 — Gemeinsame Haltlinie (NS-Arme simultan)**
 

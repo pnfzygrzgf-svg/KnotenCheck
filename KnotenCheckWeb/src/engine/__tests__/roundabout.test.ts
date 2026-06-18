@@ -13,10 +13,35 @@ import {
   computeQKfromTurnings,
   computeQAfromTurnings,
   exitCapacity,
+  entryFactor,
+  ringFactor,
 } from '../roundaboutCalculator'
 
 const approx = (actual: number, expected: number, tol: number) =>
   expect(Math.abs(actual - expected)).toBeLessThanOrEqual(tol)
+
+// ── PW-Äquivalente Tab. 2 (S. 9): pauschal vs. detailliert ───────────────────
+describe('entryFactor / ringFactor (Tab. 2)', () => {
+  test('pauschal = Spalte Motorfahrzeuge je Neigung', () => {
+    expect(entryFactor('+4%')).toBe(1.7)
+    expect(entryFactor('±0%')).toBe(1.1)
+    expect(entryFactor('-4%')).toBe(0.9)
+  })
+  test('detailliert: LW 100 %', () => {
+    approx(entryFactor('+4%', { pctFR: 0, pctMR: 0, pctLW: 100, pctLZ: 0 }), 3.0, 1e-9)
+    approx(entryFactor('±0%', { pctFR: 0, pctMR: 0, pctLW: 100, pctLZ: 0 }), 1.5, 1e-9)
+  })
+  test('detailliert: Fahrrad/Mofa 100 % nur bei ±0 % → 0,5', () => {
+    approx(entryFactor('±0%', { pctFR: 100, pctMR: 0, pctLW: 0, pctLZ: 0 }), 0.5, 1e-9)
+  })
+  test('detailliert: PW 100 % (Rest) = 1,0 bei ±0 %', () => {
+    approx(entryFactor('±0%', { pctFR: 0, pctMR: 0, pctLW: 0, pctLZ: 0 }), 1.0, 1e-9)
+  })
+  test('ringFactor immer ±0 %: pauschal 1,1; LW 100 % → 1,5', () => {
+    expect(ringFactor()).toBe(1.1)
+    approx(ringFactor({ pctFR: 0, pctMR: 0, pctLW: 100, pctLZ: 0 }), 1.5, 1e-9)
+  })
+})
 
 // ── Q_K aus Abbiegeströmen (Abb. 10, S. 10) ──────────────────────────────────
 // Norm-Beispiel: Arm 1: r=110, s=380, l=260; Arm 4: s=410, l=130; Arm 3: l=60

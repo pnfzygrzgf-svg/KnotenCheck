@@ -327,7 +327,13 @@ function simulateStream(
     while (true) {
       t += -Math.log(Math.random()) / lambdaN
       if (t >= cfg.T) break
-      const seekStart = Math.max(t, nextFreeSlot)
+      // Steht das Fahrzeug bei Ankunft bereits hinter einem Vorgänger (Server belegt)?
+      // Dann darf es frühestens t_f nach dessen Abfahrt einfahren — die Folgezeitlücke
+      // taktet den Abfluss innerhalb einer grossen Lücke (Sättigungsabfluss 3600/t_f;
+      // Troutbeck & Brilon 1997, Kap. 8.4.1: t_f = Kopffolge wartender Fahrzeuge in
+      // derselben Hauptstromlücke). Frei einfahrende Fahrzeuge erhalten kein t_f.
+      const queued    = t < nextFreeSlot
+      const seekStart = queued ? nextFreeSlot + tf : t
       const departure = findDeparture(seekStart, conflicts, sampleTc(tc, cfg), tf, directBlocks)
       delays.push(departure - t)
       nextFreeSlot = departure
@@ -412,9 +418,14 @@ function simulateArm(
 
       if (inSystem >= storage) continue
 
-      const seekStart = Math.max(arrival, nextFreeSlot)
+      // Folgezeitlücke für nachrückende Wartende (wie simulateStream, Kap. 8.4.1):
+      // ein bei Ankunft bereits anstehendes Fahrzeug fährt frühestens t_f nach der
+      // Abfahrt des Vordermanns; frei Einfahrende ohne t_f-Aufschlag.
+      const tf_i = active[si].tf
+      const queued    = arrival < nextFreeSlot
+      const seekStart = queued ? nextFreeSlot + tf_i : arrival
       const tc_i = sampleTc(active[si].tc, cfg)
-      const departure = findDeparture(seekStart, conflictsPerIdx[si], tc_i, active[si].tf, directBlocksPerIdx[si])
+      const departure = findDeparture(seekStart, conflictsPerIdx[si], tc_i, tf_i, directBlocksPerIdx[si])
 
       // Wartezeit: nur für nicht-Pre-Backlog-Fahrzeuge mit arrival > 0 sinnvoll zu messen
       // Pre-Backlog-Fahrzeuge haben arrival=0, das Delay wäre irreführend → überspringen

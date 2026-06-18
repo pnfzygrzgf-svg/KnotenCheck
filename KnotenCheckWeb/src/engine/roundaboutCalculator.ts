@@ -8,6 +8,55 @@ export type RoundaboutType = '1/1' | '2/1+' | '2/2'
 
 export type { LevelOfService }
 
+// ── Tab. 2 (SN 640 024a, S. 9): PW-Äquivalente ────────────────────────────────
+// Verkehrsmischung + Längsneigung. Zwei Betrachtungen:
+//  • pauschal     → Spalte «Motorfahrzeuge» (RB_PCE_MOTOR)
+//  • detailliert  → kategorienweise (RB_PCE_CAT), gewichtetes Mittel über die Anteile
+// Ring (Kreiselfahrbahn) immer bei ±0 % Neigung.
+export type GradientPCE = '+4%' | '+2%' | '±0%' | '-2%' | '-4%'
+
+// Pauschalspalte «Motorfahrzeuge» (ohne Fahrrad/Mofa)
+export const RB_PCE_MOTOR: Record<GradientPCE, number> = {
+  '+4%': 1.7, '+2%': 1.4, '±0%': 1.1, '-2%': 1.0, '-4%': 0.9,
+}
+
+// Kategorienweise Faktoren je Neigung. Fahrrad/Mofa (fFR) nur bei ±0 % definiert.
+export const RB_PCE_CAT: Record<GradientPCE, {
+  fFR?: number; fMR: number; fPW: number; fLW: number; fLZ: number
+}> = {
+  '+4%': { fMR: 0.7, fPW: 1.4, fLW: 3.0, fLZ: 6.0 },
+  '+2%': { fMR: 0.6, fPW: 1.2, fLW: 2.0, fLZ: 3.0 },
+  '±0%': { fFR: 0.5, fMR: 0.5, fPW: 1.0, fLW: 1.5, fLZ: 2.0 },
+  '-2%': { fMR: 0.4, fPW: 0.9, fLW: 1.2, fLZ: 1.5 },
+  '-4%': { fMR: 0.3, fPW: 0.8, fLW: 1.0, fLZ: 1.2 },
+}
+
+// Detaillierte Verkehrsmischung [%]; PW = Rest (100 − übrige)
+export interface RbVehicleMix {
+  pctFR: number  // Fahrrad/Mofa (nur ±0 %)
+  pctMR: number  // Motorrad
+  pctLW: number  // Lastwagen/Bus
+  pctLZ: number  // Lastzüge
+}
+
+// PW-Äquivalentfaktor f der Einfahrt: ohne mix → pauschal (Motorfahrzeuge),
+// mit mix → gewichtetes Mittel der Kategorienfaktoren bei gegebener Neigung.
+export function entryFactor(gradient: GradientPCE, mix?: RbVehicleMix): number {
+  if (!mix) return RB_PCE_MOTOR[gradient]
+  const c = RB_PCE_CAT[gradient]
+  const fFR = c.fFR ?? 0
+  const pctPW = Math.max(0, 100 - mix.pctFR - mix.pctMR - mix.pctLW - mix.pctLZ)
+  const tot = pctPW + mix.pctFR + mix.pctMR + mix.pctLW + mix.pctLZ
+  if (tot <= 0) return RB_PCE_MOTOR[gradient]
+  return (c.fPW * pctPW + fFR * mix.pctFR + c.fMR * mix.pctMR
+          + c.fLW * mix.pctLW + c.fLZ * mix.pctLZ) / tot
+}
+
+// PW-Äquivalentfaktor der Kreiselfahrbahn — immer bei ±0 % Neigung (Norm S. 9).
+export function ringFactor(mix?: RbVehicleMix): number {
+  return entryFactor('±0%', mix)
+}
+
 // ── f_F Lookup-Tabellen (Abb. 3 und Abb. 4) ──────────────────────────────────
 // Abb. 3, SN 640 024a — abgelesen aus Diagramm
 // FG=0 → f_F=1.0 (kein Einfluss) wird vor der Interpolation abgefangen

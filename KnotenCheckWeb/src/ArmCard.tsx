@@ -6,7 +6,7 @@ import type {
   ArmConfiguration, GradientCategory, VehicleCategoryMix,
 } from './engine/armConfiguration'
 import type { MixedLaneCombination } from './engine/types'
-import { NumInput, Row, SectionLabel, Ckbx } from './ui'
+import { NumInput, Row, SectionLabel, Ckbx, ToggleBtn } from './ui'
 
 // ── Konstanten ─────────────────────────────────────────────────────────────────
 
@@ -237,23 +237,42 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
       )}
 
       {!geometryLocked && (<>
-      {/* Längsneigung */}
-      <SectionLabel title="Längsneigung" />
+      {/* Umrechnung in PWE/h — Ziffer 8 (Fall 1 / Fall 2) */}
+      <SectionLabel title="Umrechnung der Verkehrsbelastungen in PWE/h der einzelnen Nebenströme" />
+      <div style={{ padding: '8px 14px 6px', borderBottom: '1px solid #f3f4f6' }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <ToggleBtn small active={mix === undefined}
+            onClick={() => upd('vehicleMix', undefined)}>
+            Fall 1 — Kategorien unbekannt
+          </ToggleBtn>
+          <ToggleBtn small active={mix !== undefined}
+            onClick={() => upd('vehicleMix', mix ?? { pctLW: 0, pctLZ: 0, pctMR: 0, pctFR: 0 })}>
+            Fall 2 — Kategorien bekannt
+          </ToggleBtn>
+        </div>
+        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 5 }}>
+          Fall 1: f pauschal nach Tab. 1 (F9). · Fall 2: f je Fahrzeugkategorie nach Tab. 2 (F10).
+          In beiden Fällen ist die Neigung massgebend.
+        </div>
+      </div>
       <Row label="Neigung der Zufahrt"
-           sub={`Umrechnungsfaktor f = ${f.toFixed(2)}  (${mix ? 'Fall 2, Tab. 2' : 'Fall 1, Tab. 1'})`}>
+           sub={`in Fahrtrichtung zum Knoten · f = ${f.toFixed(2)} (${mix ? 'Fall 2, Tab. 2' : 'Fall 1, Tab. 1'})`}>
         <select value={arm.gradient}
-          onChange={e => upd('gradient', e.target.value as GradientCategory)}
+          onChange={e => {
+            const g = e.target.value as GradientCategory
+            // FR (Fahrräder) ist nur bei ±0 % definiert (Tab. 2) — beim Verlassen zurücksetzen,
+            // sonst zählt pctFR fälschlich im Nenner von effectiveFactor mit.
+            if (mix && g !== '±0%' && mix.pctFR)
+              onChange({ ...arm, gradient: g, vehicleMix: { ...mix, pctFR: 0 } })
+            else
+              upd('gradient', g)
+          }}
           style={{ fontSize: 13, padding: '3px 6px', borderRadius: 4,
                    border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>
           {GRADIENT_OPTIONS.map(o => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
-      </Row>
-      <Row label="Fahrzeugkategorien bekannt (Fall 2)"
-           sub="Aktiv: f nach Tab. 2 / F10.  Inaktiv: f pauschal nach Tab. 1 / F9.">
-        <Ckbx checked={mix !== undefined}
-          onChange={on => upd('vehicleMix', on ? { pctLW: 0, pctLZ: 0, pctMR: 0, pctFR: 0 } : undefined)} />
       </Row>
       {mix && (
         <>
@@ -277,22 +296,28 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
         </>
       )}
 
-      {/* Geometrie / Fussnoten — nur die im jeweiligen Knotentyp wirksamen */}
+      {/* Massgebende Hauptstrombelastung (Ziffer 7) — Fussnoten je Knotentyp */}
       {showGeom && (<>
-      <SectionLabel title="Geometrie (Fussnoten)" />
+      <SectionLabel title="Massgebende Hauptstrombelastung (Ziffer 7)" />
+      <div style={{ padding: '7px 14px', fontSize: 11, color: '#9ca3af', lineHeight: 1.5,
+                    borderBottom: '1px solid #f3f4f6' }}>
+        Bauliche Merkmale (Fussnoten 1–4) bestimmen, welche Hauptströme in die massgebende
+        Konfliktbelastung qpi eingehen — jede aktivierte Option senkt qpi und erhöht damit die
+        Leistungsfähigkeit.
+      </div>
       {isHS ? (
         <>
           {showHSGeom && (<>
-          <Row label="Fn 1: Rechtsabbieger auf separatem Streifen"
-               sub="q3 resp. q9 entfällt aus NS-Konfliktformeln F3–F8">
+          <Row label="Rechtsabbieger auf separatem Streifen"
+               sub="F1: q3 resp. q9 entfällt aus NS-Konfliktformeln F3–F8">
             <Ckbx checked={arm.hasSeparateTurnLane} onChange={v => upd('hasSeparateTurnLane', v)} />
           </Row>
-          <Row label="Fn 3: Dreiecksinsel für HS-Rechtsabbieger"
-               sub="Zusätzlich: q3 / q9 entfällt aus F1, F2, F5, F6">
+          <Row label="Dreiecksinsel für HS-Rechtsabbieger"
+               sub="F3: zusätzlich entfällt q3 / q9 aus F1, F2, F5, F6">
             <Ckbx checked={arm.hasRightTurnTriangleIsland} onChange={v => upd('hasRightTurnTriangleIsland', v)} />
           </Row>
-          <Row label="Fn 2: Hauptstrasse mehrstreifig"
-               sub="Bei >1 Fahrstreifen zählt für q2 bzw. q8 nur die Belastung des rechten Fahrstreifens (F3/F4)">
+          <Row label="Hauptstrasse mehrstreifig"
+               sub="F2: bei >1 Fahrstreifen zählt für q2 bzw. q8 nur die Belastung des rechten Fahrstreifens (F3/F4)">
             <Ckbx checked={arm.rightLaneVolume !== undefined}
               onChange={on => upd('rightLaneVolume', on ? 0 : undefined)} />
           </Row>
@@ -312,8 +337,8 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
         </>
       ) : (
         <>
-          <Row label="Fn 4: Dreiecksinsel für NS-Rechtsabbieger"
-               sub="q6 / q12 entfällt aus Linkseinbieger-Konfliktformel F7/F8">
+          <Row label="Dreiecksinsel für NS-Rechtsabbieger"
+               sub="F4: q6 / q12 entfällt aus Linkseinbieger-Konfliktformel F7/F8">
             <Ckbx checked={arm.hasRightTurnTriangleIsland} onChange={v => upd('hasRightTurnTriangleIsland', v)} />
           </Row>
           {isNS4arm && !hideMixedLane && (

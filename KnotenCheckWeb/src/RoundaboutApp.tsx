@@ -1,25 +1,20 @@
 import { useState, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { calculateRoundabout, computeQKfromTurnings, computeQAfromTurnings } from './engine/roundaboutCalculator'
-import type { RoundaboutType, LevelOfService, EntryResult, ExitResult } from './engine/roundaboutCalculator'
+import { calculateRoundabout, computeQKfromTurnings, computeQAfromTurnings,
+  entryFactor, ringFactor } from './engine/roundaboutCalculator'
+import type { RoundaboutType, LevelOfService, EntryResult, ExitResult,
+  GradientPCE, RbVehicleMix } from './engine/roundaboutCalculator'
 import kreiselSvg from './assets/Kreisel.svg'
 import kreisel3ArmSvg from './assets/Kreisel_3_arm.svg'
 import { exportTool, importTool } from './saveLoad'
 import { LegendBox, type LegendItem } from './LegendBox'
 import { useToast, Toast } from './Toast'
 import {
-  LOS_COLOR, LOS_BG, LOSBadge, NumInput, Row, SectionLabel, UtilBar,
+  LOS_COLOR, LOS_BG, LOSBadge, NumInput, Row, SectionLabel, UtilBar, ToggleBtn,
   delayText, utilizationColor,
 } from './ui'
 
-// ── Tab. 2: PW-Äquivalente (Motorfahrzeuge pauschal, ohne Fahrrad/Mofa) ───────
-export type GradientPCE = '+4%' | '+2%' | '±0%' | '-2%' | '-4%'
-
-const PCE_ENTRY: Record<GradientPCE, number> = {
-  '+4%': 1.7, '+2%': 1.4, '±0%': 1.1, '-2%': 1.0, '-4%': 0.9,
-}
-const PCE_RING = 1.1  // Kreiselfahrbahn: immer ±0%
-
+// ── Tab. 2: PW-Äquivalente — Logik in roundaboutCalculator.ts ─────────────────
 const GRADIENT_OPTIONS: { value: GradientPCE; label: string }[] = [
   { value: '+4%', label: '+4 % (stark bergauf)' },
   { value: '+2%', label: '+2 % (mässig bergauf)' },
@@ -38,11 +33,20 @@ interface ArmInput {
   fg: number         // Fussgängerquerungen            [FG/h]
   gradient: GradientPCE
   exitWide: boolean  // Ausfahrtsbreite 4.5 m statt 3.5 m (Abb. 5)
+  mix?: RbVehicleMix // detaillierte Verkehrsmischung (undefined = pauschal/Motorfahrzeuge)
 }
 
 function defaultArm(): ArmInput {
   return { name: '', right: 0, straight: 0, left: 0, fg: 0, gradient: '±0%', exitWide: false }
 }
+
+// Kategorie-Eingaben (Detail-Mischung); PW ergibt sich als Rest
+const MIX_ROWS: { key: keyof RbVehicleMix; label: string; onlyFlat?: boolean }[] = [
+  { key: 'pctMR', label: 'MR – Motorräder' },
+  { key: 'pctLW', label: 'LW – Lastwagen/Bus' },
+  { key: 'pctLZ', label: 'LZ – Lastzüge' },
+  { key: 'pctFR', label: 'FR – Fahrrad/Mofa', onlyFlat: true },
+]
 
 function ArmCard({ arm, index, armCount, qkFzh, onChange }: {
   arm: ArmInput
@@ -52,10 +56,15 @@ function ArmCard({ arm, index, armCount, qkFzh, onChange }: {
   onChange: (a: ArmInput) => void
 }) {
   const upd = <K extends keyof ArmInput>(k: K, v: ArmInput[K]) => onChange({ ...arm, [k]: v })
-  const pce    = PCE_ENTRY[arm.gradient]
+  const mix    = arm.mix
+  const pce    = entryFactor(arm.gradient, mix)
+  const rpce   = ringFactor(mix)
   const qeFzh  = arm.right + arm.straight + arm.left
   const qePWE  = Math.round(qeFzh * pce)
-  const qkPWE  = Math.round(qkFzh * PCE_RING)
+  const qkPWE  = Math.round(qkFzh * rpce)
+  // PW-Anteil (Rest) für die Detail-Mischung
+  const pwPct  = mix ? Math.max(0, 100 - mix.pctFR - mix.pctMR - mix.pctLW - mix.pctLZ) : 100
+  const pwOk   = !mix || (mix.pctFR + mix.pctMR + mix.pctLW + mix.pctLZ) <= 100
 
   return (
     <div style={{ border: '1px solid #c7d2e2', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
@@ -64,7 +73,7 @@ function ArmCard({ arm, index, armCount, qkFzh, onChange }: {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
           <span style={{ fontWeight: 700, fontSize: 15, color: '#1d4ed8' }}>Kreiselarm {index + 1}</span>
           <span style={{ fontSize: 11, color: '#6b7280' }}>
-            f = {pce.toFixed(1)} · Q_E = {qePWE} PWE/h
+            f = {pce.toFixed(2)} · Q_E = {qePWE} PWE/h
           </span>
         </div>
         <input type="text" value={arm.name}
@@ -111,11 +120,33 @@ function ArmCard({ arm, index, armCount, qkFzh, onChange }: {
       </Row>
 
       {/* Längsneigung */}
-      <SectionLabel title="Längsneigung Einfahrt (Tab. 2)" />
-      <Row label="Neigung"
-           sub="Bestimmt den PW-Äquivalentfaktor für Q_E. Q_K verwendet immer ±0%">
+      <SectionLabel title="Verkehrsmischung und Längsneigung" />
+      <div style={{ padding: '8px 14px 6px', borderBottom: '1px solid #f3f4f6' }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <ToggleBtn small active={!mix} onClick={() => upd('mix', undefined)}>
+            Pauschal
+          </ToggleBtn>
+          <ToggleBtn small active={!!mix}
+            onClick={() => upd('mix', mix ?? { pctFR: 0, pctMR: 0, pctLW: 0, pctLZ: 0 })}>
+            Detailliert (Fahrzeugkategorien)
+          </ToggleBtn>
+        </div>
+        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 5 }}>
+          Pauschal: Spalte «Motorfahrzeuge» (Tab. 2). · Detailliert: gewichtetes f aus den
+          Fahrzeugkategorien (Tab. 2). Die Kreiselfahrbahn nutzt die Mischung bei ±0 %.
+        </div>
+      </div>
+      <Row label="Neigung der Einfahrt"
+           sub={`in Fahrtrichtung · f = ${pce.toFixed(2)} (Tab. 2). Q_K immer ±0 %`}>
         <select value={arm.gradient}
-          onChange={e => upd('gradient', e.target.value as GradientPCE)}
+          onChange={e => {
+            const g = e.target.value as GradientPCE
+            // FR (Fahrrad/Mofa) nur bei ±0 % definiert — beim Verlassen zurücksetzen
+            if (mix && g !== '±0%' && mix.pctFR)
+              onChange({ ...arm, gradient: g, mix: { ...mix, pctFR: 0 } })
+            else
+              upd('gradient', g)
+          }}
           style={{ fontSize: 13, padding: '3px 6px', borderRadius: 4,
                    border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>
           {GRADIENT_OPTIONS.map(o => (
@@ -123,17 +154,32 @@ function ArmCard({ arm, index, armCount, qkFzh, onChange }: {
           ))}
         </select>
       </Row>
+      {mix && (<>
+        {MIX_ROWS.filter(r => !r.onlyFlat || arm.gradient === '±0%').map(r => (
+          <Row key={r.key} label={r.label}>
+            <NumInput live value={mix[r.key]} min={0} max={100} width={70}
+              onChange={v => onChange({ ...arm, mix: { ...mix, [r.key]: v } })} />
+            <span style={{ fontSize: 11, color: '#9ca3af', width: 16 }}>%</span>
+          </Row>
+        ))}
+        <Row label="PW – Personenwagen" sub="Rest aus den übrigen Anteilen">
+          <span style={{ fontSize: 13, fontWeight: 600, color: pwOk ? '#374151' : '#dc2626' }}>
+            {Math.round(pwPct)} %
+          </span>
+          {!pwOk && <span style={{ fontSize: 11, color: '#dc2626', marginLeft: 4 }}>Summe &gt; 100 %</span>}
+        </Row>
+      </>)}
 
       {/* Abgeleitete Werte */}
       <SectionLabel title="Abgeleitete Werte" />
       <Row label="Einfahrtsvolumen Q_E"
-           sub={`${qeFzh} Fz/h × ${pce.toFixed(1)} (Tab. 2)`}>
+           sub={`${qeFzh} Fz/h × ${pce.toFixed(2)} (Tab. 2)`}>
         <span style={{ fontSize: 13, fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>
           {qePWE} PWE/h
         </span>
       </Row>
       <Row label="Kreisfahrbahnbelastung Q_K"
-           sub={`${Math.round(qkFzh)} Fz/h × ${PCE_RING.toFixed(1)} — aus Abbiegeströmen`}>
+           sub={`${Math.round(qkFzh)} Fz/h × ${rpce.toFixed(2)} (±0 %) — aus Abbiegeströmen`}>
         <span style={{ fontSize: 13, fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>
           {qkPWE} PWE/h
         </span>
@@ -343,14 +389,14 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
         </thead>
         <tbody>
           {arms.map((arm, i) => {
-            const pce   = PCE_ENTRY[arm.gradient]
+            const pce   = entryFactor(arm.gradient, arm.mix)
             const qeFzh = arm.right + arm.straight + arm.left
             return (
               <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f7f7f7' }}>
                 <td style={tdL}><strong>Arm {i + 1}</strong></td>
                 <td style={tdL}>{arm.name || '—'}</td>
-                <td style={td}>{arm.gradient}</td>
-                <td style={td}>{pce.toFixed(1)}</td>
+                <td style={td}>{arm.gradient}{arm.mix ? ' · Det.' : ''}</td>
+                <td style={td}>{pce.toFixed(2)}</td>
                 <td style={td}>{arm.right}</td>
                 {armCount === 4 && <td style={td}>{arm.straight}</td>}
                 <td style={td}>{arm.left}</td>
@@ -512,7 +558,7 @@ const LEGEND_ITEMS: LegendItem[] = [
   { abbr: 'Fz/h',    desc: 'Fahrzeuge pro Stunde — Roheingabe Abbiegeströme' },
   { abbr: 'FG/h',    desc: 'Fussgänger*innen pro Stunde am Fussgängerstreifen der Einfahrt' },
   { abbr: 'PWE/h',   desc: 'Personenwageneinheiten pro Stunde — umgerechnet mit dem PW-Äquivalentfaktor f (Tab. 2)' },
-  { abbr: 'f',       desc: 'PW-Äquivalentfaktor für die Einfahrt — abhängig von der Längsneigung (Tab. 2); Kreiselfahrbahn Q_K verwendet immer f = 1,1' },
+  { abbr: 'f',       desc: 'PW-Äquivalentfaktor (Tab. 2) — pauschal: Spalte «Motorfahrzeuge» je Längsneigung; detailliert: gewichtetes Mittel der Fahrzeugkategorien (Fahrrad/Mofa, Motorrad, PW, LW, LZ). Die Kreiselfahrbahn (Q_K) verwendet immer die Werte bei ±0 % (pauschal = 1,1)' },
   { abbr: 'Q_E', unit: 'PWE/h', desc: 'Einfahrtsvolumen — Summe aller Abbiegeströme des Arms, umgerechnet mit f (Tab. 2)' },
   { abbr: 'Q_K', unit: 'PWE/h', desc: 'Kreisfahrbahnbelastung — Querschnittsbelastung unmittelbar vor der Einfahrt, aus den Knotenströmen gemäss Belastungsplan (Abb. 2, VSS 40 024a)' },
   { abbr: 'L_E', unit: 'PWE/h', desc: 'Leistungsfähigkeit der Einfahrt — 1141 − 0,578·Q_K (1/1, SN 640 024a), 1455 − 0,537·Q_K (2/1+, SN 640 024a), 1639,9·e^(−0,0006·Q_K) (2/2, VSS 2005/301); mit Fussgänger*innen: L_E × f_F' },
@@ -572,24 +618,32 @@ export default function RoundaboutApp() {
     armCount,
   ), [armCount, JSON.stringify(activeArms.map(a => [a.right, a.straight, a.left]))])
 
-  // Q_A je Ausfahrt (PWE/h) — Bewegungen mit dem PCE ihres Herkunftsarms gewichtet
+  // Q_A je Ausfahrt (PWE/h) — Bewegungen mit dem f ihres Herkunftsarms gewichtet (Einfahrt)
   const qaPWE = useMemo(() => computeQAfromTurnings(
-    activeArms.map(a => a.right * PCE_ENTRY[a.gradient]),
-    activeArms.map(a => a.straight * PCE_ENTRY[a.gradient]),
-    activeArms.map(a => a.left * PCE_ENTRY[a.gradient]),
+    activeArms.map(a => a.right * entryFactor(a.gradient, a.mix)),
+    activeArms.map(a => a.straight * entryFactor(a.gradient, a.mix)),
+    activeArms.map(a => a.left * entryFactor(a.gradient, a.mix)),
+    armCount,
+  ).map(Math.round), [armCount, JSON.stringify(activeArms)])
+
+  // Q_K je Einfahrt (PWE/h) — Ringströme mit dem Ring-f (Mischung @±0 %) des Herkunftsarms gewichtet
+  const qkPWE = useMemo(() => computeQKfromTurnings(
+    activeArms.map(a => a.right * ringFactor(a.mix)),
+    activeArms.map(a => a.straight * ringFactor(a.mix)),
+    activeArms.map(a => a.left * ringFactor(a.mix)),
     armCount,
   ).map(Math.round), [armCount, JSON.stringify(activeArms)])
 
   const result = useMemo(() => {
     const qe = activeArms.map(a =>
-      Math.round((a.right + a.straight + a.left) * PCE_ENTRY[a.gradient])
+      Math.round((a.right + a.straight + a.left) * entryFactor(a.gradient, a.mix))
     )
-    const qk = qkFzh.map(v => Math.round(v * PCE_RING))
+    const qk = qkPWE
     const fg = activeArms.map(a => a.fg)
     const exitWide = activeArms.map(a => a.exitWide)
     if (qe.every(v => v === 0)) return null
     return calculateRoundabout({ type, qe, qk, fg, qa: qaPWE, exitWide })
-  }, [type, armCount, JSON.stringify(activeArms), JSON.stringify(qkFzh), JSON.stringify(qaPWE)])
+  }, [type, armCount, JSON.stringify(activeArms), JSON.stringify(qkPWE), JSON.stringify(qaPWE)])
 
   const overall = result?.overallLevelOfService
 
