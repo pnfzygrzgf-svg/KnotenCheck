@@ -35,7 +35,7 @@ Alle Berechnungen laufen vollständig im Browser. Nach dem Laden der Seite werde
 
 - **Eingaben** existieren nur im Arbeitsspeicher des Browsers und gehen beim Schliessen des Tabs verloren.
 - **Speichern / Laden** schreibt eine JSON-Datei auf den lokalen Rechner resp. liest von dort — kein Upload, kein Cloud-Speicher.
-- **Tracking** ist nicht eingebaut. GitHub Pages loggt serverseitig Zugriffe (IP, User-Agent), wie es jeder Webserver tut — die App selbst sendet keine Daten.
+- **Nutzungsstatistik:** Seitenaufrufe werden mit GoatCounter gezählt (cookielos, ohne Speicherung der IP-Adresse, keine personenbezogenen Daten) — übermittelt wird nur ein anonymer Seitenaufruf, **keine** Eingaben oder Ergebnisse. GitHub Pages loggt zusätzlich serverseitig Zugriffe (IP, User-Agent), wie jeder Webserver.
 
 ---
 

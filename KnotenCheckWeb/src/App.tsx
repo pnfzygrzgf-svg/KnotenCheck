@@ -102,11 +102,11 @@ function HomePage({ onSelect }: { onSelect: (m: Mode) => void }) {
                     background: '#f8fafc', border: '1px solid #e2e8f0',
                     fontSize: 12, color: '#64748b', lineHeight: 1.7, textAlign: 'left' }}>
         <div style={{ fontWeight: 700, color: '#374151', marginBottom: 6 }}>Datenspeicherung</div>
-        <div>Alle Berechnungen laufen vollständig im Browser. Nach dem Laden der Seite werden keine Daten gesendet — es gibt keinen Server, dem Eingaben oder Ergebnisse übermittelt werden.</div>
+        <div>Alle Berechnungen laufen vollständig im Browser. Eingaben und Ergebnisse werden nie an einen Server übermittelt — es gibt keinen Server, der sie entgegennimmt.</div>
         <ul style={{ margin: '6px 0 0', paddingLeft: 20 }}>
           <li>Eingaben existieren nur im Arbeitsspeicher des Browsers und gehen beim Schliessen des Tabs verloren.</li>
           <li>Speichern / Laden schreibt eine JSON-Datei auf den lokalen Rechner resp. liest von dort — kein Upload, kein Cloud-Speicher.</li>
-          <li>Tracking ist nicht eingebaut. GitHub Pages loggt serverseitig Zugriffe (IP, User-Agent), wie es jeder Webserver tut — die App selbst sendet keine Daten.</li>
+          <li><strong>Nutzungsstatistik:</strong> Seitenaufrufe werden mit GoatCounter gezählt — datenschutzfreundlich: keine Cookies, keine Speicherung der IP-Adresse, keine personenbezogenen Daten. Übermittelt wird nur ein anonymer Seitenaufruf (mit groben Angaben wie Browser und Herkunftsland), nicht deine Eingaben oder Ergebnisse. GitHub Pages loggt zudem serverseitig Zugriffe (IP, User-Agent), wie jeder Webserver.</li>
         </ul>
       </div>
 
