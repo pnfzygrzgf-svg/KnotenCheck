@@ -7,6 +7,7 @@ import VSS308App from './VSS308App'
 import LSAApp from './LSAApp'
 import SimulationApp from './SimulationApp'
 import heroImg from './assets/KnotenCheck.png'
+import veloLogo from './assets/VeloroutenCheck.svg'
 import './App.css'
 
 type Mode = 'home' | 'sn022' | 'sn024a' | 'vss308' | 'lsa' | 'simulation'
@@ -96,6 +97,22 @@ function HomePage({ onSelect }: { onSelect: (m: Mode) => void }) {
             </span>
           </button>
         ))}
+
+        {/* Querverweis auf VeloroutenCheck (externes Werkzeug) */}
+        <a href="https://pnfzygrzgf-svg.github.io/VeloroutenCheck/" target="_blank" rel="noopener noreferrer"
+           style={{ textAlign: 'left', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10,
+                    padding: '20px', textDecoration: 'none', color: 'inherit', boxShadow: '0 1px 3px #0001',
+                    transition: 'box-shadow 0.15s', display: 'flex', flexDirection: 'column', gap: 8 }}
+           onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 12px #0002')}
+           onMouseLeave={e => (e.currentTarget.style.boxShadow = '0 1px 3px #0001')}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <img src={veloLogo} alt="" width={36} height={36} style={{ flexShrink: 0 }} />
+            <span style={{ fontSize: 15, fontWeight: 700, color: '#1e3a5f' }}>VeloroutenCheck&nbsp;↗</span>
+          </div>
+          <span style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
+            Qualität der Veloinfrastruktur bewerten.
+          </span>
+        </a>
       </div>
 
       <div style={{ marginTop: 48, padding: '16px 20px', borderRadius: 10,
