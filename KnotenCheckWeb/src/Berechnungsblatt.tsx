@@ -99,7 +99,7 @@ function streamNote(sd: StreamDef, arm: ArmConfiguration, armIdx: number): strin
   const isHS = armIdx < 2
   const parts: string[] = []
   // Fn 2: HS-Geradeausstrom mit separatem Linksabbiegerstreifen
-  if ((sd.num === 2 || sd.num === 8) && arm.rightLaneVolume !== undefined && arm.rightLaneVolume > 0) {
+  if ((sd.num === 2 || sd.num === 8) && arm.rightLaneVolume !== undefined) {
     parts.push(`sep. Linksabb.-Str. (Fn 2) · rechter FS: ${arm.rightLaneVolume} Fz/h`)
   }
   if (sd.showIsland) {

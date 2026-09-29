@@ -117,11 +117,11 @@ export interface ArmResult {
   qFz:               number            // Q = right+straight+left [Fz/h]
   qFg:               number            // Q_Fg [Fg/h]
   saturation:        number            // S [Fz/h]
-  beta:              number            // Volumen-gewichtetes Mittel
-  capacity:          number            // Volumen-gewichtetes Mittel [Fz/h]
-  utilizationDegree: number            // qFz / capacity_avg
-  delay:             number            // Volumen-gewichtetes Mittel [s]
-  queue:             number            // Summe der Strom-Staulängen [Fz]
+  beta:              number            // Volumen-gewichtetes Mittel (nur Anzeige)
+  capacity:          number            // L_Arm = ΣQ / x_Arm (Mischstreifen) [Fz/h]
+  utilizationDegree: number            // x_Arm = Σ Q_i / L_i
+  delay:             number            // Wartezeit aus ΣQ und L_Arm [s]
+  queue:             number            // Staulänge des Arms [Fz]
   levelOfService:    LevelOfService
   streams:           StreamResult[]   // Per-Strom-Ergebnisse
 }
@@ -153,20 +153,25 @@ export const computeLOS = classifyDelayLOS
 
 export function calculateVSS308(input: VSS308Input): VSS308Result {
   const { arms } = input
+  const defs = STREAM_DEFS[input.type]
+
+  // Belastung eines Arms: nur Ströme mit Zielarm. Im 3-Arm gibt es A-links und
+  // C-rechts nicht; Werte in diesen Feldern (z. B. aus dem 4-Arm) zählen nicht.
+  const armFlow = (i: number) => defs
+    .filter(d => d.fromArmIndex === i && d.toArmIndex >= 0)
+    .reduce((s, d) => s + getFlow(arms[i], d.movement), 0)
 
   // Gesamtes HS-Volumen für NS-β (konfligierende Ströme aus Rang-1-Armen)
-  const qHSTotal = arms
-    .filter(a => a.roadType === 'HS')
-    .reduce((s, a) => s + a.right + a.straight + a.left, 0)
+  const qHSTotal = arms.reduce((s, a, i) => a.roadType === 'HS' ? s + armFlow(i) : s, 0)
   const yHS = qHSTotal / S_M1
 
   // ── Per-Strom-Berechnung (Kap. 5, Szenario I: L = S × β) ─────────────────
   // Szenario I gilt für reine Fz/Fg-Knoten: kein paralleler höherrangiger Strom
   // (kein Tram, kein Bus → Abb. 22 führt immer zu Szenario I)
-  const allStreams: StreamResult[] = STREAM_DEFS[input.type].map(def => {
+  const allStreams: StreamResult[] = defs.map(def => {
     const fromArm  = arms[def.fromArmIndex]
     const toArm    = def.toArmIndex >= 0 ? arms[def.toArmIndex] : null
-    const Q        = getFlow(fromArm, def.movement)
+    const Q        = toArm ? getFlow(fromArm, def.movement) : 0
     const roadType = fromArm.roadType
 
     // Senkrechte Fg-Ströme: Einfahrt (fromArm) + Ausfahrt (toArm)
@@ -220,8 +225,8 @@ export function calculateVSS308(input: VSS308Input): VSS308Result {
         : def.fromArmIndex === 2 ? 3 : 2
       const partner = arms[partnerIdx]
       if (partner) {
-        const qThis    = fromArm.right + fromArm.straight + fromArm.left
-        const qPartner = partner.right + partner.straight + partner.left
+        const qThis    = armFlow(def.fromArmIndex)
+        const qPartner = armFlow(partnerIdx)
         const yThis    = qThis    / S_M1
         const yPartner = qPartner / S_M1
         const denom    = yThis + yPartner
@@ -252,37 +257,38 @@ export function calculateVSS308(input: VSS308Input): VSS308Result {
     }
   })
 
-  // ── Arm-Ergebnisse: volumen-gewichtete Mittelwerte aus Strom-Ergebnissen ───
+  // ── Arm-Ergebnisse: Arm als Mischstreifen (analog SN 640 022, F21) ──────────
+  // Die Ströme eines Arms teilen eine Haltelinie. Auslastung x_Arm = Σ Q_i / L_i,
+  // Leistungsfähigkeit L_Arm = ΣQ / x_Arm, Wartezeit aus ΣQ und L_Arm (Gl. 1).
+  // Bei x_Arm ≥ 1 ist der Arm überlastet (QS F), auch wenn jeder Strom für sich
+  // unter seiner Leistungsfähigkeit bleibt.
   const armResults: ArmResult[] = arms.map((arm, i) => {
     const armStreams   = allStreams.filter(s => s.fromArmIndex === i)
     const validStreams = armStreams.filter(s => s.toArmIndex >= 0)
     const qFz         = validStreams.reduce((sum, s) => sum + s.Q, 0)
     const loaded      = validStreams.filter(s => s.Q > 0)
     const saturation = arm.roadType === 'NS' ? S_M2 : S_M1
-
-    let beta: number, capacity: number, delay: number, queue: number
+    const C          = arm.roadType === 'HS' ? 0.5 : 1.0
 
     if (loaded.length === 0) {
-      // Keine Belastung: Display-β vom ersten Strom
-      beta     = armStreams[0]?.beta ?? 1
-      capacity = armStreams[0]?.capacity ?? saturation
-      delay    = 0
-      queue    = 0
-    } else if (loaded.some(s => !isFinite(s.delay))) {
-      const qW = loaded.reduce((s, x) => s + x.Q, 0)
-      beta     = loaded.reduce((s, x) => s + x.Q * x.beta,     0) / qW
-      capacity = loaded.reduce((s, x) => s + x.Q * x.capacity, 0) / qW
-      delay    = Infinity
-      queue    = Infinity
-    } else {
-      const qW = loaded.reduce((s, x) => s + x.Q, 0)
-      beta     = loaded.reduce((s, x) => s + x.Q * x.beta,     0) / qW
-      capacity = loaded.reduce((s, x) => s + x.Q * x.capacity, 0) / qW
-      delay    = loaded.reduce((s, x) => s + x.Q * x.delay,    0) / qW
-      queue    = loaded.reduce((s, x) => s + x.queue,           0)
+      // Keine Belastung: Display-β und -L vom ersten Strom
+      return {
+        armIndex: i, name: arm.name, roadType: arm.roadType,
+        qFz, qFg: arm.fg, saturation,
+        beta:     armStreams[0]?.beta ?? 1,
+        capacity: armStreams[0]?.capacity ?? saturation,
+        utilizationDegree: 0, delay: 0, queue: 0,
+        levelOfService: computeLOS(0),
+        streams: armStreams,
+      }
     }
 
-    const x = capacity > 0 ? qFz / capacity : (qFz > 0 ? Infinity : 0)
+    const x        = loaded.reduce((sum, s) => sum + (s.capacity > 0 ? s.Q / s.capacity : Infinity), 0)
+    const capacity = isFinite(x) ? qFz / x : 0
+    const delay    = computeDelay(qFz, capacity, C)
+    const queue    = isFinite(delay) ? delay * capacity / 3600 : Infinity
+    // β nur zur Anzeige: volumengewichtetes Mittel der Ströme
+    const beta     = loaded.reduce((sum, s) => sum + s.Q * s.beta, 0) / qFz
 
     return {
       armIndex: i, name: arm.name, roadType: arm.roadType,

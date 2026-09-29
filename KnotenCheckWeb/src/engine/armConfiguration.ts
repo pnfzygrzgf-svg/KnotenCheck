@@ -1,6 +1,7 @@
 // Eingabemodell — Port von ArmConfiguration.swift + IntersectionConfiguration.swift
 
 import type { MixedLaneCombination, SN640022LaneFlags } from './types'
+import { conform, conformFixed, oneOf } from './conform'
 
 // ── Neigungsklassen (Tab. 1) ──────────────────────────────────────────────────
 
@@ -101,6 +102,34 @@ export function defaultIntersection(armCount: 3 | 4): IntersectionConfiguration 
   return { name: 'Neuer Knoten', arms }
 }
 
+// ── Geladene Daten absichern ──────────────────────────────────────────────────
+
+const MIX_TEMPLATE: VehicleCategoryMix = { pctLW: 0, pctLZ: 0, pctMR: 0, pctFR: 0 }
+const GRADIENTS = Object.keys(GRADIENT_F_FZ) as GradientCategory[]
+const MIXED_COMBINATIONS: readonly MixedLaneCombination[] = ['leftAndThrough', 'throughAndRight', 'all']
+
+// Arme aus einer Datei auf genau armCount Arme mit gültigen Werten bringen
+export function conformArms(value: unknown, armCount: 3 | 4): ArmConfiguration[] {
+  return conformFixed(defaultIntersection(armCount).arms, value).map(a => ({
+    ...a,
+    gradient: oneOf(GRADIENTS, a.gradient, '±0%'),
+    mixedLaneCombination: oneOf(MIXED_COMBINATIONS, a.mixedLaneCombination, 'all'),
+    vehicleMix: a.vehicleMix ? conform(MIX_TEMPLATE, a.vehicleMix) : undefined,
+    rightLaneVolume: typeof a.rightLaneVolume === 'number' && a.rightLaneVolume >= 0
+      ? a.rightLaneVolume : undefined,
+    hasLeftTurnLane: typeof a.hasLeftTurnLane === 'boolean' ? a.hasLeftTurnLane : undefined,
+  }))
+}
+
+export function conformIntersection(value: unknown): IntersectionConfiguration {
+  const src = (typeof value === 'object' && value !== null ? value : {}) as Record<string, unknown>
+  const armCount = Array.isArray(src.arms) && src.arms.length === 4 ? 4 : 3
+  return {
+    name: typeof src.name === 'string' ? src.name : '',
+    arms: conformArms(src.arms, armCount),
+  }
+}
+
 export function armLabel(index: number): string {
   return ['A', 'C', 'B', 'D', 'E'][index] ?? `${index + 1}`
 }
@@ -114,8 +143,9 @@ export function toSNLaneFlags(cfg: IntersectionConfiguration): SN640022LaneFlags
     mixedD: d?.mixedLaneCombination ?? 'all',
     armASeparateLane:   a?.hasSeparateTurnLane       ?? false,
     armCSeparateLane:   c?.hasSeparateTurnLane       ?? false,
-    armAQ2Override:     a?.rightLaneVolume,
-    armCQ8Override:     c?.rightLaneVolume,
+    // Fn 2: rechter Fahrstreifen trägt höchstens den ganzen Geradeausverkehr
+    armAQ2Override:     a?.rightLaneVolume !== undefined ? Math.min(a.rightLaneVolume, a.straightVolume) : undefined,
+    armCQ8Override:     c?.rightLaneVolume !== undefined ? Math.min(c.rightLaneVolume, c.straightVolume) : undefined,
     armATriangleIsland: a?.hasRightTurnTriangleIsland ?? false,
     armCTriangleIsland: c?.hasRightTurnTriangleIsland ?? false,
     armBRightIsland:    b?.hasRightTurnTriangleIsland ?? false,

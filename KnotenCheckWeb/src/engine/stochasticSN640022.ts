@@ -1,5 +1,5 @@
 // Stochastik-Simulation SN 640 022 — Einmündung & Kreuzung
-// Stufe 1A: Erlang-verteiltes t_c (Fahrerheterogenität)
+// Stufe 1A: lognormal gestreutes t_c (Fahrerheterogenität)
 // Stufe 1B: Cowan M3 Zeitlücken (Kolonnenbildung im Hauptstrom)
 // Stufe 2C: Simultane NS-Ströme (gemeinsame Haltlinie)
 // Stufe 2D: Endlicher Stauraum
@@ -44,8 +44,14 @@ export const MITTELINSEL_GRENZE_M = 8.5   // m — ab hier Mittelinsel nötig (V
 // (jede Hälfte gilt als selbständiger Streifen, Art. 47 Abs. 3 VRV).
 // Unabhängig von der Gruppengrösse ρ (die Gruppe quert gemeinsam).
 export function pedBlockingTime(leg: { fahrbahnbreite?: number; mittelinsel: boolean }): number {
-  const w = leg.fahrbahnbreite ?? DEFAULT_FAHRBAHNBREITE
+  const w = typeof leg.fahrbahnbreite === 'number' && leg.fahrbahnbreite > 0
+    ? leg.fahrbahnbreite : DEFAULT_FAHRBAHNBREITE
   return (w / V_FG) * (leg.mittelinsel ? 0.5 : 1)
+}
+
+// Mittlere Gruppengrösse ρ, mindestens 1 (ungültige Werte → 1)
+function groupSize(leg: PedestrianLegConfig): number {
+  return Number.isFinite(leg.rho) && leg.rho >= 1 ? leg.rho : 1
 }
 
 export interface PedestrianConfig {
@@ -58,7 +64,10 @@ export interface PedestrianConfig {
 export interface StochasticConfig {
   runs?:        number   // Anzahl Simulationsläufe, default 150
   T?:           number   // Simulationsdauer [s], default 3600
-  erlangK?:     number   // Erlang-Ordnung für t_c (1 = deterministisch), default 2
+  tcSigma?:     number   // Streuung der Grenzzeitlücke t_c zwischen Fahrer*innen [s]
+                         // (Standardabweichung, lognormal, Mittelwert = t_c); 0 = konstant.
+                         // Default 0.5 s (eigene Annahme)
+  seed?:        number   // Startwert des Zufallsgenerators → reproduzierbare Resultate
   useCowan?:    boolean  // Cowan-M3-Zeitlücken (Kolonnen) statt Exponential, default true
   cowanA?:      number   // Platoon-Faktor A (Troutbeck & Brilon, FHWA 1997, Kap. 8, Gl. 8.23; A = 6–9), default 7.0
   cowanTm?:     number   // Physikalischer Mindestabstand t_m [s], default 1.8
@@ -68,21 +77,46 @@ export interface StochasticConfig {
   pedestrians?:  PedestrianConfig   // Feature C: Fussgänger-Blocking-Events
 }
 
-const DEFAULTS: Required<Omit<StochasticConfig, 'gapOverrides' | 'pedestrians'>> = {
-  runs: 150, T: 3600, erlangK: 2,
+const DEFAULTS: Required<Omit<StochasticConfig, 'gapOverrides' | 'pedestrians' | 'seed'>> = {
+  runs: 150, T: 3600, tcSigma: 0.5,
   useCowan: true, cowanA: 7.0, cowanTm: 1.8,
   storageB: Infinity, storageD: Infinity,
 }
 
-type FullConfig = Required<Omit<StochasticConfig, 'gapOverrides' | 'pedestrians'>>
-  & { gapOverrides: GapOverrides; pedestrians: PedestrianConfig | undefined }
+type FullConfig = Required<Omit<StochasticConfig, 'gapOverrides' | 'pedestrians' | 'seed'>>
+  & { gapOverrides: GapOverrides; pedestrians: PedestrianConfig | undefined; rng: () => number }
 
+// Ungültige Werte (z. B. aus einer beschädigten Datei) durch Standardwerte ersetzen:
+// NaN, negative Dauer oder Läufe würden die Ereignisschleifen nie beenden.
 function resolveConfig(config: StochasticConfig): FullConfig {
+  const pos = (v: number | undefined, d: number) =>
+    typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : d
   return {
-    ...DEFAULTS,
-    ...config,
+    runs:     Math.round(pos(config.runs, DEFAULTS.runs)),
+    T:        pos(config.T, DEFAULTS.T),
+    tcSigma:  typeof config.tcSigma === 'number' && Number.isFinite(config.tcSigma) && config.tcSigma >= 0
+                ? config.tcSigma : DEFAULTS.tcSigma,
+    useCowan: typeof config.useCowan === 'boolean' ? config.useCowan : DEFAULTS.useCowan,
+    cowanA:   pos(config.cowanA, DEFAULTS.cowanA),
+    cowanTm:  pos(config.cowanTm, DEFAULTS.cowanTm),
+    // Stauraum: leer, 0 oder ungültig = unbegrenzt (gespeichertes Infinity kommt als null)
+    storageB: pos(config.storageB, Infinity),
+    storageD: pos(config.storageD, Infinity),
     gapOverrides: config.gapOverrides ?? {},
     pedestrians:  config.pedestrians,
+    rng: typeof config.seed === 'number' && Number.isFinite(config.seed) ? seededRandom(config.seed) : Math.random,
+  }
+}
+
+// Zufallsgenerator mit Startwert (mulberry32): gleiche Eingaben + gleicher seed → gleiches Resultat
+export function seededRandom(seed: number): () => number {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
 }
 
@@ -106,17 +140,17 @@ export const GAP_PARAMS: Record<GapStreamType, GapParams> = {
 
 // ── Preset «SN 640 022 (implizit)» ────────────────────────────────────────────
 // Rückgerechnete äquivalente Grenz-/Folgezeitlücken aus den Abb.-2-Kurven der
-// SN 640 022: Siegloch-Fit  G − 90 = (3600/tf)·e^(−qpi·(tg − tf/2)/3600)  auf
-// die digitalisierten Stützpunkte (sn640022Calculator.ts), Genauigkeit ±0.2–0.4 s.
+// SN 640 022: Siegloch  G − 90 = (3600/tf)·e^(−qpi·(tg − tf/2)/3600)  trifft mit
+// diesen Werten jede Kurve (Vektorpfad des PDF) über qpi 0–1800 auf ≤ 3 PWE/h.
 // Die Werte entsprechen der Verfahrensgeneration der Norm-Referenzen [6]/[7]
 // (FGSV-Merkblatt / BMV Heft 669; t_f nahe HBS 2001).
 // Achtung: Gap-Acceptance mit diesen Lücken reproduziert die Kurven OHNE die
 // CH-Erhöhung +90 PWE/h (Abschnitt 9) — die Simulation rechnet damit konservativ.
 export const GAP_PARAMS_SN640022: Record<GapStreamType, GapParams> = {
   mainLeft:  { tc: 5.8, tf: 2.5 },
-  sideRight: { tc: 6.1, tf: 3.3 },
-  sideCross: { tc: 6.4, tf: 4.0 },
-  sideLeft:  { tc: 6.9, tf: 4.1 },
+  sideRight: { tc: 6.5, tf: 3.1 },
+  sideCross: { tc: 6.5, tf: 4.0 },
+  sideLeft:  { tc: 7.2, tf: 3.9 },
 }
 
 // Feature A: gapParamsFor mit optionalen Overrides
@@ -128,37 +162,41 @@ export function gapParamsFor(streamNumber: number, overrides?: GapOverrides): Ga
     'sideLeft'
   const base = GAP_PARAMS[type]
   const ov   = overrides?.[type]
-  return { tc: ov?.tc ?? base.tc, tf: ov?.tf ?? base.tf }
+  const ok = (v: number | undefined): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0
+  return { tc: ok(ov?.tc) ? ov.tc : base.tc, tf: ok(ov?.tf) ? ov.tf : base.tf }
 }
 
 // ── Zufallszahlen-Generatoren ─────────────────────────────────────────────────
 
-// 1A: Erlang(k, mean) — persönliche Grenzzeitlücke pro Fahrer
-export function sampleErlang(mean: number, k: number): number {
-  const rate = k / mean
-  let s = 0
-  for (let i = 0; i < k; i++) s += -Math.log(Math.random()) / rate
-  return s
+// 1A: persönliche Grenzzeitlücke je Fahrzeug — lognormal mit Mittelwert `mean` und
+// Standardabweichung `sigma` [s] (positiv, rechtsschief). sigma = 0 → konstant.
+export function sampleLogNormal(mean: number, sigma: number, rng: () => number = Math.random): number {
+  if (sigma <= 0) return mean
+  const s2 = Math.log(1 + (sigma / mean) ** 2)
+  const mu = Math.log(mean) - s2 / 2
+  // Standardnormal nach Box-Muller (1 − u vermeidet log(0))
+  const z = Math.sqrt(-2 * Math.log(1 - rng())) * Math.cos(2 * Math.PI * rng())
+  return Math.exp(mu + Math.sqrt(s2) * z)
 }
 
 function sampleTc(nominalTc: number, cfg: FullConfig): number {
-  if (cfg.erlangK <= 1) return nominalTc
-  return Math.max(1.0, sampleErlang(nominalTc, cfg.erlangK))
+  if (cfg.tcSigma <= 0) return nominalTc
+  return Math.max(1.0, sampleLogNormal(nominalTc, cfg.tcSigma, cfg.rng))
 }
 
 // 1B: Cowan M3 (Cowan 1975; Troutbeck & Brilon, FHWA 1997, Kap. 8, Gl. 8.21–8.23)
-export function sampleCowanM3(lambdaFz: number, A: number, tm: number): number {
+export function sampleCowanM3(lambdaFz: number, A: number, tm: number, rng: () => number = Math.random): number {
   const q = lambdaFz
   const denom = 1 - tm * q
   if (denom <= 0) return tm
   const alpha = Math.exp(-A * q)
-  if (Math.random() >= alpha) return tm
-  return tm - Math.log(Math.random()) * denom / (alpha * q)
+  if (rng() >= alpha) return tm
+  return tm - Math.log(rng()) * denom / (alpha * q)
 }
 
 function sampleHeadway(lambdaFz: number, cfg: FullConfig): number {
-  if (cfg.useCowan) return sampleCowanM3(lambdaFz, cfg.cowanA, cfg.cowanTm)
-  return -Math.log(Math.random()) / lambdaFz
+  if (cfg.useCowan) return sampleCowanM3(lambdaFz, cfg.cowanA, cfg.cowanTm, cfg.rng)
+  return -Math.log(cfg.rng()) / lambdaFz
 }
 
 // ── Hilfsfunktionen ───────────────────────────────────────────────────────────
@@ -173,13 +211,14 @@ function generateConflicts(
   cfg: FullConfig,
   pedMod?: { lambdaFg: number; tBlock: number },
 ): number[] {
+  const horizon = conflictHorizon(cfg)
   // Ohne Fussgänger: klassische Implementierung
   if (!pedMod || pedMod.lambdaFg <= 0) {
     const arr: number[] = []
     let t = 0
     while (true) {
       t += sampleHeadway(lambdaFz, cfg)
-      if (t >= cfg.T) break
+      if (t >= horizon) break
       arr.push(t)
     }
     return arr
@@ -187,13 +226,16 @@ function generateConflicts(
 
   const t_block = pedMod.tBlock
 
-  // Sperrzeiten [start, end] generieren
+  // Sperrzeiten [start, end] generieren (aufsteigend); überlappende zusammenführen,
+  // damit ein Fahrzeug erst am Ende der gesamten Sperrung freigegeben wird
   const blocks: [number, number][] = []
   let tFg = 0
   while (true) {
-    tFg += -Math.log(Math.random()) / pedMod.lambdaFg
-    if (tFg >= cfg.T) break
-    blocks.push([tFg, tFg + t_block])
+    tFg += -Math.log(cfg.rng()) / pedMod.lambdaFg
+    if (tFg >= horizon) break
+    const last = blocks[blocks.length - 1]
+    if (last && tFg <= last[1]) last[1] = tFg + t_block
+    else blocks.push([tFg, tFg + t_block])
   }
 
   // HS-Fahrzeuge generieren
@@ -201,7 +243,7 @@ function generateConflicts(
   let t = 0
   while (true) {
     t += sampleHeadway(lambdaFz, cfg)
-    if (t >= cfg.T) break
+    if (t >= horizon) break
     rawArrivals.push(t)
   }
 
@@ -209,28 +251,34 @@ function generateConflicts(
   const conflicts: number[] = []
   const blockBacklog = new Map<number, number>()  // blockEnd → Anzahl angestauter Fz
 
+  // Ankünfte und Sperrzeiten sind beide aufsteigend → ein gemeinsamer Durchgang
+  // (vorher: jede Ankunft gegen alle Sperrzeiten, bei vielen Fussgängern sehr langsam)
+  let bi = 0
   for (const arr of rawArrivals) {
-    let inBlock = false
-    for (const [s, e] of blocks) {
-      if (arr >= s && arr < e) {
-        blockBacklog.set(e, (blockBacklog.get(e) ?? 0) + 1)
-        inBlock = true
-        break
-      }
-    }
-    if (!inBlock) conflicts.push(arr)
+    while (bi < blocks.length && blocks[bi][1] <= arr) bi++
+    if (bi < blocks.length && arr >= blocks[bi][0]) {
+      const e = blocks[bi][1]
+      blockBacklog.set(e, (blockBacklog.get(e) ?? 0) + 1)
+    } else conflicts.push(arr)
   }
 
   // Cluster nach jedem Sperr-Ende einfügen
   for (const [blockEnd, count] of blockBacklog) {
     let clusterT = blockEnd
     for (let i = 0; i < count; i++) {
-      if (clusterT < cfg.T) conflicts.push(clusterT)
+      if (clusterT < horizon) conflicts.push(clusterT)
       clusterT += cfg.cowanTm
     }
   }
 
   return conflicts.sort((a, b) => a - b)
+}
+
+// Hauptstrom und Fussgänger*innen laufen über das Periodenende hinaus weiter: Fahrzeuge,
+// die bei T noch warten, finden danach weiterhin Konfliktverkehr vor (sonst würde die
+// Restschlange bei Überlast unrealistisch schnell abgebaut). Ankünfte nur in [0, T].
+function conflictHorizon(cfg: FullConfig): number {
+  return 2 * cfg.T
 }
 
 // Direktes Blocking: Sperrzeiten generieren und zu disjunkten Intervallen zusammenführen.
@@ -239,16 +287,17 @@ function generateConflicts(
 function generateDirectBlocks(
   legs: (PedestrianLegConfig | undefined)[],
   T: number,
+  rng: () => number,
 ): [number, number][] {
   const raw: [number, number][] = []
   for (const leg of legs) {
-    if (!leg?.enabled || leg.fg <= 0) continue
+    if (!leg?.enabled || !(leg.fg > 0)) continue
     const t_block = pedBlockingTime(leg)
     // Häufigkeit der Sperrungen: Gruppen pro Sekunde = (fg / ρ) / 3600
-    const lambda  = leg.fg / ((leg.rho || 1) * 3600)
+    const lambda  = leg.fg / (groupSize(leg) * 3600)
     let t = 0
     while (true) {
-      t += -Math.log(Math.random()) / lambda
+      t += -Math.log(rng()) / lambda
       if (t >= T) break
       raw.push([t, t + t_block])
     }
@@ -268,7 +317,7 @@ function generateDirectBlocks(
 // directBlocks: sortierte disjunkte Sperrzeiten — Abfahrt darf nicht innerhalb liegen.
 // Effizient via Binärsuche + linearem Vorwärtssprung über getroffene Intervalle.
 function findDeparture(
-  seekStart: number, conflicts: number[], tc_i: number, tf: number,
+  seekStart: number, conflicts: number[], tc_i: number,
   directBlocks?: [number, number][],
 ): number {
   let lo = 0, hi = conflicts.length
@@ -277,27 +326,27 @@ function findDeparture(
     if (conflicts[mid] <= seekStart) lo = mid + 1
     else hi = mid
   }
-  let ptr = lo, prev = seekStart, waited = false
+  let ptr = lo, prev = seekStart
   while (ptr < conflicts.length) {
     if (conflicts[ptr] - prev >= tc_i) break
     prev = conflicts[ptr]
     ptr++
-    waited = true
   }
-  // Folgezeitlücke tf nur aufschlagen, wenn das Fahrzeug tatsächlich hinter einem
-  // Konfliktfahrzeug einfädeln musste. Ein frei einfahrendes Fahrzeug (sofort
-  // ausreichende Lücke ab seekStart) fährt ohne tf-Aufschlag ab → vermeidet eine
-  // systematische Überschätzung der Wartezeit bei gering belasteten Strömen.
-  let departure = waited ? prev + tf : prev
+  // Abfahrt bei Beginn der akzeptierten Lücke (Vorbeifahrt des letzten Konfliktfahrzeugs).
+  // Nachrückende fahren frühestens t_f später und brauchen ab dort wieder t_c:
+  // In einer Lücke der Länge t finden so n Fahrzeuge Platz, wenn t ≥ t_c + (n−1)·t_f
+  // (Harders; Troutbeck & Brilon 1997, Kap. 8). Früher wurde hier zusätzlich t_f
+  // aufgeschlagen — das verlangte t_c + n·t_f und unterschätzte die Kapazität.
+  let departure = prev
 
   // Direkte Sperrzeiten: Binärsuche auf das erste Intervall, das nach departure endet
   if (directBlocks && directBlocks.length > 0) {
-    let idx = 0, iLo = 0, iHi = directBlocks.length
+    let iLo = 0, iHi = directBlocks.length
     while (iLo < iHi) {
       const m = (iLo + iHi) >>> 1
       if (directBlocks[m][1] <= departure) iLo = m + 1; else iHi = m
     }
-    idx = iLo
+    let idx = iLo
     // Vorwärts durch getroffene Intervalle (disjunkt → maximal O(treffer))
     while (idx < directBlocks.length && departure > directBlocks[idx][0]) {
       departure = directBlocks[idx][1]
@@ -307,6 +356,13 @@ function findDeparture(
   return departure
 }
 
+// ── Auslastung der Haltelinie ─────────────────────────────────────────────────
+// Bedienzeit eines Fahrzeugs = Zeit an erster Stelle der Warteschlange
+// (von max(Ankunft, Abfahrt des Vordermanns) bis zur eigenen Abfahrt).
+// Auslastung x = Σ Bedienzeiten / Simulationsdauer T. Bei x ≥ 1 reicht die Zeit
+// nicht, um die in T ankommenden Fahrzeuge abzufertigen: Die Warteschlange wächst
+// bis zum Periodenende (Überlastung, QS F). Entspricht x = q/L der Analytik.
+
 // ── HS-Ströme: unabhängige Simulation (mit 1A + 1B) ──────────────────────────
 
 function simulateStream(
@@ -314,18 +370,19 @@ function simulateStream(
   cfg: FullConfig,
   pedMod?: { lambdaFg: number; tBlock: number },
   crossingLegs?: (PedestrianLegConfig | undefined)[],
-): number[] {
-  if (q <= 0 || qpi <= 0) return []
+): { delays: number[]; utilization: number } {
+  if (q <= 0) return { delays: [], utilization: 0 }
   const lambdaC = qpi / 3600
   const lambdaN = q / 3600
   const delays: number[] = []
+  let busy = 0
 
   for (let run = 0; run < cfg.runs; run++) {
     const conflicts    = generateConflicts(lambdaC, cfg, pedMod)
-    const directBlocks = crossingLegs ? generateDirectBlocks(crossingLegs, cfg.T) : undefined
+    const directBlocks = crossingLegs ? generateDirectBlocks(crossingLegs, conflictHorizon(cfg), cfg.rng) : undefined
     let t = 0, nextFreeSlot = 0
     while (true) {
-      t += -Math.log(Math.random()) / lambdaN
+      t += -Math.log(cfg.rng()) / lambdaN
       if (t >= cfg.T) break
       // Steht das Fahrzeug bei Ankunft bereits hinter einem Vorgänger (Server belegt)?
       // Dann darf es frühestens t_f nach dessen Abfahrt einfahren — die Folgezeitlücke
@@ -334,12 +391,13 @@ function simulateStream(
       // derselben Hauptstromlücke). Frei einfahrende Fahrzeuge erhalten kein t_f.
       const queued    = t < nextFreeSlot
       const seekStart = queued ? nextFreeSlot + tf : t
-      const departure = findDeparture(seekStart, conflicts, sampleTc(tc, cfg), tf, directBlocks)
+      const departure = findDeparture(seekStart, conflicts, sampleTc(tc, cfg), directBlocks)
       delays.push(departure - t)
+      busy += departure - Math.max(t, nextFreeSlot)
       nextFreeSlot = departure
     }
   }
-  return delays
+  return { delays, utilization: busy / (cfg.runs * cfg.T) }
 }
 
 // ── NS-Arme: simultane Simulation (2C + 2D) ───────────────────────────────────
@@ -362,12 +420,13 @@ function simulateArm(
   cfg: FullConfig,
   pedMod?: { lambdaFg: number; tBlock: number },
   preBacklog?: number,
-): { delayMap: Map<number, number[]>; avgEndBacklog: number } {
+): { delayMap: Map<number, number[]>; avgEndBacklog: number; utilization: number } {
   const delayMap = new Map<number, number[]>()
   for (const s of streams) delayMap.set(s.streamNumber, [])
 
-  const active = streams.filter(s => s.q > 0 && s.qpi > 0)
-  if (active.length === 0) return { delayMap, avgEndBacklog: 0 }
+  const active = streams.filter(s => s.q > 0)
+  if (active.length === 0) return { delayMap, avgEndBacklog: 0, utilization: 0 }
+  let busy = 0
 
   const totalQ = active.reduce((s, st) => s + st.q, 0)
   const lambdaN = totalQ / 3600
@@ -380,7 +439,7 @@ function simulateArm(
 
   for (let run = 0; run < cfg.runs; run++) {
     const conflictsPerIdx   = active.map(s => generateConflicts(s.qpi / 3600, cfg, pedMod))
-    const directBlocksPerIdx = active.map(s => generateDirectBlocks(s.crossingLegs, cfg.T))
+    const directBlocksPerIdx = active.map(s => generateDirectBlocks(s.crossingLegs, conflictHorizon(cfg), cfg.rng))
 
     // Feature D: Pre-Backlog — Fahrzeuge aus vorangehendem Intervall
     const preArr: { time: number; si: number }[] = []
@@ -398,9 +457,9 @@ function simulateArm(
     const arrivals: { time: number; si: number }[] = []
     let t = 0
     while (true) {
-      t += -Math.log(Math.random()) / lambdaN
+      t += -Math.log(cfg.rng()) / lambdaN
       if (t >= cfg.T) break
-      const r = Math.random()
+      const r = cfg.rng()
       let si = weights.findIndex(w => r < w)
       if (si < 0) si = active.length - 1
       arrivals.push({ time: t, si })
@@ -425,7 +484,7 @@ function simulateArm(
       const queued    = arrival < nextFreeSlot
       const seekStart = queued ? nextFreeSlot + tf_i : arrival
       const tc_i = sampleTc(active[si].tc, cfg)
-      const departure = findDeparture(seekStart, conflictsPerIdx[si], tc_i, tf_i, directBlocksPerIdx[si])
+      const departure = findDeparture(seekStart, conflictsPerIdx[si], tc_i, directBlocksPerIdx[si])
 
       // Wartezeit: nur für nicht-Pre-Backlog-Fahrzeuge mit arrival > 0 sinnvoll zu messen
       // Pre-Backlog-Fahrzeuge haben arrival=0, das Delay wäre irreführend → überspringen
@@ -433,6 +492,7 @@ function simulateArm(
         delayMap.get(active[si].streamNumber)!.push(departure - arrival)
       }
       departures.push(departure)
+      busy += departure - Math.max(arrival, nextFreeSlot)
       nextFreeSlot = departure
     }
 
@@ -441,12 +501,13 @@ function simulateArm(
     totalEndBacklog += endBacklog
   }
 
-  return { delayMap, avgEndBacklog: totalEndBacklog / cfg.runs }
+  return { delayMap, avgEndBacklog: totalEndBacklog / cfg.runs, utilization: busy / (cfg.runs * cfg.T) }
 }
 
 // ── Statistik ─────────────────────────────────────────────────────────────────
 
-export const HIST_EDGES = [0, 10, 20, 30, 45, 60, 90, 120, Infinity]
+// Klassengrenzen = QS-Grenzen der Tab. 3 (A < 10, B < 15, C < 25, D < 45 s), danach E
+export const HIST_EDGES = [0, 10, 15, 25, 45, 60, 90, 120, Infinity]
 
 export interface DelayStats {
   n: number
@@ -491,6 +552,8 @@ export interface StochasticStreamResult {
   rang: number
   qpi: number
   stats: DelayStats | null
+  // Auslastung der Haltelinie (siehe oben); NS-Ströme eines Arms teilen die Haltelinie
+  utilization: number
 }
 
 export interface StochasticSN640022Result {
@@ -543,6 +606,7 @@ function runInternal(
 
   // Fussgänger-Konfigurationen je Arm (undefined = kein Fussgängerstreifen)
   const peds = cfg.pedestrians
+  // (fg > 0) ist auch für NaN falsch → ungültige Eingaben wirken wie «kein Streifen»
   const legA = peds?.armA?.enabled && (peds.armA.fg > 0) ? peds.armA : undefined
   const legB = peds?.armB?.enabled && (peds.armB.fg > 0) ? peds.armB : undefined
   const legC = peds?.armC?.enabled && (peds.armC.fg > 0) ? peds.armC : undefined
@@ -552,8 +616,8 @@ function runInternal(
   // Arm A → schafft Lücken in q2+q3 → profitieren: NS-B-Ströme (4,5,6) + Strom 7 (C→B)
   // Arm C → schafft Lücken in q8+q9 → profitieren: NS-D-Ströme (10,11,12) + Strom 1 (A→D)
   // lambdaFg = Häufigkeit der Sperrungen [Gruppen/s] = (fg / ρ) / 3600; tBlock = Querungsdauer
-  const pedModA = legA ? { lambdaFg: legA.fg / ((legA.rho || 1) * 3600), tBlock: pedBlockingTime(legA) } : undefined
-  const pedModC = legC ? { lambdaFg: legC.fg / ((legC.rho || 1) * 3600), tBlock: pedBlockingTime(legC) } : undefined
+  const pedModA = legA ? { lambdaFg: legA.fg / (groupSize(legA) * 3600), tBlock: pedBlockingTime(legA) } : undefined
+  const pedModC = legC ? { lambdaFg: legC.fg / (groupSize(legC) * 3600), tBlock: pedBlockingTime(legC) } : undefined
 
   // Crossing-Zuweisung: jeder Strom wird an seinem Abfahrt- UND Ankunftsarm
   // direkt durch den dortigen Fussgängerstreifen gesperrt.
@@ -579,6 +643,7 @@ function runInternal(
   }
 
   const streamDelays = new Map<number, number[]>()
+  const streamUtil   = new Map<number, number>()
   let endBacklogB = 0
   let endBacklogD = 0
 
@@ -591,22 +656,24 @@ function runInternal(
     const { tc, tf } = gapParamsFor(sn, cfg.gapOverrides)
     const hsPed     = sn === 7 ? pedModA : sn === 1 ? pedModC : undefined
     const crossing  = crossings[sn] ?? []
-    streamDelays.set(sn, simulateStream(s.volumePWE, s.qpi, tc, tf, cfg, hsPed, crossing))
+    const { delays, utilization } = simulateStream(s.volumePWE, s.qpi, tc, tf, cfg, hsPed, crossing)
+    streamDelays.set(sn, delays)
+    streamUtil.set(sn, utilization)
   }
 
   // NS Arm B: simultan mit Carry-over
   const armBDefs = armBNums.map(makeArmDef).filter((d): d is ArmStreamDef => d !== null)
   if (armBDefs.length > 0) {
-    const { delayMap, avgEndBacklog } = simulateArm(armBDefs, cfg.storageB, cfg, pedModA, preBacklogB)
-    for (const [sn, delays] of delayMap) streamDelays.set(sn, delays)
+    const { delayMap, avgEndBacklog, utilization } = simulateArm(armBDefs, cfg.storageB, cfg, pedModA, preBacklogB)
+    for (const [sn, delays] of delayMap) { streamDelays.set(sn, delays); streamUtil.set(sn, utilization) }
     endBacklogB = avgEndBacklog
   }
 
   // NS Arm D: simultan mit Carry-over
   const armDDefs = armDNums.map(makeArmDef).filter((d): d is ArmStreamDef => d !== null)
   if (armDDefs.length > 0) {
-    const { delayMap, avgEndBacklog } = simulateArm(armDDefs, cfg.storageD, cfg, pedModC, preBacklogD)
-    for (const [sn, delays] of delayMap) streamDelays.set(sn, delays)
+    const { delayMap, avgEndBacklog, utilization } = simulateArm(armDDefs, cfg.storageD, cfg, pedModC, preBacklogD)
+    for (const [sn, delays] of delayMap) { streamDelays.set(sn, delays); streamUtil.set(sn, utilization) }
     endBacklogD = avgEndBacklog
   }
 
@@ -616,6 +683,7 @@ function runInternal(
     rang:           s.rang,
     qpi:            s.qpi,
     stats:          computeStats(streamDelays.get(s.streamNumber) ?? []),
+    utilization:    streamUtil.get(s.streamNumber) ?? 0,
   }))
 
   return {

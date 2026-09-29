@@ -6,6 +6,8 @@ import RoundaboutApp from './RoundaboutApp'
 import VSS308App from './VSS308App'
 import LSAApp from './LSAApp'
 import SimulationApp from './SimulationApp'
+import { ActiveModuleContext } from './activeModule'
+import { ModuleErrorBoundary } from './ModuleErrorBoundary'
 import heroImg from './assets/KnotenCheck.png'
 import veloLogo from './assets/VeloroutenCheck.svg'
 import './App.css'
@@ -136,6 +138,8 @@ export default function App() {
   // Einmal besuchte Rechner bleiben gemountet (nur versteckt), damit
   // Eingaben beim Wechsel zwischen den Modulen nicht verloren gehen.
   const [visited, setVisited] = useState<ReadonlySet<Mode>>(() => new Set())
+  // Zähler je Modul: Erhöhen setzt das Modul nach einem Absturz neu auf (neuer key)
+  const [resets, setResets] = useState<Partial<Record<Mode, number>>>({})
 
   function openMode(m: Mode) {
     setMode(m)
@@ -201,7 +205,12 @@ export default function App() {
         <div key={a.key}
              style={{ display: mode === a.key ? undefined : 'none' }}
              aria-hidden={mode !== a.key}>
-          {a.el}
+          <ActiveModuleContext.Provider value={mode === a.key}>
+            <ModuleErrorBoundary key={resets[a.key] ?? 0}
+              onReset={() => setResets(r => ({ ...r, [a.key]: (r[a.key] ?? 0) + 1 }))}>
+              {a.el}
+            </ModuleErrorBoundary>
+          </ActiveModuleContext.Provider>
         </div>
       ))}
     </div>

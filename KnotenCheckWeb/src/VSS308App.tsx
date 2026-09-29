@@ -1,16 +1,17 @@
 import { useState, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { calculateVSS308 } from './engine/vss2011308Calculator'
+import { conformFixed, oneOf } from './engine/conform'
 import type { ArmInput, ArmResult, StreamResult, LevelOfService, RoadType } from './engine/vss2011308Calculator'
 import rechtsvorttrittSvg from './assets/rechtsvortritt.svg'
 import { KnotenDiagramm, type StreamKey, type Los } from './KnotenDiagramm'
 import { exportTool, importTool } from './saveLoad'
+import { useIsActiveModule } from './activeModule'
 import { LegendBox, type LegendItem } from './LegendBox'
-import { useToast, Toast } from './Toast'
-import {
-  LOS_COLOR, LOS_BG, LOSBadge, NumInput, Row, SectionLabel,
-  delayText, utilizationColor,
-} from './ui'
+import { Toast } from './Toast'
+import { LOS_BG, LOS_COLOR, delayText, utilizationColor } from './uiHelpers'
+import { useToast } from './useToast'
+import { LOSBadge, NumInput, Row, SectionLabel } from './ui'
 
 // ── Arm-Labels (gleiche Reihenfolge wie SN 640 022) ───────────────────────────
 // [0]=A(HS), [1]=C(HS), [2]=B(NS), [3]=D(NS)
@@ -435,7 +436,7 @@ function VSS308PrintSheet({ nodeName, nodeType, arms, result }: {
             <th style={thL}>Bezeichnung</th>
             <th style={th}>Typ</th>
             <th style={th}>Links<br/>[Fz/h]</th>
-            {nodeType !== '3arm' && <th style={th}>Gerade<br/>[Fz/h]</th>}
+            <th style={th}>Gerade<br/>[Fz/h]</th>
             <th style={th}>Rechts<br/>[Fz/h]</th>
             <th style={th}>FG<br/>[Fg/h]</th>
             <th style={th}>ρ</th>
@@ -447,9 +448,10 @@ function VSS308PrintSheet({ nodeName, nodeType, arms, result }: {
               <td style={tdL}><strong>{armLabel(i)}</strong></td>
               <td style={tdL}>{arm.name || '—'}</td>
               <td style={{ ...td, textAlign: 'center', fontWeight: 600 }}>{roadLabel(arm.roadType)}</td>
-              <td style={td}>{arm.left}</td>
-              {nodeType !== '3arm' && <td style={td}>{arm.straight}</td>}
-              <td style={td}>{arm.right}</td>
+              {/* 3-Arm: A-links, B-geradeaus, C-rechts existieren nicht */}
+              <td style={td}>{nodeType === '3arm' && i === 0 ? '—' : arm.left}</td>
+              <td style={td}>{nodeType === '3arm' && i === 2 ? '—' : arm.straight}</td>
+              <td style={td}>{nodeType === '3arm' && i === 1 ? '—' : arm.right}</td>
               <td style={td}>
                 {arm.fg
                   ? arm.mittelinsel ? `${arm.fg} (½)` : arm.fg
@@ -629,6 +631,7 @@ const LEGEND_ITEMS: LegendItem[] = [
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 
 export default function VSS308App() {
+  const isActive = useIsActiveModule()  // Druckblatt nur im sichtbaren Modul
   const [nodeName, setNodeName]   = useState('')
   const [nodeType, setNodeType]   = useState<NodeType>('4arm')
   const [arms, setArms]           = useState<ArmInput[]>(defaultArms('4arm'))
@@ -651,14 +654,20 @@ export default function VSS308App() {
     })
 
   const handleImport = () =>
-    importTool<{ nodeName: string; nodeType: NodeType; arms: ArmInput[] }>(
-      'vss308', d => {
-        setNodeName(d.nodeName ?? '')
+    importTool('vss308', d => {
+        setNodeName(typeof d.nodeName === 'string' ? d.nodeName : '')
         // 'equal' (Gleicher Rang) ist vorerst ausgeblendet → auf '4arm' abbilden,
         // damit ältere gespeicherte Dateien nicht in einem unerreichbaren Modus landen.
-        const nt: NodeType = d.nodeType === 'equal' ? '4arm' : (d.nodeType ?? '4arm')
+        const saved = oneOf<NodeType>(['3arm', '4arm', 'equal'], d.nodeType, '4arm')
+        const nt: NodeType = saved === 'equal' ? '4arm' : saved
         setNodeType(nt)
-        setArms((nt === d.nodeType ? (d.arms ?? defaultArms(nt)) : defaultArms(nt)).map(a => ({ ...a, rho: a.rho ?? 1, mittelinsel: a.mittelinsel ?? false })))
+        // Genau so viele Arme wie der Knotentyp hat; Strassentyp folgt aus der Position
+        const loaded = saved === nt ? conformFixed(defaultArms(nt), d.arms) : defaultArms(nt)
+        setArms(loaded.map((a, i) => ({
+          ...a,
+          roadType: defaultArms(nt)[i].roadType,
+          rho: oneOf([1, 2, 3, 4, 5], a.rho, 1),
+        })))
       }, showToast)
 
   function handleReset() {
@@ -905,7 +914,7 @@ export default function VSS308App() {
       </footer>
     </div>
 
-    {createPortal(
+    {isActive && createPortal(
       <div className="print-portal" style={{ padding: '14mm 16mm', background: '#fff',
                                              fontFamily: 'system-ui, Arial, sans-serif' }}>
         <VSS308PrintSheet

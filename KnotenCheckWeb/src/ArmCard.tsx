@@ -10,7 +10,7 @@ import { NumInput, Row, SectionLabel, Ckbx, ToggleBtn } from './ui'
 
 // ── Konstanten ─────────────────────────────────────────────────────────────────
 
-export const GRADIENT_OPTIONS: { value: GradientCategory; label: string }[] = [
+const GRADIENT_OPTIONS: { value: GradientCategory; label: string }[] = [
   { value: '+4%', label: '+4 % (stark bergauf)' },
   { value: '+2%', label: '+2 % (mässig bergauf)' },
   { value: '±0%', label: '±0 % (eben)' },
@@ -18,14 +18,14 @@ export const GRADIENT_OPTIONS: { value: GradientCategory; label: string }[] = [
   { value: '-4%', label: '-4 % (stark bergab)' },
 ]
 
-export const MIXED_OPTIONS: { value: MixedLaneCombination; labelB: string; labelD: string; desc: string }[] = [
+const MIXED_OPTIONS: { value: MixedLaneCombination; labelB: string; labelD: string; desc: string }[] = [
   { value: 'all',            labelB: 'Alle geteilt (4+5+6)', labelD: 'Alle geteilt (10+11+12)', desc: 'Alle NS-Ströme auf gemeinsamem Streifen' },
   { value: 'leftAndThrough', labelB: 'Links+Kreuzen (4+5)',  labelD: 'Links+Kreuzen (10+11)',   desc: 'Rechtseinbieger auf eigenem Streifen' },
   { value: 'throughAndRight',labelB: 'Kreuzen+Rechts (5+6)', labelD: 'Kreuzen+Rechts (11+12)', desc: 'Linkseinbieger auf eigenem Streifen' },
 ]
 
 // Bewegungs-Labels je Arm und Knotentyp
-export function getMovements(index: number, armCount: number): { label: string; key: keyof ArmConfiguration }[] {
+function getMovements(index: number, armCount: number): { label: string; key: keyof ArmConfiguration }[] {
   if (armCount === 3) {
     if (index === 0) return [
       { label: 'Geradeaus →C',      key: 'straightVolume' },
@@ -62,14 +62,6 @@ export function getMovements(index: number, armCount: number): { label: string; 
   ]
 }
 
-export function streamMovementName(n: number): string {
-  const map: Record<number, string> = {
-    1: 'Linksabbiegen HS (A→D)', 7: 'Linksabbiegen HS (C→B)',
-    4: 'Linkseinbiegen NS (B→A)', 6: 'Rechtseinbiegen NS (B→C)', 5: 'Kreuzen NS (B→D)',
-    10: 'Linkseinbiegen NS (D→C)', 12: 'Rechtseinbiegen NS (D→A)', 11: 'Kreuzen NS (D→B)',
-  }
-  return map[n] ?? `Strom ${n}`
-}
 
 // ── MixedLaneHint ──────────────────────────────────────────────────────────────
 
@@ -318,12 +310,15 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
           </Row>
           <Row label="Hauptstrasse mehrstreifig"
                sub="F2: bei >1 Fahrstreifen zählt für q2 bzw. q8 nur die Belastung des rechten Fahrstreifens (F3/F4)">
+            {/* Startwert = ganzer Geradeausverkehr: keine Entlastung, bis der Wert des
+                rechten Fahrstreifens eingetragen ist */}
             <Ckbx checked={arm.rightLaneVolume !== undefined}
-              onChange={on => upd('rightLaneVolume', on ? 0 : undefined)} />
+              onChange={on => upd('rightLaneVolume', on ? arm.straightVolume : undefined)} />
           </Row>
           {arm.rightLaneVolume !== undefined && (
             <Row label="Belastung rechter Fahrstreifen">
-              <NumInput value={arm.rightLaneVolume} onChange={v => upd('rightLaneVolume', v)} live={live} />
+              <NumInput value={arm.rightLaneVolume} onChange={v => upd('rightLaneVolume', v)} live={live}
+                max={arm.straightVolume} />
               <span style={{ fontSize: 11, color: '#9ca3af', width: 30 }}>Fz/h</span>
             </Row>
           )}

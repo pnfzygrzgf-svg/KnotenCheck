@@ -1,8 +1,9 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import einmuendungSvg from './assets/einmuendung.svg'
 import kreuzungSvg    from './assets/kreuzung.svg'
 import {
-  runStochasticSN640022, runStochasticSN640022Multi, GAP_PARAMS, GAP_PARAMS_SN640022,
+  GAP_PARAMS, GAP_PARAMS_SN640022,
   pedBlockingTime, V_FG, DEFAULT_FAHRBAHNBREITE, MITTELINSEL_GRENZE_M,
 } from './engine/stochasticSN640022'
 import type {
@@ -13,12 +14,18 @@ import {
   defaultIntersection, toSNVolumes, toSNRawVolumes, toSNLaneFlags,
 } from './engine/armConfiguration'
 import type { ArmConfiguration, IntersectionConfiguration } from './engine/armConfiguration'
+import { conformArms } from './engine/armConfiguration'
+import { conform, oneOf } from './engine/conform'
+import type { SimRequest, SimResponse } from './simulation.worker'
 import { exportTool, importTool } from './saveLoad'
-import { useToast, Toast } from './Toast'
+import { useIsActiveModule } from './activeModule'
+import { Toast } from './Toast'
+import { simLOS, streamMovementName } from './uiHelpers'
+import { useToast } from './useToast'
 import { LegendBox, type LegendItem } from './LegendBox'
 import { NumInput, Row, Ckbx, LOSBadge, ToggleBtn, ToolbarBtn } from './ui'
-import { ArmCard, streamMovementName } from './ArmCard'
-import { StochasticPanel, simLOS } from './StochasticPanel'
+import { ArmCard } from './ArmCard'
+import { StochasticPanel } from './StochasticPanel'
 
 // ── Legende ───────────────────────────────────────────────────────────────────
 
@@ -34,6 +41,7 @@ const LEGEND_ITEMS: LegendItem[] = [
   { abbr: 'P50', unit: 's', desc: 'Median — 50 % der Fahrzeuge warten kürzer als dieser Wert' },
   { abbr: 'P85', unit: 's', desc: '85. Perzentil — 85 % der Fahrzeuge warten kürzer; üblicher Planungswert für Dimensionierung' },
   { abbr: 'P95', unit: 's', desc: '95. Perzentil — 95 % der Fahrzeuge warten kürzer; Mass für die Spitzenbelastung' },
+  { abbr: 'x',          desc: 'Auslastung der Haltelinie — Anteil der Simulationsdauer, in dem ein Fahrzeug an der Haltelinie auf eine Lücke wartet (Nebenstrom-Arme: gemeinsame Haltelinie). x ≥ 1: die Warteschlange wächst bis zum Periodenende → QS F' },
   { abbr: 'n',          desc: 'Stichprobengrösse — Anzahl aller simulierten Fahrzeuge über sämtliche Simulationsläufe' },
 ]
 
@@ -75,7 +83,7 @@ function mergeIntervalArms(
 
 type PedArmKey = 'armA' | 'armC' | 'armB' | 'armD'
 
-export function defaultLeg(): PedestrianLegConfig {
+function defaultLeg(): PedestrianLegConfig {
   return { enabled: false, fg: 0, rho: 1, mittelinsel: false }
 }
 
@@ -365,7 +373,7 @@ function MultiIntervalPanel({ result }: { result: StochasticMultiResult }) {
                     {s.stats ? Math.round(s.stats.p85) : '–'}
                   </td>
                   <td style={{ padding: '4px 8px', textAlign: 'center' }}>
-                    <LOSBadge los={simLOS(s.stats!.mean)} />
+                    <LOSBadge los={simLOS(s.stats!.mean, s.utilization)} />
                   </td>
                   {sIdx === 0 && (
                     <td rowSpan={r.result.streams.filter(x => x.stats !== null).length}
@@ -396,9 +404,36 @@ function MultiIntervalPanel({ result }: { result: StochasticMultiResult }) {
   )
 }
 
+// ── Konfiguration, mit der ein Resultat gerechnet wurde ───────────────────────
+function RunConfigSummary({ result }: { result: StochasticSN640022Result | StochasticMultiResult }) {
+  const rc = result.config
+  const rp = rc.pedestrians
+  const pedsOn = [rp?.armA, rp?.armB, rp?.armC, rp?.armD].some(l => l?.enabled && l.fg > 0)
+  const sigma = rc.tcSigma ?? 0.5
+  return (
+    <div style={{ padding: '8px 12px', borderRadius: 6, background: '#f0f9ff',
+                  border: '1px solid #bae6fd', fontSize: 11, color: '#0369a1',
+                  marginBottom: 12, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      <span>Modell: {(rc.useCowan ?? true) ? 'Cowan M3' : 'Exponential'}</span>
+      <span>·</span>
+      <span>Streuung t_c: {sigma > 0 ? `σ = ${sigma.toFixed(1)} s` : 'keine'}</span>
+      {pedsOn && (
+        <><span>·</span><span style={{ color: '#15803d' }}>Fussgänger*innen aktiv</span></>
+      )}
+      {Object.keys(rc.gapOverrides ?? {}).length > 0 && (
+        <><span>·</span><span style={{ color: '#b45309' }}>tc/tf angepasst</span></>
+      )}
+      {'intervals' in result && (
+        <><span>·</span><span>{result.intervals.length} Intervalle</span></>
+      )}
+    </div>
+  )
+}
+
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 
 export default function SimulationApp() {
+  const isActive = useIsActiveModule()  // Druckblatt nur im sichtbaren Modul
   const [nodeName,    setNodeName]    = useState('Neue Simulation')
   const [armCount,    setArmCount]    = useState<3 | 4>(3)
   const [baseArms,    setBaseArms]    = useState<ArmConfiguration[]>(() => defaultIntersection(3).arms)
@@ -412,7 +447,7 @@ export default function SimulationApp() {
     defaultInterval(3, 'Spitzenstunde'),
   ])
   const [simConfig,     setSimConfig]     = useState<StochasticConfig>({
-    runs: 200, useCowan: true, erlangK: 2,
+    runs: 200, useCowan: true, tcSigma: 0.5,
   })
   const [result,        setResult]        = useState<
     StochasticSN640022Result | StochasticMultiResult | null
@@ -426,6 +461,7 @@ export default function SimulationApp() {
 
   function handleArmCount(n: 3 | 4) {
     if (armCount === n) return
+    stopWorker()
     setArmCount(n)
     setBaseArms(defaultIntersection(n).arms)
     setIntervals([defaultInterval(n, 'Spitzenstunde')])
@@ -440,50 +476,70 @@ export default function SimulationApp() {
 
   // ── Simulation starten ────────────────────────────────────────────────────
 
-  function handleRun() {
-    setRunning(true)
-    setTimeout(() => {
-      try {
-        const fullConfig: StochasticConfig = { ...simConfig, gapOverrides, pedestrians }
+  // Die Simulation läuft in einem Web Worker (eigener Thread): Die Oberfläche bleibt
+  // bedienbar und ein langer Lauf lässt sich abbrechen.
+  const workerRef = useRef<Worker | null>(null)
+  useEffect(() => () => workerRef.current?.terminate(), [])
 
-        if (useIntervals && intervals.length >= 1) {
-          // Volumen je Intervall mit Basis-Geometrie kombinieren → konsistent mit den
-          // aus baseArms abgeleiteten Lane-Flags.
-          const ivs: SimInterval[] = intervals.map(iv => {
-            const icfg: IntersectionConfiguration = {
-              name: '', arms: mergeIntervalArms(baseArms, iv.arms),
-            }
-            return {
-              label:      iv.label,
-              volumes:    toSNVolumes(icfg)!,
-              rawVolumes: toSNRawVolumes(icfg) ?? undefined,
-              T:          iv.T * 60,
-            }
-          })
-          const flags = toSNLaneFlags({ name: '', arms: baseArms })
-          setResult(runStochasticSN640022Multi(ivs, flags, fullConfig))
-        } else {
-          const icfg: IntersectionConfiguration = { name: '', arms: baseArms }
-          const volumes = toSNVolumes(icfg)
-          const raw     = toSNRawVolumes(icfg)
-          const flags   = toSNLaneFlags(icfg)
-          if (volumes && raw) {
-            setResult(runStochasticSN640022(volumes, flags, raw, fullConfig))
-          }
+  // Eingaben, aus denen das angezeigte Resultat stammt (für den «veraltet»-Hinweis)
+  const inputKey = JSON.stringify({ armCount, baseArms, pedestrians, gapOverrides, useIntervals, intervals, simConfig })
+  const [resultKey, setResultKey] = useState('')
+
+  function stopWorker() {
+    workerRef.current?.terminate()
+    workerRef.current = null
+    setRunning(false)
+  }
+
+  function handleRun() {
+    const fullConfig: StochasticConfig = { ...simConfig, gapOverrides, pedestrians }
+    let req: SimRequest
+    if (useIntervals && intervals.length >= 1) {
+      // Volumen je Intervall mit Basis-Geometrie kombinieren → konsistent mit den
+      // aus baseArms abgeleiteten Lane-Flags.
+      const ivs: SimInterval[] = intervals.map(iv => {
+        const icfg: IntersectionConfiguration = {
+          name: '', arms: mergeIntervalArms(baseArms, iv.arms),
         }
-      } finally {
-        setRunning(false)
+        return {
+          label:      iv.label,
+          volumes:    toSNVolumes(icfg)!,
+          rawVolumes: toSNRawVolumes(icfg) ?? undefined,
+          T:          iv.T * 60,
+        }
+      })
+      const flags = toSNLaneFlags({ name: '', arms: baseArms })
+      req = { kind: 'multi', intervals: ivs, flags, config: fullConfig }
+    } else {
+      const icfg: IntersectionConfiguration = { name: '', arms: baseArms }
+      const volumes = toSNVolumes(icfg)
+      const raw     = toSNRawVolumes(icfg)
+      if (!volumes || !raw) return
+      req = { kind: 'single', volumes, raw, flags: toSNLaneFlags(icfg), config: fullConfig }
+    }
+
+    workerRef.current?.terminate()
+    const worker = new Worker(new URL('./simulation.worker.ts', import.meta.url), { type: 'module' })
+    workerRef.current = worker
+    const startedWith = inputKey
+    setRunning(true)
+    worker.onmessage = (e: MessageEvent<SimResponse>) => {
+      stopWorker()
+      if (e.data.ok) {
+        setResult(e.data.result)
+        setResultKey(startedWith)
+      } else {
+        alert(`Die Simulation ist fehlgeschlagen: ${e.data.error}`)
       }
-    }, 10)
+    }
+    worker.onerror = () => {
+      stopWorker()
+      alert('Die Simulation ist fehlgeschlagen.')
+    }
+    worker.postMessage(req)
   }
 
   // ── Save / Load ───────────────────────────────────────────────────────────
-
-  interface SimSaveData {
-    armCount: 3|4; baseArms: ArmConfiguration[]; pedestrians: PedestrianConfig
-    gapOverrides: GapOverrides; useIntervals: boolean
-    intervals: SimIntervalInput[]; simConfig: StochasticConfig
-  }
 
   const handleExport = () =>
     exportTool({
@@ -493,15 +549,56 @@ export default function SimulationApp() {
     })
 
   const handleImport = () =>
-    importTool<SimSaveData>('simulation', (d, name) => {
+    importTool('simulation', (d, name) => {
+      const n = oneOf<3 | 4>([3, 4], d.armCount, 3)
+      const obj = (v: unknown) => (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>
+      const pos = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined
+      // Fussgänger*innen je Arm
+      const leg = (v: unknown): PedestrianLegConfig => {
+        const l = conform<PedestrianLegConfig>({ ...defaultLeg(), fahrbahnbreite: undefined }, v)
+        return { ...l, rho: oneOf([1, 2, 3, 4, 5], l.rho, 1), fahrbahnbreite: pos(l.fahrbahnbreite) }
+      }
+      const pedRaw = obj(d.pedestrians)
+      const peds: PedestrianConfig = { armA: leg(pedRaw.armA), armC: leg(pedRaw.armC) }
+      if (pedRaw.armB !== undefined) peds.armB = leg(pedRaw.armB)
+      if (n === 4 && pedRaw.armD !== undefined) peds.armD = leg(pedRaw.armD)
+      // tc/tf-Anpassungen: nur positive Werte
+      const gapRaw = obj(d.gapOverrides)
+      const gaps: GapOverrides = {}
+      for (const k of ['mainLeft', 'sideRight', 'sideCross', 'sideLeft'] as const) {
+        const g = obj(gapRaw[k]), tc = pos(g.tc), tf = pos(g.tf)
+        if (tc !== undefined || tf !== undefined)
+          gaps[k] = { ...(tc !== undefined && { tc }), ...(tf !== undefined && { tf }) }
+      }
+      // Intervalle: Dauer aus der Auswahl, Arme passend zur Armzahl
+      const ivs: SimIntervalInput[] = (Array.isArray(d.intervals) ? d.intervals : []).map((v, i) => {
+        const iv = obj(v)
+        return {
+          id:    typeof iv.id === 'string' ? iv.id : crypto.randomUUID(),
+          label: typeof iv.label === 'string' ? iv.label : `Intervall ${i + 1}`,
+          T:     oneOf<15 | 30 | 45 | 60>([15, 30, 45, 60], iv.T, 60),
+          arms:  conformArms(iv.arms, n),
+        }
+      }).slice(0, 6)
+      // Simulationsparameter: Auswahlwerte prüfen; Stauraum null (= gespeichertes ∞) → unbegrenzt
+      const sc = obj(d.simConfig)
+      const cfg: StochasticConfig = {
+        runs:     oneOf([50, 100, 200, 500], sc.runs, 200),
+        useCowan: typeof sc.useCowan === 'boolean' ? sc.useCowan : true,
+        // Streuung t_c; ältere Dateien mit Erlang-Ordnung: k = 1 (konstant) → 0 s, sonst Standard
+        tcSigma:  oneOf([0, 0.5, 1], sc.tcSigma, sc.erlangK === 1 ? 0 : 0.5),
+        ...(pos(sc.storageB) !== undefined && { storageB: pos(sc.storageB) }),
+        ...(pos(sc.storageD) !== undefined && { storageD: pos(sc.storageD) }),
+      }
+      stopWorker()
       setNodeName(name || 'Simulation')
-      setArmCount(d.armCount)
-      setBaseArms(d.baseArms)
-      setPedestrians(d.pedestrians)
-      setGapOverrides(d.gapOverrides)
-      setUseIntervals(d.useIntervals)
-      setIntervals(d.intervals)
-      setSimConfig(d.simConfig)
+      setArmCount(n)
+      setBaseArms(conformArms(d.baseArms, n))
+      setPedestrians(peds)
+      setGapOverrides(gaps)
+      setUseIntervals(d.useIntervals === true)
+      setIntervals(ivs.length > 0 ? ivs : [defaultInterval(n, 'Spitzenstunde')])
+      setSimConfig(cfg)
       setResult(null)
     }, showToast)
 
@@ -551,6 +648,7 @@ export default function SimulationApp() {
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
           <ToolbarBtn onClick={handleExport}>Speichern</ToolbarBtn>
           <ToolbarBtn onClick={handleImport}>Laden</ToolbarBtn>
+          {result && !running && <ToolbarBtn onClick={() => window.print()}>Drucken</ToolbarBtn>}
         </div>
       </div>
 
@@ -679,18 +777,23 @@ export default function SimulationApp() {
                   ))}
                 </div>
 
-                {/* Erlang k */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 12, color: '#374151', fontWeight: 600 }}>
-                    Erlang-Ordnung k (tc)
-                  </span>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    {([1, 2, 3] as const).map(k => (
-                      <ToggleBtn key={k} small active={(simConfig.erlangK ?? 2) === k}
-                        onClick={() => setSimConfig(c => ({ ...c, erlangK: k }))}>
-                        {k === 1 ? 'k=1 (deterministisch)' : `k=${k}`}
-                      </ToggleBtn>
-                    ))}
+                {/* Streuung der Grenzzeitlücke */}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12, color: '#374151', fontWeight: 600 }}>
+                      Streuung t_c zwischen Fahrer*innen
+                    </span>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      {([0, 0.5, 1] as const).map(sd => (
+                        <ToggleBtn key={sd} small active={(simConfig.tcSigma ?? 0.5) === sd}
+                          onClick={() => setSimConfig(c => ({ ...c, tcSigma: sd }))}>
+                          {sd === 0 ? 'keine (konstant)' : `σ = ${sd.toFixed(1)} s`}
+                        </ToggleBtn>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>
+                    Lognormal um den Nominalwert t_c. «keine» entspricht der Annahme des analytischen Verfahrens.
                   </div>
                 </div>
 
@@ -712,7 +815,9 @@ export default function SimulationApp() {
                           }
                           placeholder="∞"
                           onChange={e => {
-                            const v = e.target.value === '' ? Infinity : Number(e.target.value)
+                            // leer oder 0 = unbegrenzt
+                            const v = e.target.value === '' || !(Number(e.target.value) > 0)
+                              ? Infinity : Number(e.target.value)
                             setSimConfig(c => arm === 'B' ? { ...c, storageB: v } : { ...c, storageD: v })
                           }}
                           style={{ width: 56, padding: '3px 6px', borderRadius: 4,
@@ -763,6 +868,13 @@ export default function SimulationApp() {
                        color: running ? '#9ca3af' : '#fff', fontWeight: 700 }}>
               {running ? 'Simulation läuft…' : result ? 'Neu starten' : 'Simulation starten'}
             </button>
+            {running && (
+              <button onClick={stopWorker}
+                style={{ padding: '10px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
+                         border: '1px solid #dc2626', background: '#fff', color: '#dc2626', fontWeight: 700 }}>
+                Abbrechen
+              </button>
+            )}
             {result && (
               <span style={{ fontSize: 11, color: '#6b7280' }}>
                 {isMultiResult
@@ -799,27 +911,17 @@ export default function SimulationApp() {
             </div>
           )}
 
-          {/* Konfiguration-Zusammenfassung (immer sichtbar wenn nicht leer) */}
-          {result && (
-            <div style={{ padding: '8px 12px', borderRadius: 6, background: '#f0f9ff',
-                          border: '1px solid #bae6fd', fontSize: 11, color: '#0369a1',
-                          marginBottom: 12, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              <span>
-                Modell: {(simConfig.useCowan ?? true) ? 'Cowan M3' : 'Exponential'}
-              </span>
-              <span>·</span>
-              <span>Erlang k={simConfig.erlangK ?? 2}</span>
-              {(pedestrians.armA.enabled || pedestrians.armC.enabled) && (
-                <><span>·</span><span style={{ color: '#15803d' }}>Fussgänger*innen aktiv</span></>
-              )}
-              {Object.keys(gapOverrides).length > 0 && (
-                <><span>·</span><span style={{ color: '#b45309' }}>tc/tf angepasst</span></>
-              )}
-              {isMultiResult && (
-                <><span>·</span><span>{(result as StochasticMultiResult).intervals.length} Intervalle</span></>
-              )}
+          {/* Eingaben seit dem Lauf geändert → Resultat passt nicht mehr zur Anzeige links */}
+          {result && !running && resultKey !== inputKey && (
+            <div style={{ padding: '8px 12px', borderRadius: 6, background: '#fff7ed',
+                          border: '1px solid #fdba74', fontSize: 12, color: '#9a3412', marginBottom: 12 }}>
+              Die Eingaben wurden seit der letzten Simulation geändert — das Resultat ist veraltet.
+              Bitte neu starten.
             </div>
           )}
+
+          {/* Konfiguration, mit der das angezeigte Resultat gerechnet wurde */}
+          {result && <RunConfigSummary result={result} />}
 
           {/* Ergebnis-Anzeige */}
           {result && !isMultiResult && (
@@ -855,6 +957,38 @@ export default function SimulationApp() {
           {' '}— kommerzielle Nutzung untersagt.
         </div>
       </footer>
+
+      {/* Druckansicht: Resultat mit der Konfiguration, mit der es gerechnet wurde */}
+      {isActive && result && createPortal(
+        <div className="print-portal" style={{ padding: '14mm 16mm', background: '#fff',
+                                               fontFamily: 'system-ui, sans-serif', color: '#111' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+                        borderBottom: '2px solid #1e3a5f', paddingBottom: 6, marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: '#1e3a5f' }}>Simulation Wartezeiten</div>
+              <div style={{ fontSize: 12 }}>{nodeName} · {armCount === 3 ? 'T-Knoten (3 Arme)' : 'Kreuzung (4 Arme)'}</div>
+            </div>
+            <div style={{ fontSize: 11, textAlign: 'right' }}>
+              <div style={{ fontWeight: 700 }}>KnotenCheck</div>
+              <div>{new Date().toLocaleDateString('de-CH', { day: '2-digit', month: '2-digit', year: 'numeric' })}</div>
+            </div>
+          </div>
+          {resultKey !== inputKey && (
+            <div style={{ fontSize: 11, color: '#9a3412', marginBottom: 8 }}>
+              Hinweis: Die Eingaben wurden nach dieser Simulation geändert.
+            </div>
+          )}
+          <RunConfigSummary result={result} />
+          {isMultiResult
+            ? <MultiIntervalPanel result={result as StochasticMultiResult} />
+            : <StochasticPanel result={result as StochasticSN640022Result} />}
+          <div style={{ fontSize: 9, color: '#666', marginTop: 10 }}>
+            Stochastische Simulation auf Basis der SN 640 022 mit Grenz-/Folgezeitlücken nach HBS 2015.
+            Die Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.
+          </div>
+        </div>,
+        document.body,
+      )}
     </main>
   )
 }

@@ -229,3 +229,38 @@ describe('calculateRoundabout Typ 2/2 — Plausibilitätsprüfung', () => {
   test('2/2 hat niedrigere Auslastung als 2/1+ (Arm 4)', () =>
     expect(r22.entries[3].utilizationDegree).toBeLessThan(r21.entries[3].utilizationDegree))
 })
+
+// ── Fussgänger ausserhalb der Stützpunkte, leere Einfahrt ─────────────────────
+describe('f_F zwischen 0 und 100 FG/h: linear zur 100er-Kurve', () => {
+  test.each(['1/1', '2/1+', '2/2'] as const)('%s: stetig bei FG → 0 und FG = 100', type => {
+    const f100 = correctionFactorFF(type, 100, 0)
+    expect(correctionFactorFF(type, 0, 0)).toBe(1)
+    expect(correctionFactorFF(type, 1, 0)).toBeCloseTo(1 + 0.01 * (f100 - 1), 10)
+    expect(correctionFactorFF(type, 50, 0)).toBeCloseTo((1 + f100) / 2, 10)
+    expect(correctionFactorFF(type, 99.999, 0)).toBeCloseTo(f100, 4)
+  })
+})
+
+describe('FG über 400: markiert, mit 400er-Kurve gerechnet', () => {
+  const r = calculateRoundabout({ type: '1/1', qe: [300, 300, 300, 300], qk: [300, 300, 300, 300], fg: [500, 400, 0, 0] })
+  test('Markierung nur über 400', () => {
+    expect(r.entries.map(e => e.fgOutOfRange)).toEqual([true, false, false, false])
+  })
+  test('f_F wie bei 400', () => { expect(r.entries[0].fF).toBe(r.entries[1].fF) })
+})
+
+describe('Einfahrt ohne Verkehr bestimmt die Gesamt-QS nicht', () => {
+  // Arm 1 leer, aber hohe Kreisbelastung → L_E klein
+  const r = calculateRoundabout({ type: '1/1', qe: [0, 200, 200, 200], qk: [1900, 200, 200, 200], fg: [0, 0, 0, 0] })
+  test('leere Einfahrt: keine Wartezeit, nicht belastet', () => {
+    expect(r.entries[0].loaded).toBe(false)
+    expect(r.entries[0].delay).toBe(0)
+    expect(r.entries[0].utilizationDegree).toBe(0)
+  })
+  test('Gesamt-QS aus den belasteten Einfahrten', () => {
+    expect(r.overallLevelOfService).toBe(worstLOSOf(r.entries.slice(1).map(e => e.levelOfService)))
+    expect(r.overallLevelOfService).toBe('A')
+  })
+})
+
+function worstLOSOf(l: string[]) { return [...l].sort().at(-1) }

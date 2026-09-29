@@ -30,40 +30,36 @@ describe('computeDelay', () => {
   })
 })
 
-// ── Tab. 15 — Goldbrunnenplatz 2 (S. 43) ─────────────────────────────────────
-// Rang 1 (HS): Q=400, S_m1=1800 → y₁=0.222
-// Rang 2 (NS): Q=190 (empirisch), Wartezeit empirisch ≈6.0s
-// β = (1−0.222)³ ≈ 0.471, L=1500×0.471=707, x=190/707≈0.27
+// ── Tab. 15 — Empirische Standorte (S. 43), über die Engine gerechnet ────────
+// Einmündung ohne Fussgänger*innen: Hauptstrom A→C, ein Nebenstrom B→C.
+// Die Engine rechnet mit S_m1 = 1750 und S_m2 = 1650 Fz/h (Tab. 8/13).
+const tab15 = (qHS: number, qNS: number) => calculateVSS308({
+  type: '3arm',
+  arms: [
+    { name: '', roadType: 'HS', right: 0,   straight: qHS, left: 0, fg: 0 },
+    { name: '', roadType: 'HS', right: 0,   straight: 0,   left: 0, fg: 0 },
+    { name: '', roadType: 'NS', right: qNS, straight: 0,   left: 0, fg: 0 },
+  ],
+}).streams.find(s => s.id === 'B→C')!
 
 describe('Tab. 15 — Goldbrunnenplatz 2', () => {
-  const yHS = 400 / 1800   // ≈ 0.222
-  const beta = (1 - yHS) ** 3
-  const L = 1500 * beta
-  const Q = 190
-  const w = computeDelay(Q, L, 1.0)
-
-  test('β ≈ 0.47', () => approx(beta, 0.47, 0.02))
-  test('L ≈ 707', () => approx(L, 707, 10))
-  test('w zwischen 3s und 12s (empirisch 6s)', () => {
-    expect(w).toBeGreaterThan(3)
-    expect(w).toBeLessThan(12)
+  // Rang 1: Q = 400 Fz/h; Rang 2: Q = 190 Fz/h, empirische Wartezeit ≈ 6 s
+  const s = tab15(400, 190)
+  test('β = (1 − 400/1750)³', () => approx(s.beta, (1 - 400 / 1750) ** 3, 1e-9))
+  test('L = 1650 · β', () => approx(s.capacity, 1650 * s.beta, 1e-6))
+  test('w zwischen 3 s und 12 s (empirisch 6 s)', () => {
+    expect(s.delay).toBeGreaterThan(3)
+    expect(s.delay).toBeLessThan(12)
   })
 })
 
-// ── Tab. 15 — Uster 2 (S. 43) ────────────────────────────────────────────────
-// Rang 2: Q=434, y₁=642/1800≈0.357
-// β = (1−0.357)³ ≈ 0.266, L=1500×0.266=399
-// x=434/399≈1.09 → Überlast → w=Infinity
-
-describe('Tab. 15 — Uster 2 (overflow)', () => {
-  const yHS = 642 / 1800
-  const L   = 1500 * (1 - yHS) ** 3
-  const Q   = 434
-  test('x>1 → Infinity', () => {
-    expect(computeDelay(Q, L, 1.0)).toBe(Infinity)
-  })
-  test('LOS F bei Overflow', () => {
-    expect(computeLOS(Infinity)).toBe('F')
+describe('Tab. 15 — Uster 2 (Überlast)', () => {
+  // Rang 1: Q = 642 Fz/h; Rang 2: Q = 434 Fz/h → x > 1
+  const s = tab15(642, 434)
+  test('x > 1 → w = ∞, QS F', () => {
+    expect(s.utilizationDegree).toBeGreaterThan(1)
+    expect(s.delay).toBe(Infinity)
+    expect(s.levelOfService).toBe('F')
   })
 })
 
@@ -140,6 +136,57 @@ describe('calculateVSS308 — Strom-Topologie', () => {
       ],
     })
     expect(r.streams.length).toBe(8)
+  })
+
+  test('Arm als Mischstreifen: ΣQ über Leistungsfähigkeit → QS F, auch wenn jeder Strom < 1', () => {
+    const r = calculateVSS308({
+      type: '4arm',
+      arms: [
+        { name: '', roadType: 'HS', right: 600, straight: 700, left: 600, fg: 0 },
+        { name: '', roadType: 'HS', right: 0,   straight: 0,   left: 0,   fg: 0 },
+        { name: '', roadType: 'NS', right: 0,   straight: 0,   left: 0,   fg: 0 },
+        { name: '', roadType: 'NS', right: 0,   straight: 0,   left: 0,   fg: 0 },
+      ],
+    })
+    const armA = r.arms[0]
+    expect(armA.streams.every(s => s.utilizationDegree < 1)).toBe(true)
+    approx(armA.utilizationDegree, 1900 / 1750, 1e-9)   // x_Arm = Σ Q_i / L_i, ohne Fg L_i = S
+    expect(armA.levelOfService).toBe('F')
+    expect(r.overallLevelOfService).toBe('F')
+  })
+
+  test('Arm-Wartezeit folgt aus ΣQ und L_Arm (Gl. 1)', () => {
+    const r = calculateVSS308({
+      type: '3arm',
+      arms: [
+        { name: '', roadType: 'HS', right: 50, straight: 200, left: 0,  fg: 0 },
+        { name: '', roadType: 'HS', right: 0,  straight: 200, left: 50, fg: 0 },
+        { name: '', roadType: 'NS', right: 60, straight: 0,   left: 40, fg: 0 },
+      ],
+    })
+    const b = r.arms[2]
+    const x = b.streams.filter(s => s.Q > 0).reduce((sum, s) => sum + s.Q / s.capacity, 0)
+    expect(x).toBeLessThan(1)
+    approx(b.utilizationDegree, x, 1e-9)
+    approx(b.capacity, 100 / x, 1e-6)
+    approx(b.delay, computeDelay(100, 100 / x, 1.0), 1e-6)
+  })
+
+  test('3-Arm: Felder ohne Zielarm (A-links, C-rechts, B-geradeaus) wirken nicht', () => {
+    const calc = (hidden: number) => calculateVSS308({
+      type: '3arm',
+      arms: [
+        { name: '', roadType: 'HS', right: 100,    straight: 400, left: hidden, fg: 0 },
+        { name: '', roadType: 'HS', right: hidden, straight: 400, left: 100,    fg: 0 },
+        { name: '', roadType: 'NS', right: 80,     straight: hidden, left: 80,  fg: 0 },
+      ],
+    })
+    const mit = calc(100), ohne = calc(0)
+    expect(mit.streams.map(s => s.capacity)).toEqual(ohne.streams.map(s => s.capacity))
+    expect(mit.arms.map(a => a.qFz)).toEqual(ohne.arms.map(a => a.qFz))
+    expect(mit.overallLevelOfService).toBe(ohne.overallLevelOfService)
+    // Strom ohne Zielarm trägt keine Belastung
+    expect(mit.streams.filter(s => s.toArmIndex < 0).every(s => s.Q === 0)).toBe(true)
   })
 
   test('Strom-IDs korrekt', () => {

@@ -20,20 +20,32 @@ export function exportTool(opts: {
   opts.showToast(`Gespeichert als ${filename}`)
 }
 
-export async function importTool<T>(
+// apply erhält die Rohdaten der Datei und muss sie selbst absichern (engine/conform.ts)
+export async function importTool(
   tool: string,
-  apply: (data: T, name: string) => void,
+  apply: (data: Record<string, unknown>, name: string) => void,
   showToast: (msg: string) => void,
 ): Promise<void> {
+  let raw: Record<string, unknown>
   try {
-    const raw = await readJSONFile() as Record<string, unknown>
-    if (raw?.tool !== tool) {
-      alert('Diese Datei gehört zu einem anderen Rechner-Modul.')
-      return
-    }
-    apply(raw.data as T, (raw.name as string) || '')
-    showToast(`Geladen: ${(raw.name as string) || 'Unbenannt'}`)
-  } catch (e) { alert((e as Error).message) }
+    raw = await readJSONFile() as Record<string, unknown>
+  } catch (e) { alert((e as Error).message); return }
+  if (raw?.tool !== tool) {
+    alert('Diese Datei gehört zu einem anderen Rechner-Modul.')
+    return
+  }
+  const data = raw.data
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+    alert('Die Datei enthält keine Rechner-Daten.')
+    return
+  }
+  const name = typeof raw.name === 'string' ? raw.name : ''
+  try {
+    apply(data as Record<string, unknown>, name)
+    showToast(`Geladen: ${name || 'Unbenannt'}`)
+  } catch {
+    alert('Die Datei konnte nicht geladen werden (unvollständig oder beschädigt).')
+  }
 }
 
 export function downloadJSON(filename: string, data: unknown): void {

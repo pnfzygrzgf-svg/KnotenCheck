@@ -59,7 +59,10 @@ export function ringFactor(mix?: RbVehicleMix): number {
 
 // ── f_F Lookup-Tabellen (Abb. 3 und Abb. 4) ──────────────────────────────────
 // Abb. 3, SN 640 024a — abgelesen aus Diagramm
-// FG=0 → f_F=1.0 (kein Einfluss) wird vor der Interpolation abgefangen
+// FG=0 → f_F=1.0 (kein Einfluss); zwischen 0 und 100 FG/h linear zur 100er-Kurve.
+// Die Diagramme (auch Abb. 5) reichen bis 400 FG/h; darüber wird mit der
+// 400er-Kurve gerechnet und das Resultat als ausserhalb des Normbereichs markiert.
+export const FG_MAX_NORM = 400
 
 const FF_1_1: Record<number, [number, number][]> = {
   100: [[0, 0.99], [800, 0.99], [900, 1.00]],
@@ -99,7 +102,8 @@ export function correctionFactorFF(type: RoundaboutType, fg: number, qk: number)
   const table = type === '1/1' ? FF_1_1 : FF_2_1PLUS
   const keys = Object.keys(table).map(Number).sort((a, b) => a - b)
 
-  if (fg <= keys[0]) return lerpPoints(table[keys[0]], qk)
+  // 0 < FG < 100: linear zwischen f_F = 1 (keine Fussgänger) und der 100er-Kurve
+  if (fg < keys[0]) return 1 + fg / keys[0] * (lerpPoints(table[keys[0]], qk) - 1)
   if (fg >= keys[keys.length - 1]) return lerpPoints(table[keys[keys.length - 1]], qk)
 
   for (let i = 0; i < keys.length - 1; i++) {
@@ -189,6 +193,8 @@ export interface EntryResult {
   utilizationDegree: number // x = Q_E / L_E
   delay: number            // w [s]
   levelOfService: LevelOfService
+  loaded: boolean          // Q_E > 0; ohne Einfahrtsverkehr keine QS (zählt nicht zur Gesamt-QS)
+  fgOutOfRange: boolean    // FG > 400: ausserhalb Abb. 3–5, mit 400er-Kurve gerechnet
 }
 
 export interface ExitResult {
@@ -228,10 +234,13 @@ export function calculateRoundabout(input: RoundaboutInput): RoundaboutResult {
     const leBase      = basicCapacity(type, qk[i])
     const capacity    = leBase * fF
     const reserve     = capacity - q
-    const x           = capacity > 0 ? q / capacity : Infinity
-    const delay       = entryDelay(q, capacity)
+    const loaded      = q > 0
+    const x           = capacity > 0 ? q / capacity : (loaded ? Infinity : 0)
+    // Ohne Einfahrtsverkehr wartet niemand: keine Wartezeit, QS nur Platzhalter
+    const delay       = loaded ? entryDelay(q, capacity) : 0
     const los         = levelOfService(delay)
-    return { armIndex: i, qe: q, qk: qk[i], fg: fg[i], fF, leBase, capacity, reserve, utilizationDegree: x, delay, levelOfService: los }
+    return { armIndex: i, qe: q, qk: qk[i], fg: fg[i], fF, leBase, capacity, reserve, utilizationDegree: x,
+             delay, levelOfService: los, loaded, fgOutOfRange: fg[i] > FG_MAX_NORM }
   })
 
   // Ausfahrten-Check (Ziffer 10, Abb. 5): Q_A(i) ≤ L_A(i) an allen Ausfahrten
@@ -244,7 +253,7 @@ export function calculateRoundabout(input: RoundaboutInput): RoundaboutResult {
   return {
     type, entries, exits,
     exitOverload: exits.some(e => e.overloaded),
-    overallLevelOfService: worstLOS(entries.map(e => e.levelOfService)),
+    overallLevelOfService: worstLOS(entries.filter(e => e.loaded).map(e => e.levelOfService)),
   }
 }
 

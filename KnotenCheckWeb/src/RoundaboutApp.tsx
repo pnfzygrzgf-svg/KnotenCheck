@@ -1,18 +1,19 @@
 import { useState, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { calculateRoundabout, computeQKfromTurnings, computeQAfromTurnings,
-  entryFactor, ringFactor } from './engine/roundaboutCalculator'
+  entryFactor, ringFactor, RB_PCE_MOTOR, FG_MAX_NORM } from './engine/roundaboutCalculator'
+import { conform, conformFixed, oneOf } from './engine/conform'
 import type { RoundaboutType, LevelOfService, EntryResult, ExitResult,
   GradientPCE, RbVehicleMix } from './engine/roundaboutCalculator'
 import kreiselSvg from './assets/Kreisel.svg'
 import kreisel3ArmSvg from './assets/Kreisel_3_arm.svg'
 import { exportTool, importTool } from './saveLoad'
+import { useIsActiveModule } from './activeModule'
 import { LegendBox, type LegendItem } from './LegendBox'
-import { useToast, Toast } from './Toast'
-import {
-  LOS_COLOR, LOS_BG, LOSBadge, NumInput, Row, SectionLabel, UtilBar, ToggleBtn,
-  delayText, utilizationColor,
-} from './ui'
+import { Toast } from './Toast'
+import { LOS_BG, LOS_COLOR, delayText, utilizationColor } from './uiHelpers'
+import { useToast } from './useToast'
+import { LOSBadge, NumInput, Row, SectionLabel, UtilBar, ToggleBtn } from './ui'
 
 // ── Tab. 2: PW-Äquivalente — Logik in roundaboutCalculator.ts ─────────────────
 const GRADIENT_OPTIONS: { value: GradientPCE; label: string }[] = [
@@ -40,6 +41,12 @@ function defaultArm(): ArmInput {
   return { name: '', right: 0, straight: 0, left: 0, fg: 0, gradient: '±0%', exitWide: false }
 }
 
+// Einfahrende Fz/h eines Arms; beim 3-Arm-Kreisel gibt es keinen Geradeaus-Strom
+// (das ausgeblendete Feld kann noch einen Wert aus dem 4-Arm enthalten)
+function entryFzh(arm: ArmInput, armCount: 3 | 4): number {
+  return arm.right + (armCount === 4 ? arm.straight : 0) + arm.left
+}
+
 // Kategorie-Eingaben (Detail-Mischung); PW ergibt sich als Rest
 const MIX_ROWS: { key: keyof RbVehicleMix; label: string; onlyFlat?: boolean }[] = [
   { key: 'pctMR', label: 'MR – Motorräder' },
@@ -59,7 +66,7 @@ function ArmCard({ arm, index, armCount, qkFzh, onChange }: {
   const mix    = arm.mix
   const pce    = entryFactor(arm.gradient, mix)
   const rpce   = ringFactor(mix)
-  const qeFzh  = arm.right + arm.straight + arm.left
+  const qeFzh  = entryFzh(arm, armCount)
   const qePWE  = Math.round(qeFzh * pce)
   const qkPWE  = Math.round(qkFzh * rpce)
   // PW-Anteil (Rest) für die Detail-Mischung
@@ -206,7 +213,8 @@ function EntryCard({ e, arm, armNumber }: { e: EntryResult; arm: ArmInput; armNu
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 15, fontWeight: 700, color: col }}>{pct} %</span>
-          <LOSBadge los={e.levelOfService} />
+          {e.loaded ? <LOSBadge los={e.levelOfService} />
+            : <span style={{ fontSize: 11, color: '#9ca3af' }}>kein Einfahrtsverkehr</span>}
         </div>
       </div>
 
@@ -244,11 +252,17 @@ function EntryCard({ e, arm, armNumber }: { e: EntryResult; arm: ArmInput; armNu
         </div>
         <div style={{ gridColumn: '1 / -1' }}>
           <span style={{ color: '#9ca3af' }}>Wartezeit </span>
-          <strong style={{ color: overflow ? '#dc2626' : undefined }}>{delayText(e.delay)}</strong>
+          <strong style={{ color: overflow ? '#dc2626' : undefined }}>{e.loaded ? delayText(e.delay) : '—'}</strong>
           {arm.fg > 0 && (
             <span style={{ marginLeft: 8, color: '#9ca3af' }}>(FG = {arm.fg} FG/h)</span>
           )}
         </div>
+        {e.fgOutOfRange && (
+          <div style={{ gridColumn: '1 / -1', marginTop: 4, color: '#b45309' }}>
+            FG über {FG_MAX_NORM} FG/h liegt ausserhalb der Normdiagramme (Abb. 3–5): gerechnet mit
+            der {FG_MAX_NORM}er-Kurve, die Leistungsfähigkeit ist eher überschätzt.
+          </div>
+        )}
       </div>
     </div>
   )
@@ -309,17 +323,17 @@ const LOS_DESC: Record<LevelOfService, string> = {
 function PrintSheet({ nodeName, type, armCount, arms, result }: {
   nodeName: string
   type: RoundaboutType
-  armCount: number
+  armCount: 3 | 4
   arms: ArmInput[]
   result: NonNullable<ReturnType<typeof calculateRoundabout>>
 }) {
   const date = new Date().toLocaleDateString('de-CH', { day: '2-digit', month: '2-digit', year: 'numeric' })
   const overall = result.overallLevelOfService
 
-  const worstIdx = result.entries.reduce((wi, e, i) => {
-    const r = ['A','B','C','D','E','F']
-    return r.indexOf(e.levelOfService) > r.indexOf(result.entries[wi].levelOfService) ? i : wi
-  }, 0)
+  // Massgebend: schlechteste Einfahrt mit Verkehr
+  const r = ['A','B','C','D','E','F']
+  const worstIdx = result.entries.reduce((wi, e, i) =>
+    e.loaded && (wi < 0 || r.indexOf(e.levelOfService) > r.indexOf(result.entries[wi].levelOfService)) ? i : wi, -1)
 
   const th: React.CSSProperties = {
     padding: '3px 6px', border: '1px solid #bbb', background: '#ececec',
@@ -390,7 +404,7 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
         <tbody>
           {arms.map((arm, i) => {
             const pce   = entryFactor(arm.gradient, arm.mix)
-            const qeFzh = arm.right + arm.straight + arm.left
+            const qeFzh = entryFzh(arm, armCount)
             return (
               <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f7f7f7' }}>
                 <td style={tdL}><strong>Arm {i + 1}</strong></td>
@@ -450,12 +464,13 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
                   {isFinite(e.utilizationDegree) ? `${Math.round(e.utilizationDegree * 100)} %` : '> 100 %'}
                 </td>
                 <td style={td}>
-                  {overflow ? '> 999 s' : e.delay < 1 ? '< 1 s' : `ca. ${Math.round(e.delay)} s`}
+                  {!e.loaded ? '—' : overflow ? '> 999 s' : e.delay < 1 ? '< 1 s' : `ca. ${Math.round(e.delay)} s`}
                 </td>
                 <td style={{ ...td, textAlign: 'center', fontWeight: 800,
-                             background: LOS_BG[e.levelOfService],
-                             color: LOS_COLOR[e.levelOfService] }}>
-                  {e.levelOfService}
+                             background: e.loaded ? LOS_BG[e.levelOfService] : undefined,
+                             color: e.loaded ? LOS_COLOR[e.levelOfService] : '#9ca3af' }}>
+                  {e.loaded ? e.levelOfService : '—'}
+                  {e.fgOutOfRange ? '¹' : ''}
                 </td>
               </tr>
             )
@@ -516,12 +531,21 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
           <div style={{ fontSize: 10, color: '#444', marginTop: 1 }}>
             {LOS_DESC[overall]}
           </div>
-          <div style={{ fontSize: 9, color: '#666', marginTop: 2 }}>
-            Massgebende Einfahrt: Arm {worstIdx + 1}
-            {arms[worstIdx].name ? ` — ${arms[worstIdx].name}` : ''}
-            {' '}(VQS {result.entries[worstIdx].levelOfService},
-            {' '}ca. {Math.round(result.entries[worstIdx].delay)} s)
-          </div>
+          {worstIdx >= 0 && (
+            <div style={{ fontSize: 9, color: '#666', marginTop: 2 }}>
+              Massgebende Einfahrt: Arm {worstIdx + 1}
+              {arms[worstIdx].name ? ` — ${arms[worstIdx].name}` : ''}
+              {' '}(VQS {result.entries[worstIdx].levelOfService},
+              {' '}{isFinite(result.entries[worstIdx].delay)
+                ? `ca. ${Math.round(result.entries[worstIdx].delay)} s` : 'Überlast'})
+            </div>
+          )}
+          {result.entries.some(e => e.fgOutOfRange) && (
+            <div style={{ fontSize: 9, color: '#666', marginTop: 2 }}>
+              ¹ FG über {FG_MAX_NORM} FG/h: ausserhalb Abb. 3–5, mit der {FG_MAX_NORM}er-Kurve gerechnet
+              (Leistungsfähigkeit eher überschätzt).
+            </div>
+          )}
         </div>
       </div>
 
@@ -574,6 +598,7 @@ const LEGEND_ITEMS: LegendItem[] = [
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 
 export default function RoundaboutApp() {
+  const isActive = useIsActiveModule()  // Druckblatt nur im sichtbaren Modul
   const [type, setType]         = useState<RoundaboutType>('1/1')
   const [armCount, setArmCount] = useState<3 | 4>(4)
   const [nodeName, setNodeName] = useState('')
@@ -594,12 +619,16 @@ export default function RoundaboutApp() {
     })
 
   const handleImport = () =>
-    importTool<{ nodeName: string; type: RoundaboutType; armCount: 3|4; arms: ArmInput[] }>(
-      'sn024a', d => {
-        setNodeName(d.nodeName ?? '')
-        setType(d.type ?? '1/1')
-        setArmCount(d.armCount ?? 4)
-        setArms(d.arms ?? [defaultArm(), defaultArm(), defaultArm(), defaultArm()])
+    importTool('sn024a', d => {
+        setNodeName(typeof d.nodeName === 'string' ? d.nodeName : '')
+        setType(oneOf<RoundaboutType>(['1/1', '2/1+', '2/2'], d.type, '1/1'))
+        setArmCount(oneOf<3 | 4>([3, 4], d.armCount, 4))
+        // Immer 4 Arme halten (3-Arm nutzt die ersten drei); Neigung und Mischung prüfen
+        setArms(conformFixed([defaultArm(), defaultArm(), defaultArm(), defaultArm()], d.arms).map(a => ({
+          ...a,
+          gradient: oneOf(Object.keys(RB_PCE_MOTOR) as GradientPCE[], a.gradient, '±0%'),
+          mix: a.mix ? conform<RbVehicleMix>({ pctFR: 0, pctMR: 0, pctLW: 0, pctLZ: 0 }, a.mix) : undefined,
+        })))
       }, showToast)
 
   function handleReset() {
@@ -608,7 +637,8 @@ export default function RoundaboutApp() {
     showToast('Zurückgesetzt')
   }
 
-  const activeArms = arms.slice(0, armCount)
+  // Neue Identität genau dann, wenn sich Arme oder Armzahl ändern (Abhängigkeit der Memos unten)
+  const activeArms = useMemo(() => arms.slice(0, armCount), [arms, armCount])
 
   // Q_K aus Abbiegeströmen (Fz/h) — Formel: Abb. 10 / Herleitung Ring-Querschnitt
   const qkFzh = useMemo(() => computeQKfromTurnings(
@@ -616,7 +646,7 @@ export default function RoundaboutApp() {
     activeArms.map(a => a.straight),
     activeArms.map(a => a.left),
     armCount,
-  ), [armCount, JSON.stringify(activeArms.map(a => [a.right, a.straight, a.left]))])
+  ), [armCount, activeArms])
 
   // Q_A je Ausfahrt (PWE/h) — Bewegungen mit dem f ihres Herkunftsarms gewichtet (Einfahrt)
   const qaPWE = useMemo(() => computeQAfromTurnings(
@@ -624,7 +654,7 @@ export default function RoundaboutApp() {
     activeArms.map(a => a.straight * entryFactor(a.gradient, a.mix)),
     activeArms.map(a => a.left * entryFactor(a.gradient, a.mix)),
     armCount,
-  ).map(Math.round), [armCount, JSON.stringify(activeArms)])
+  ).map(Math.round), [armCount, activeArms])
 
   // Q_K je Einfahrt (PWE/h) — Ringströme mit dem Ring-f (Mischung @±0 %) des Herkunftsarms gewichtet
   const qkPWE = useMemo(() => computeQKfromTurnings(
@@ -632,18 +662,18 @@ export default function RoundaboutApp() {
     activeArms.map(a => a.straight * ringFactor(a.mix)),
     activeArms.map(a => a.left * ringFactor(a.mix)),
     armCount,
-  ).map(Math.round), [armCount, JSON.stringify(activeArms)])
+  ).map(Math.round), [armCount, activeArms])
 
   const result = useMemo(() => {
     const qe = activeArms.map(a =>
-      Math.round((a.right + a.straight + a.left) * entryFactor(a.gradient, a.mix))
+      Math.round(entryFzh(a, armCount) * entryFactor(a.gradient, a.mix))
     )
     const qk = qkPWE
     const fg = activeArms.map(a => a.fg)
     const exitWide = activeArms.map(a => a.exitWide)
     if (qe.every(v => v === 0)) return null
     return calculateRoundabout({ type, qe, qk, fg, qa: qaPWE, exitWide })
-  }, [type, armCount, JSON.stringify(activeArms), JSON.stringify(qkPWE), JSON.stringify(qaPWE)])
+  }, [type, armCount, activeArms, qkPWE, qaPWE])
 
   const overall = result?.overallLevelOfService
 
@@ -860,7 +890,7 @@ export default function RoundaboutApp() {
       </footer>
     </main>
 
-    {result && createPortal(
+    {isActive && result && createPortal(
       <div className="print-portal" style={{ padding: '14mm 16mm', background: '#fff',
                                              fontFamily: 'system-ui, Arial, sans-serif' }}>
         <PrintSheet

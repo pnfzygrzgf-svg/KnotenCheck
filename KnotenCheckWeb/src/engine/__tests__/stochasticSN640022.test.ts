@@ -1,14 +1,21 @@
 // Verifikation Stochastik-Simulation SN 640 022
 // Stufen 1A (Erlang t_c), 1B (Cowan M3), 2C (simultane Ströme), 2D (Stauraum)
 
-import { describe, test, expect } from 'vitest'
+import { describe, test, expect, afterAll } from 'vitest'
 import {
   runStochasticSN640022, runStochasticSN640022Multi,
-  sampleErlang, sampleCowanM3, GAP_PARAMS_SN640022, pedBlockingTime,
+  sampleLogNormal, sampleCowanM3, seededRandom, GAP_PARAMS, GAP_PARAMS_SN640022, pedBlockingTime,
 } from '../stochasticSN640022'
-import { analyzeSN640022 } from '../sn640022Calculator'
+import { analyzeSN640022, basicCapacityG } from '../sn640022Calculator'
 import type { SimInterval } from '../stochasticSN640022'
 import type { SN640022LaneFlags } from '../types'
+
+// Alle Zufallszahlen dieser Datei aus einem Generator mit festem Startwert:
+// Die statistischen Tests sind damit reproduzierbar und schlagen nicht zufällig fehl.
+// (Direkt ersetzt, nicht per vi.spyOn — ein Spy protokolliert jeden der Millionen Aufrufe.)
+const originalRandom = Math.random
+Math.random = seededRandom(20260929)
+afterAll(() => { Math.random = originalRandom })
 
 const acc = (a: number, b: number, tol: number) =>
   expect(Math.abs(a - b)).toBeLessThanOrEqual(tol)
@@ -21,30 +28,27 @@ const noFlags: SN640022LaneFlags = {
 }
 
 
-// ── Stufe 1A: Erlang t_c ──────────────────────────────────────────────────────
-describe('1A — Erlang t_c', () => {
-  const nominal = 5.0, k = 2, N = 2000
-  const samples = Array.from({ length: N }, () => sampleErlang(nominal, k))
+// ── Stufe 1A: lognormal gestreutes t_c ────────────────────────────────────────
+describe('1A — t_c lognormal', () => {
+  const nominal = 6.5, sigma = 0.8, N = 5000
+  const rng = seededRandom(1)
+  const samples = Array.from({ length: N }, () => sampleLogNormal(nominal, sigma, rng))
+  const mean = samples.reduce((s, x) => s + x, 0) / N
+  const sd = Math.sqrt(samples.reduce((s, x) => s + (x - mean) ** 2, 0) / N)
 
-  test('Mittelwert ≈ Nominalwert (±8 %)', () => {
-    const mean = samples.reduce((s, x) => s + x, 0) / N
-    acc(mean, nominal, nominal * 0.08)
-  })
+  test('Mittelwert ≈ Nominalwert (±2 %)', () => acc(mean, nominal, nominal * 0.02))
+  test('Standardabweichung ≈ σ (±5 %)', () => acc(sd, sigma, sigma * 0.05))
+  test('Alle Samples > 0', () => { for (const x of samples) expect(x).toBeGreaterThan(0) })
+  test('σ = 0 → konstant', () => expect(sampleLogNormal(nominal, 0, rng)).toBe(nominal))
+})
 
-  test('Varianz > 0 (Streuung vorhanden)', () => {
-    const mean = samples.reduce((s, x) => s + x, 0) / N
-    const v = samples.reduce((s, x) => s + (x - mean) ** 2, 0) / N
-    expect(v).toBeGreaterThan(0.5)
-  })
-
-  test('Varianz ≈ mean²/k (Erlang-Eigenschaft, ±20 %)', () => {
-    const mean = samples.reduce((s, x) => s + x, 0) / N
-    const v = samples.reduce((s, x) => s + (x - mean) ** 2, 0) / N
-    acc(v, nominal ** 2 / k, nominal ** 2 / k * 0.20)
-  })
-
-  test('Alle Samples > 0', () => {
-    for (const s of samples) expect(s).toBeGreaterThan(0)
+// ── Zufallsgenerator mit Startwert ────────────────────────────────────────────
+describe('seed: reproduzierbare Resultate', () => {
+  const v = [[0, 500, 100], [400, 0, 100], [80, 60, 0]]
+  test('gleicher seed → gleiche Wartezeiten', () => {
+    const a = runStochasticSN640022(v, noFlags, undefined, { runs: 20, seed: 7 })!
+    const b = runStochasticSN640022(v, noFlags, undefined, { runs: 20, seed: 7 })!
+    expect(a.streams.map(s => s.stats?.mean)).toEqual(b.streams.map(s => s.stats?.mean))
   })
 })
 
@@ -390,17 +394,10 @@ describe('Preset SN 640 022 (implizit) — Siegloch vs. Abb. 2', () => {
   const siegloch = (qp: number, p: { tc: number; tf: number }) =>
     90 + (3600 / p.tf) * Math.exp(-qp * (p.tc - p.tf / 2) / 3600)
 
-  const curves: [keyof typeof GAP_PARAMS_SN640022, [number, number][]][] = [
-    ['mainLeft',  [[0, 1575], [400, 950], [800, 600], [1200, 400], [1800, 225]]],
-    ['sideRight', [[0, 1250], [400, 750], [800, 475], [1200, 325], [1800, 200]]],
-    ['sideCross', [[0, 1000], [400, 625], [800, 425], [1200, 300], [1800, 200]]],
-    ['sideLeft',  [[0, 1000], [400, 600], [800, 375], [1200, 250], [1800, 175]]],
-  ]
-  for (const [key, pts] of curves) {
-    test(`${key}: |Siegloch − Abb. 2| ≤ 75 PWE/h an allen Stützpunkten`, () => {
-      for (const [qp, G] of pts) {
-        expect(Math.abs(siegloch(qp, GAP_PARAMS_SN640022[key]) - G)).toBeLessThanOrEqual(75)
-      }
+  for (const key of ['mainLeft', 'sideRight', 'sideCross', 'sideLeft'] as const) {
+    test(`${key}: |Siegloch − Abb. 2| ≤ 5 PWE/h für qpi 0–1800`, () => {
+      for (let qp = 0; qp <= 1800; qp += 50)
+        acc(siegloch(qp, GAP_PARAMS_SN640022[key]), basicCapacityG(key, qp), 5)
     })
   }
 })
@@ -449,5 +446,84 @@ describe('Fussgänger: höheres ρ → schwächerer Gap-Effekt (Strom 6)', () =>
     const mHigh = run(5)   // wenige Sperrungen → weniger Lücken → längere Wartezeit
     // Richtungstest mit grosszügiger Toleranz gegen Reststreuung (stochastisch).
     expect(mLow).toBeLessThanOrEqual(mHigh + 2)
+  })
+})
+
+// ── Ungültige Eingaben (z. B. aus beschädigten Dateien) ──────────────────────
+describe('Ungültige Eingaben enden ohne Endlosschleife', () => {
+  const v = [[0, 400, 100], [400, 0, 100], [80, 80, 0]]
+  const leg = { enabled: true, fg: 200, rho: 1, mittelinsel: false }
+
+  test('Intervalldauer NaN → Standarddauer', () => {
+    const ivs: SimInterval[] = [{ label: 'x', volumes: v, T: NaN }]
+    const r = runStochasticSN640022Multi(ivs, noFlags, { runs: 5 })!
+    expect(r.intervals[0].result.streams.some(s => s.stats !== null)).toBe(true)
+  })
+  test('Gruppengrösse ρ ≤ 0 → ρ = 1', () => {
+    const r = runStochasticSN640022(v, noFlags, undefined, {
+      runs: 5, pedestrians: { armA: { ...leg, rho: -2 }, armC: { ...leg, rho: 0 } },
+    })!
+    expect(r.streams.some(s => s.stats !== null)).toBe(true)
+  })
+  test('Stauraum null (gespeichertes ∞) → unbegrenzt, Arm-B-Ströme vorhanden', () => {
+    const r = runStochasticSN640022(v, noFlags, undefined, {
+      runs: 5, storageB: null as unknown as number,
+    })!
+    expect(r.streams.find(s => s.streamNumber === 4)?.stats).not.toBeNull()
+  })
+})
+
+// ── Auslastung der Haltelinie ─────────────────────────────────────────────────
+describe('Auslastung x der Haltelinie', () => {
+  const opts = { runs: 30, useCowan: false, tcSigma: 0 }
+
+  test('schwach belastet: x deutlich < 1', () => {
+    const r = runStochasticSN640022([[0, 300, 50], [300, 0, 50], [50, 50, 0]], noFlags, undefined, opts)!
+    for (const s of r.streams.filter(x => x.stats)) expect(s.utilization).toBeLessThan(0.5)
+  })
+  test('überlastet (analytisch a > 1): x ≥ 1 für Arm B', () => {
+    const v = [[0, 900, 200], [900, 0, 100], [300, 300, 0]]
+    expect(analyzeSN640022(v, noFlags)!.mixedLanes[0].utilizationDegree).toBeGreaterThan(1)
+    const r = runStochasticSN640022(v, noFlags, undefined, opts)!
+    expect(r.streams.find(s => s.streamNumber === 4)!.utilization).toBeGreaterThanOrEqual(1)
+  })
+  test('Arm-B-Ströme teilen die Haltelinie: gleiches x', () => {
+    const r = runStochasticSN640022([[0, 400, 100], [400, 0, 100], [80, 80, 0]], noFlags, undefined, opts)!
+    const x4 = r.streams.find(s => s.streamNumber === 4)!.utilization
+    const x6 = r.streams.find(s => s.streamNumber === 6)!.utilization
+    expect(x4).toBe(x6)
+  })
+})
+
+// ── Kapazität bei Sättigung = Harders-Formel ──────────────────────────────────
+// Exponentielle Hauptstromlücken, konstantes t_c: In einer Lücke t fahren n Fahrzeuge,
+// wenn t ≥ t_c + (n−1)·t_f → Kapazität c = q·e^(−q·t_c) / (1 − e^(−q·t_f)) (Harders).
+// Bei Überlast ist die Haltelinie dauernd besetzt → c ≈ Nachfrage / Auslastung x.
+describe('Kapazität der Simulation bei Sättigung (Harders)', () => {
+  const harders = (qpi: number, tc: number, tf: number) => {
+    const q = qpi / 3600
+    return 3600 * q * Math.exp(-q * tc) / (1 - Math.exp(-q * tf))
+  }
+  test.each([300, 600, 900])('Strom 7, qpi = %i Fz/h: ±4 %', qpi => {
+    const { tc, tf } = GAP_PARAMS.mainLeft
+    const c = harders(qpi, tc, tf)
+    const demand = Math.round(1.5 * c)
+    // Einmündung: nur q2 (A→C) als Hauptstrom, Strom 7 (C→B) übersättigt
+    const v = [[0, qpi, 0], [0, 0, demand], [0, 0, 0]]
+    const r = runStochasticSN640022(v, noFlags, v, { runs: 40, useCowan: false, tcSigma: 0, seed: qpi })!
+    const x = r.streams.find(s => s.streamNumber === 7)!.utilization
+    acc(demand / x, c, c * 0.04)
+  })
+})
+
+// ── Strom ohne Konfliktverkehr ────────────────────────────────────────────────
+describe('Strom mit Verkehr, aber ohne Hauptstrom', () => {
+  test('wird simuliert: keine Wartezeit ohne Fussgänger*innen', () => {
+    const v = [[0, 0, 0], [0, 0, 100], [50, 50, 0]]
+    const r = runStochasticSN640022(v, noFlags, undefined, { runs: 5, seed: 3 })!
+    const s7 = r.streams.find(s => s.streamNumber === 7)!
+    expect(s7.qpi).toBe(0)
+    expect(s7.stats).not.toBeNull()
+    expect(s7.stats!.mean).toBe(0)
   })
 })

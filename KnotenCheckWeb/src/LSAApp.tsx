@@ -1,12 +1,16 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  calculateLSAV2, defaultLanesAndPhases, armStreamIds, STREAM_LABELS, suggestPhasePlan,
+  calculateLSAV2, defaultLanesAndPhases, armStreamIds, armMovements, STREAM_LABELS, suggestPhasePlan,
 } from './engine/lsaCalculatorV2'
 import { exportTool, importTool } from './saveLoad'
-import { useToast, Toast } from './Toast'
+import { conform, conformFixed, oneOf } from './engine/conform'
+import { useIsActiveModule } from './activeModule'
+import { Toast } from './Toast'
+import { LOS_BG, LOS_COLOR, utilizationColor } from './uiHelpers'
+import { useToast } from './useToast'
 import { LegendBox, type LegendItem } from './LegendBox'
-import { LOS_COLOR, LOS_BG, LOSBadge, NumInput, utilizationColor } from './ui'
+import { LOSBadge, NumInput } from './ui'
 import type {
   Lane, PhaseDefinition, LevelOfService, LSAResultV2,
 } from './engine/lsaCalculatorV2'
@@ -58,16 +62,11 @@ function computeVolumes(
   arms: UIArmInput[],
   fgsConfig: Record<string, FGSArmConfig>,
 ): Record<string,number> {
-  const [A,C,B,D] = arms.map(toEngineArm)
-  const base: Record<string,number> = armCount === 3 ? {
-    q2: A?.straight??0, q3: A?.right??0,
-    q4: B?.left??0,     q6: B?.right??0,
-    q7: C?.left??0,     q8: C?.straight??0,
-  } : {
-    q1:A?.left??0,  q2:A?.straight??0, q3:A?.right??0,
-    q4:B?.left??0,  q5:B?.straight??0, q6:B?.right??0,
-    q7:C?.left??0,  q8:C?.straight??0, q9:C?.right??0,
-    q10:D?.left??0, q11:D?.straight??0,q12:D?.right??0,
+  // Zuordnung Eingabefeld → Strom aus derselben Definition wie die Beschriftung
+  const base: Record<string,number> = {}
+  for (let i = 0; i < armCount; i++) {
+    const arm = arms[i] ? toEngineArm(arms[i]) : undefined
+    for (const m of armMovements(armCount, i)) base[m.id] = arm?.[m.direction] ?? 0
   }
   const armLabels = armCount === 3 ? ['A','C','B'] : ['A','C','B','D']
   for (const lbl of armLabels) {
@@ -75,45 +74,6 @@ function computeVolumes(
     if (cfg?.enabled) base[`fgs-${lbl}`] = cfg.volume
   }
   return base
-}
-
-// Bezeichnung Bewegungen pro Arm
-type Movement = {id:string; label:string; direction:'left'|'straight'|'right'}
-function armMovements(armCount: 3|4, armIdx: number): Movement[] {
-  if (armCount === 3) {
-    if (armIdx === 0) return [
-      {id:'q2',label:'Geradeaus →C',direction:'straight'},
-      {id:'q3',label:'Rechts →B',direction:'right'},
-    ]
-    if (armIdx === 1) return [
-      {id:'q7',label:'Links →B',direction:'left'},
-      {id:'q8',label:'Geradeaus →A',direction:'straight'},
-    ]
-    return [
-      {id:'q4',label:'Links →A',direction:'left'},
-      {id:'q6',label:'Rechts →C',direction:'right'},
-    ]
-  }
-  if (armIdx === 0) return [
-    {id:'q1',label:'Links →D',direction:'left'},
-    {id:'q2',label:'Geradeaus →C',direction:'straight'},
-    {id:'q3',label:'Rechts →B',direction:'right'},
-  ]
-  if (armIdx === 1) return [
-    {id:'q7',label:'Links →B',direction:'left'},
-    {id:'q8',label:'Geradeaus →A',direction:'straight'},
-    {id:'q9',label:'Rechts →D',direction:'right'},
-  ]
-  if (armIdx === 2) return [
-    {id:'q4',label:'Rechts →A',direction:'right'},
-    {id:'q5',label:'Geradeaus →D',direction:'straight'},
-    {id:'q6',label:'Links →C',direction:'left'},
-  ]
-  return [
-    {id:'q12',label:'Links →A',direction:'left'},
-    {id:'q11',label:'Geradeaus →B',direction:'straight'},
-    {id:'q10',label:'Rechts →C',direction:'right'},
-  ]
 }
 
 // Wartezeit-Format in dichten Ergebnis-Tabellen — bewusst ohne «ca.»-Präfix
@@ -356,7 +316,7 @@ function PhasePlanSection({ lanes, phaseStates, onChange, onApplyDefault, onSugg
   onSuggestMinimal: () => void
   result: LSAResultV2 | null
 }) {
-  let nextId = Math.max(0, ...phaseStates.map(p=>p.id)) + 1
+  const nextId = Math.max(0, ...phaseStates.map(p=>p.id)) + 1
 
   function toggle(phaseId:number, laneId:string) {
     onChange(phaseStates.map(ph => ph.id !== phaseId ? ph : {
@@ -486,6 +446,14 @@ function PhasePlanSection({ lanes, phaseStates, onChange, onApplyDefault, onSugg
         <div style={{ marginTop:8, display:'flex', gap:8, flexWrap:'wrap' }}>
           {result.phases.map((pr, i) => {
             const below = pr.belowMinGreen
+            if (pr.empty) return (
+              <div key={pr.id} style={{ padding:'6px 10px', borderRadius:8, fontSize:11,
+                                        border:'1px dashed #d1d5db', background:'#f9fafb',
+                                        color:'#9ca3af', minWidth:160 }}>
+                <div style={{ fontWeight:700, color:'#6b7280', marginBottom:3 }}>Phase {i+1}</div>
+                Leer (kein Fahrstreifen mit Verkehr) — wird nicht berücksichtigt
+              </div>
+            )
             return (
               <div key={pr.id} style={{
                 padding:'6px 10px', borderRadius:8, fontSize:11,
@@ -504,9 +472,14 @@ function PhasePlanSection({ lanes, phaseStates, onChange, onApplyDefault, onSugg
                   t_Gr: <strong>{pr.tGr.toFixed(1)} s</strong>
                   {'  '}λ: <strong>{(pr.lambda*100).toFixed(1)}%</strong>
                 </div>
+                {pr.minGreenGoverns && !below && (
+                  <div style={{ color:'#6b7280', marginTop:3 }}>
+                    Mindestgrünzeit massgebend (Q_krit &lt; Q_krit_min)
+                  </div>
+                )}
                 {below && (
                   <div style={{ color:'#dc2626', fontWeight:600, marginTop:3 }}>
-                    ⚠ Q_krit &lt; Q_krit_min
+                    ⚠ t_Gr &lt; t_Gr_min (Überlast)
                   </div>
                 )}
               </div>
@@ -551,7 +524,7 @@ function ResultsPanelV2({ result, targetLos, onTargetLos, onPrint }: {
   onTargetLos: (l:LevelOfService) => void
   onPrint: () => void
 }) {
-  const { Z, zIsManual, sumQKrit, maxQKrit, overloaded, lanes, overallLos, meetsTargetLos } = result
+  const { Z, zIsManual, zRaised, zAboveMax, sumQKrit, maxQKrit, overloaded, lanes, overallLos, meetsTargetLos } = result
   const reserve = maxQKrit - sumQKrit
   const activeVehLanes = lanes.filter(l=>l.qKrit>0 && !l.isFGS)
   const activeFgsLanes = lanes.filter(l=>l.qKrit>0 && l.isFGS)
@@ -635,8 +608,23 @@ function ResultsPanelV2({ result, targetLos, onTargetLos, onPrint }: {
         <div style={{ margin:'8px 12px', padding:'8px 12px', borderRadius:6,
                       background:'#fee2e2', border:'1px solid #fca5a5',
                       fontSize:12, color:'#991b1b' }}>
-          ΣQ_krit = {Math.round(sumQKrit)} übersteigt Z = 120 s-Grenzwert ({maxQKrit} PWE/h).
+          ΣQ_krit = {Math.round(sumQKrit)} PWE/h erreicht oder übersteigt die maximale kritische
+          Verkehrsstärke bei Z = {Z} s ({Math.round(maxQKrit)} PWE/h){zIsManual ? '' : ', der grössten Umlaufzeit nach Tab. 2'}.
           Knoten überlastet oder mehr Fahrstreifen nötig.
+        </div>
+      )}
+      {zRaised && (
+        <div style={{ margin:'8px 12px', padding:'8px 12px', borderRadius:6,
+                      background:'#fff7ed', border:'1px solid #fdba74', fontSize:12, color:'#9a3412' }}>
+          Die manuelle Umlaufzeit ist kürzer als Zwischenzeiten plus Mindestgrünzeiten aller Phasen —
+          gerechnet wird mit dem Minimum Z = {Z} s.
+        </div>
+      )}
+      {zAboveMax && (
+        <div style={{ margin:'8px 12px', padding:'8px 12px', borderRadius:6,
+                      background:'#fff7ed', border:'1px solid #fdba74', fontSize:12, color:'#9a3412' }}>
+          Z = {Z} s liegt über 120 s — solche Umlaufzeiten sind nach Ziffer 10.4.3 nicht zu verwenden
+          (u. a. zu lange Wartezeiten für Fussgänger*innen).
         </div>
       )}
 
@@ -1172,13 +1160,14 @@ const LEGEND_ITEMS: LegendItem[] = [
   { abbr: 'w_m', unit: 's',   desc: 'Mittlere Wartezeit pro Motorfahrzeug — deterministischer Anteil w₁ und stochastischer Anteil w₀; w_m = w₁ + w₀ (Ziffer 12, VSS 40 023a)' },
   { abbr: 'VQS',     desc: 'Verkehrsqualitätsstufe A–F nach Tab. 4 (VSS 40 023a): A ≤20s · B ≤35s · C ≤50s · D ≤70s · E ≤100s · F >100s' },
   { abbr: 'Z',  unit: 's',    desc: 'Umlaufzeit — Gesamtdauer eines Signalprogramm-Umlaufs; praktisch 60–90 s (Ziffer 10.4.3); automatisch aus Tab. 2 oder manuell' },
-  { abbr: 'ΣQ_krit', unit: 'PWE/h', desc: 'Summe der kritischen Verkehrsstärken — grösster unverträglicher Strom je Phase, summiert; massgebend für Wahl der Umlaufzeit Z (Ziffer 11.1, VSS 40 023a)' },
+  { abbr: 'ΣQ_krit', unit: 'PWE/h', desc: 'Summe der kritischen Verkehrsstärken — grösster unverträglicher Strom je Phase, mindestens Q_krit_min (Mindestgrünzeit, Ziffer 10.4.1), summiert; massgebend für Wahl der Umlaufzeit Z (Ziffer 11.1, VSS 40 023a)' },
   { abbr: 'T_Z', unit: 's',   desc: 'Zwischenzeit je Phase — Norm-Pauschale 5 s/Phase (VSS 40 023a, Ziffer 11.2); die geschwindigkeitsabhängige Staffelung 3/4/5 s ist eine eigene Annahme, angelehnt an die Gelbzeiten der VSS 40 837' },
   { abbr: 'FGS',     desc: 'Fussgängerstreifen — LSA-gesicherter Fussgängerübergang; Mindestgrünzeit t_Gr_min = max(5 s, ⅔·L / 1,2 m·s⁻¹) — ⅔·L mit 1,2 m/s nach VSS 40 837 Tab. 1, Mindestwert 5 s nach HB LSA Bern V 2.1, Anhang G' },
 ]
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 export default function LSAApp() {
+  const isActive = useIsActiveModule()  // Druckblatt nur im sichtbaren Modul
   const [nodeName,    setNodeName]    = useState('')
   const [armCount,    setArmCount]    = useState<3|4>(4)
   const [arms,        setArms]        = useState<UIArmInput[]>(defaultArms(4))
@@ -1278,25 +1267,46 @@ export default function LSAApp() {
     exportTool({
       tool: 'lsa', filePrefix: 'LSA',
       name: nodeName, showToast,
-      data: { nodeName, armCount, arms, moveLane, fgsConfig, phaseStates, targetLos, manualZ },
+      data: { lsaSchema: 2, nodeName, armCount, arms, moveLane, fgsConfig, phaseStates, targetLos, manualZ },
     })
 
   const handleImport = () =>
-    importTool<{
-      nodeName: string; armCount: 3|4; arms: UIArmInput[]
-      moveLane: Record<string,1|2>; fgsConfig: Record<string, FGSArmConfig>
-      phaseStates: PhaseState[]; targetLos: LevelOfService; manualZ: number
-    }>('lsa', d => {
-      const newCount = d.armCount ?? 4
+    importTool('lsa', d => {
+      const newCount = oneOf<3|4>([3, 4], d.armCount, 4)
+      let loadedArms = conformFixed(defaultArms(newCount), d.arms).map(a => ({
+        ...a,
+        mix: a.mix ? conform<VehicleMix>({ pctLW:0, pctMR:0, pctFR:0 }, a.mix) : undefined,
+        vDesign: oneOf<30|50|60>([30, 50, 60], a.vDesign, 50),
+      }))
+      // Dateien vor lsaSchema 2: 4-Arm-Zeilen 4/6 (Arm B) und 10/12 (Arm D) waren mit
+      // vertauschtem Links/Rechts beschriftet und gespeichert. Werte beim Zielarm belassen.
+      const schema = typeof d.lsaSchema === 'number' ? d.lsaSchema : 1
+      if (newCount === 4 && schema < 2)
+        loadedArms = loadedArms.map((a, i) => i >= 2 ? { ...a, left: a.right, right: a.left } : a)
+      // FS-Zuordnung: nur Werte 1/2; FGS je Arm gegen Standardwerte; Phasen mit Lane-ID-Listen
+      const moveLane: Record<string,1|2> = {}
+      for (const [k, v] of Object.entries(conform<Record<string, unknown>>({}, d.moveLane)))
+        if (v === 1 || v === 2) moveLane[k] = v
+      const fgsConfig: Record<string, FGSArmConfig> = {}
+      const fgsRaw = typeof d.fgsConfig === 'object' && d.fgsConfig !== null ? d.fgsConfig as Record<string, unknown> : {}
+      for (const lbl of ['A','B','C','D'])
+        if (fgsRaw[lbl] !== undefined) fgsConfig[lbl] = conform(DEFAULT_FGS, fgsRaw[lbl])
+      const phaseStates: PhaseState[] = (Array.isArray(d.phaseStates) ? d.phaseStates : [])
+        .filter((ph): ph is Record<string, unknown> => typeof ph === 'object' && ph !== null)
+        .map((ph, i) => ({
+          id: conform(i + 1, ph.id),
+          selectedLaneIds: (Array.isArray(ph.selectedLaneIds) ? ph.selectedLaneIds : [])
+            .filter((id): id is string => typeof id === 'string'),
+        }))
       if (newCount !== armCount) skipArmCountEffect.current = true
-      setNodeName(d.nodeName ?? '')
+      setNodeName(typeof d.nodeName === 'string' ? d.nodeName : '')
       setArmCount(newCount)
-      setArms(d.arms ?? defaultArms(newCount))
-      setMoveLane(d.moveLane ?? {})
-      setFgsConfig(d.fgsConfig ?? {})
-      setPhaseStates(d.phaseStates ?? [])
-      setTargetLos(d.targetLos ?? 'D')
-      setManualZ(d.manualZ ?? 0)
+      setArms(loadedArms)
+      setMoveLane(moveLane)
+      setFgsConfig(fgsConfig)
+      setPhaseStates(phaseStates)
+      setTargetLos(oneOf<LevelOfService>(['A','B','C','D','E','F'], d.targetLos, 'D'))
+      setManualZ(conform(0, d.manualZ))
     }, showToast)
 
   function handleReset() {
@@ -1492,6 +1502,7 @@ export default function LSAApp() {
         <p style={{ fontSize:12, color:'#6b7280', margin:'0 0 12px' }}>
           Anzahl Fahrstreifen festlegen und Knotenströme den Fahrstreifen zuordnen (Ziffer 9.3).
           Bewegungen auf FS1 oder FS2 aufteilen. FGS: Fussgängerstreifen mit Querungslänge aktivieren.
+          Massgebend pro Fahrstreifen ist der grösste zugeordnete Strom, nicht die Summe (Ziffer 10.4.1).
         </p>
         <LanePlanSection armCount={armCount} volumes={volumes}
           moveLane={moveLane} onChange={handleMoveLaneChange}
@@ -1581,7 +1592,7 @@ export default function LSAApp() {
       </footer>
     </div>
 
-    {result && createPortal(
+    {isActive && result && createPortal(
       <div className="print-portal" style={{ padding:'14mm 16mm', background:'#fff',
                                              fontFamily:'system-ui, Arial, sans-serif' }}>
         <LSAPrintSheet

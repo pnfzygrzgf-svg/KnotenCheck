@@ -34,7 +34,7 @@ Der Web-Rechner ist eine React/TypeScript/Vite-Anwendung. Die Rechenlogik liegt 
 Alle Berechnungen laufen vollständig im Browser. Nach dem Laden der Seite werden keine Daten gesendet — es gibt keinen Server, dem Eingaben oder Ergebnisse übermittelt werden.
 
 - **Eingaben** existieren nur im Arbeitsspeicher des Browsers und gehen beim Schliessen des Tabs verloren.
-- **Speichern / Laden** schreibt eine JSON-Datei auf den lokalen Rechner resp. liest von dort — kein Upload, kein Cloud-Speicher.
+- **Speichern / Laden** schreibt eine JSON-Datei auf den lokalen Rechner resp. liest von dort — kein Upload, kein Cloud-Speicher. Beim Laden werden fehlende oder ungültige Werte durch Standardwerte ersetzt; eine Datei eines anderen Rechners wird abgewiesen.
 - **Nutzungsstatistik:** Seitenaufrufe werden mit GoatCounter gezählt (cookielos, ohne Speicherung der IP-Adresse, keine personenbezogenen Daten) — übermittelt wird nur ein anonymer Seitenaufruf, **keine** Eingaben oder Ergebnisse. GitHub Pages loggt zusätzlich serverseitig Zugriffe (IP, User-Agent), wie jeder Webserver.
 
 ---
@@ -120,22 +120,33 @@ Je dichter der Hauptstrom (je grösser qpi), desto seltener gibt es eine freie L
 
 **Grundleistungsfähigkeit G_i — Abbildung 2**
 
-Die SN 640 022 gibt G_i grafisch an (keine algebraische Formel). KnotenCheck liest die Kurven als Wertetabelle ab (Stützpunkte qpi = 0, 200, 400, …, 1800 Fz/h) und interpoliert linear.
+Die SN 640 022 gibt G_i grafisch an (keine algebraische Formel). Die vier Kurven liegen im Norm-PDF als Vektorpfade vor; KnotenCheck hat sie daraus ausgelesen (Abweichung von der gezeichneten Kurve < 1 PWE/h) und speichert sie als Stützpunkte im Abstand 50 Fz/h (qpi = 0 … 1800 Fz/h), dazwischen wird linear interpoliert. Jenseits von 1800 Fz/h wird mit der letzten Steigung extrapoliert (mindestens 0).
+
+Auszug (jeder zweite Stützpunkt, PWE/h):
 
 | qpi [Fz/h] | Linksabbiegen HS | Rechtseinbiegen NS | Kreuzen NS | Linkseinbiegen NS |
 |---:|---:|---:|---:|---:|
-| 0 | 1575 | 1250 | 1000 | 1000 |
-| 200 | 1200 | 975 | 800 | 800 |
-| 400 | 950 | 750 | 625 | 600 |
-| 600 | 775 | 600 | 525 | 475 |
-| 800 | 600 | 475 | 425 | 375 |
-| 1000 | 500 | 400 | 375 | 300 |
-| 1200 | 400 | 325 | 300 | 250 |
-| 1400 | 375 | 320 | 225 | 225 |
-| 1600 | 300 | 250 | 225 | 200 |
-| 1800 | 225 | 200 | 200 | 175 |
+| 0 | 1530 | 1251 | 990 | 1013 |
+| 100 | 1359 | 1102 | 884 | 888 |
+| 200 | 1208 | 972 | 791 | 779 |
+| 300 | 1076 | 859 | 709 | 686 |
+| 400 | 959 | 760 | 636 | 605 |
+| 500 | 855 | 674 | 572 | 535 |
+| 600 | 765 | 599 | 515 | 475 |
+| 700 | 684 | 534 | 465 | 423 |
+| 800 | 614 | 477 | 421 | 377 |
+| 900 | 552 | 427 | 382 | 338 |
+| 1000 | 497 | 384 | 348 | 305 |
+| 1100 | 448 | 346 | 318 | 276 |
+| 1200 | 406 | 313 | 291 | 250 |
+| 1300 | 368 | 284 | 267 | 229 |
+| 1400 | 335 | 259 | 246 | 210 |
+| 1500 | 306 | 237 | 228 | 194 |
+| 1600 | 281 | 219 | 212 | 179 |
+| 1700 | 258 | 202 | 197 | 167 |
+| 1800 | 238 | 188 | 185 | 157 |
 
-Stützpunkte abgelesen Mai 2026, inkl. CH-Erhöhung +90 PWE/h gemäss SN 640 022, Abschnitt 9. Stückweise lineare Interpolation statt Exponentialfit, da ein einzelner Fit bei qpi ≥ 1400 um bis zu 40 % vom Normdiagramm abweicht.
+Die Werte enthalten die CH-Erhöhung +90 PWE/h (sie ist im Diagramm bereits eingezeichnet, SN 640 022 Ziffer 9). Die Kurven «Kreuzen» und «Linkseinbiegen» schneiden sich bei qpi ≈ 122 Fz/h. Kontrolle: Alle Ablesungen der Norm-Rechenbeispiele (Ziffer 21/22) werden auf ±3 PWE/h getroffen (Unit-Test).
 
 **Wartezeit w_i — Abbildung 4**
 
@@ -227,7 +238,7 @@ Die mittlere Wartezeit wird in Abhängigkeit von R und L_E bestimmt (Abbildung 7
 | E | > 45 s | Mangelhaft |
 | F | Überlastet | Zufluss grösser als Kapazität |
 
-Massgebend für den Gesamtknoten ist der Arm mit der schlechtesten Qualitätsstufe.
+Massgebend für den Gesamtknoten ist der Arm mit der schlechtesten Qualitätsstufe. Einfahrten ohne Verkehr (Q_E = 0) erhalten keine Qualitätsstufe und zählen nicht mit.
 
 ### Technische Details
 
@@ -249,7 +260,7 @@ Wie beim Rechner [Einmündung & Kreuzung](#einmündung-und-kreuzung-sn-640-022):
 2/2:   L_E = 1639,9·e^(−0,0006·Q_K)   (VSS 2005/301, Abb. 4.25)
 ```
 
-**Korrekturfaktor f_F — Abbildungen 3 und 4 (abgelesen):** f_F ist als Kurvenschar (Parameter FG = 100, 200, 300, 400 FG/h) über Q_K dargestellt. KnotenCheck liest die Kurven als Stützpunkttabellen ab und interpoliert bilinear (in FG und in Q_K); FG = 0 ergibt f_F = 1,0. f_F ist am kleinsten bei Q_K = 0 und steigt mit Q_K gegen 1,0. Startwerte (Q_K = 0):
+**Korrekturfaktor f_F — Abbildungen 3 und 4 (abgelesen):** f_F ist als Kurvenschar (Parameter FG = 100, 200, 300, 400 FG/h) über Q_K dargestellt. KnotenCheck liest die Kurven als Stützpunkttabellen ab und interpoliert bilinear (in FG und in Q_K); FG = 0 ergibt f_F = 1,0, zwischen 0 und 100 FG/h wird linear zur 100er-Kurve interpoliert. Über 400 FG/h (Ende der Diagramme, auch Abb. 5) wird mit der 400er-Kurve gerechnet und ein Hinweis angezeigt: Die Leistungsfähigkeit ist dann eher überschätzt. f_F ist am kleinsten bei Q_K = 0 und steigt mit Q_K gegen 1,0. Startwerte (Q_K = 0):
 
 | FG [FG/h] | Abb. 3 (1-streifig) | Abb. 4 (2-streifig) |
 |---:|---:|---:|
@@ -300,7 +311,7 @@ Der Rechner deckt zweirangige und gleichrangige Knoten ab (Tram und Bus Eigentra
 - Einmündung (T-Knoten) und Kreuzung (4 Arme)
 - Fussgängervolumen am Fussgängerstreifen je Arm, inkl. Gruppengrösse ρ und Mittelinsel
 - Pro-Strom-Kapazität nach Kap. 5 (Ein- und Ausfahrts-Fg je Bewegungsrichtung)
-- Qualitätsstufen A–F je Strom, je Arm (Mittelwert) sowie Gesamt-QS
+- Qualitätsstufen A–F je Strom, je Arm (als Mischstreifen) sowie Gesamt-QS
 
 ### Methodik (Kap. 5, VSS 2011/308)
 
@@ -384,7 +395,7 @@ k = w [s] × L / 3600
 
 ### Ergebnis-Darstellung
 
-- **Einfahrten:** volumengewichteter Mittelwert von β, L und w über alle Bewegungsrichtungen des Arms
+- **Einfahrten:** Die Ströme eines Arms teilen eine Haltelinie und werden wie ein Mischstreifen beurteilt (analog SN 640 022, F21): Auslastung x_Arm = Σ Q_i / L_i, Leistungsfähigkeit L_Arm = ΣQ / x_Arm, Wartezeit nach Gl. 1 aus ΣQ und L_Arm. Bei x_Arm ≥ 1 ist der Arm überlastet (QS F), auch wenn jeder Strom für sich unter seiner Leistungsfähigkeit bleibt. β wird als volumengewichteter Mittelwert angezeigt
 - **Ströme:** Einzelwerte je Bewegungsrichtung (Q, β, L, x, w, QS)
 
 ---
@@ -431,7 +442,9 @@ Jeder Arm erhält einen oder zwei Fahrstreifen (FS1, FS2). Jeder Strom wird eine
 Q_krit(FS) = max(Q_i) aller Ströme auf diesem FS
 ```
 
-Fahrstreifen mit mehreren Strömen (z. B. Geradeaus + Rechtsabbiegen) haben eine tiefere Q_krit als ein Fahrstreifen mit einem dominanten Strom.
+Massgebend ist bewusst der **grösste** Strom, nicht die Summe der Ströme (VSS 40 023a Ziff. 10.4.1: kritisch sind die grössten Verkehrsstärken pro Fahrstreifen). Beispiel: Links 300, Geradeaus 500 und Rechts 300 PWE/h auf einem gemeinsamen Fahrstreifen ergeben Q_krit = 500 PWE/h, nicht 1100 PWE/h. Ein Mischfahrstreifen mit mehreren ähnlich starken Strömen wird dadurch günstiger beurteilt als bei einer Summenbetrachtung.
+
+In der Tabelle «VQS pro Strom» wird jeder Strom mit seiner eigenen Verkehrsstärke und dem Grünzeitanteil seines Fahrstreifens bewertet.
 
 ### Schritt 3: Phasenplan festlegen
 
@@ -465,13 +478,15 @@ Als knoteneinheitliches T_Z wird das Maximum über alle Arme verwendet (konserva
 tGrSum = Z - n · T_Z
 ```
 
-Die Summe der kritischen Verkehrsstärken aller Phasen bestimmt die Umlaufzeit:
+Die Summe der kritischen Verkehrsstärken aller Phasen bestimmt die Umlaufzeit. Jede Phase zählt dabei mindestens mit Q_krit_min (Ziff. 10.4.1, siehe Schritt 5), damit sie ihre Mindestgrünzeit erhält:
 
 ```
-ΣQ_krit = Q_krit(Phase 1) + Q_krit(Phase 2) + …
+ΣQ_krit = Σ max(Q_krit(Phase i), Q_krit_min(Phase i))
 ```
 
-Aus **Tabelle 2** der Norm wird die kleinste Umlaufzeit Z gewählt, für die qKritMax > ΣQ_krit gilt. qKritMax wird dabei nicht direkt aus der Tabelle abgelesen, sondern dynamisch aus T_Z berechnet:
+Phasen ohne Fahrstreifen mit Verkehr (z. B. eine eben hinzugefügte, noch leere Phase) zählen nicht: Sie erhalten weder Zwischenzeit noch Grün und gehen nicht in n ein.
+
+Aus **Tabelle 2** der Norm wird die kleinste Umlaufzeit Z gewählt, für die qKritMax > ΣQ_krit gilt. Q_krit_min hängt von Z ab und wird für jede geprüfte Umlaufzeit neu bestimmt. qKritMax wird dabei nicht direkt aus der Tabelle abgelesen, sondern dynamisch aus T_Z berechnet:
 
 ```
 qKritMax(Z, n, T_Z) = ((Z - n · T_Z) / Z) · 1800 PWE/h
@@ -479,12 +494,14 @@ qKritMax(Z, n, T_Z) = ((Z - n · T_Z) / Z) · 1800 PWE/h
 
 Bei Z = 120 s, 2 Phasen und T_Z = 5 s ergibt sich qKritMax = (110/120) · 1800 = 1650 PWE/h (entspricht Tab. 2 der Norm). Mit T_Z = 3 s wären es (114/120) · 1800 = 1710 PWE/h — die Anlage kann mehr Verkehr aufnehmen.
 
+Überlastet ist der Knoten, wenn ΣQ_krit ≥ qKritMax (keine Reserve) — für die automatische wie für eine manuell gesetzte Umlaufzeit. Eine manuelle Umlaufzeit unter n · T_Z + Σ t_Gr_min wird auf dieses Minimum angehoben; über 120 s erscheint ein Hinweis (Ziff. 10.4.3: nicht zu verwenden).
+
 ### Schritt 5: Grünzeiten verteilen
 
 Die Gesamtgrünzeit (tGrSum = Z - n·T_Z) wird proportional zu den Q_krit-Werten der Phasen aufgeteilt:
 
 ```
-t_Gr(Phase i) = tGrSum · Q_krit(Phase i) / ΣQ_krit
+t_Gr(Phase i) = tGrSum · max(Q_krit, Q_krit_min)(Phase i) / ΣQ_krit
 ```
 
 **Mindestgrünzeit:**
@@ -496,7 +513,7 @@ t_Gr(Phase i) = tGrSum · Q_krit(Phase i) / ΣQ_krit
 
 Der Mindestwert von 5 s für Phasen mit Fussgängerstreifen ist dem Berechnungstool des Handbuchs Lichtsignalanlagen (HB LSA), Tiefbauamt Stadt Bern, V 2.1, Anhang G entnommen.
 
-Liegt Q_krit einer Phase unter Q_krit_min = (t_Gr_min / Z) · 1800, wird eine Warnung ausgegeben: Der Fussgängerstreifen erzwingt eine längere Grünzeit als dem Kfz-Volumen entspricht.
+Liegt Q_krit einer Phase unter Q_krit_min = (t_Gr_min / Z) · 1800, rechnet die Phase mit Q_krit_min (VSS 40 023a Ziff. 10.4.1): Die Mindestgrünzeit bestimmt dann ihre Grünzeit — z. B. bei einer reinen Fussgängerphase oder schwachem Kfz-Verkehr. Solange der Knoten nicht überlastet ist, erhält so jede Phase mindestens t_Gr_min.
 
 ### Schritt 6: Auslastungsgrad und Wartezeit
 
@@ -535,11 +552,12 @@ mit PWE_mr = Q · (Z − t_Gr) / 3600 (Ankünfte während Rotphase) und PWE_GE =
 
 ### Geometrische Konfliktprüfung
 
-Der Rechner prüft, ob geometrisch unverträgliche Ströme innerhalb derselben Phase zusammen grün sind.
+Der Rechner prüft, ob geometrisch unverträgliche Ströme innerhalb derselben Phase zusammen grün sind. Unverträglich sind Ströme aus verschiedenen Armen, deren Fahrwege sich kreuzen oder die in dieselbe Ausfahrt führen (Rechtsverkehr; gegenüberliegende Linksabbieger gelten als verträglich). Fussgängerstreifen sind unverträglich mit allen Strömen, die in ihren Arm ein- oder aus ihm ausfahren.
 
 Beispiele für unverträgliche Paare (4-Arm):
 - q2 (A→C) mit q5 (B→D): Geradenströme senkrechter Arme kreuzen sich
-- q1 (A→D) mit q6 (B→C): Linksabbieger zweier benachbarter Arme kreuzen sich
+- q1 (A→D) mit q4 (B→A): Linksabbieger zweier benachbarter Arme kreuzen sich
+- q2 (A→C) mit q6 (B→C): beide fahren in die Ausfahrt C
 
 ### Verhältnis zu VSS 40 835
 
@@ -596,7 +614,7 @@ Die Simulation ergänzt den analytischen Rechner um vier Aspekte:
 
 - **SN 640 022** liefert: Ränge der Verkehrsströme, qpi-Konfliktstromberechnung (F1–F8), Fahrzeugkategorien (PCE). Die SN 640 022 definiert t_c und t_f nicht — sie arbeitet mit Kapazitätskurven (Abb. 2). Die SN 640 022 kennt keine Fussgänger*innen.
 - **HBS 2015, Kap. S5, Tabelle S5-5 (Zeichen 205 StVO)** liefert die Grenzzeitlücken t_c und Folgezeitlücken t_f je Manöver.
-- **Troutbeck & Brilon (FHWA 1997, Kap. 8)** liefert die Gap-Acceptance-Theorie: Erlang-Verteilung für Fahrerstreuung, Cowan-M3-Headwaymodell für Kolonnenbildung.
+- **Troutbeck & Brilon (FHWA 1997, Kap. 8)** liefert die Gap-Acceptance-Theorie: Lückenakzeptanz mit t_c und t_f, Cowan-M3-Headwaymodell für Kolonnenbildung.
 - **VSS 2011/308** liefert die Gruppengrösse ρ — sie steuert die *Häufigkeit* der Fussgänger-Sperrungen (eine Gruppe quert gemeinsam = ein Ereignis für ρ Personen), konsistent mit `S_Fg = 900·ρ` der Norm.
 - **VSS 40 240** liefert die Gehgeschwindigkeit v_FG = 0.80 m/s (konservativ für ältere Menschen und Menschen mit Behinderung); sie bestimmt die *Dauer* einer Sperrung aus der Fahrbahnbreite. Die Halbierung bei Mittelinseln stützt sich auf Art. 47 Abs. 3 VRV (jede Streifenhälfte gilt als selbständiger Streifen); der Mittelinsel-Schwellenwert ab 8.5 m auf VSS 40 241.
 
@@ -612,7 +630,7 @@ Die Simulation ergänzt den analytischen Rechner um vier Aspekte:
 | **Mehrere Zeitintervalle** | Fahrzeuge, die am Ende eines Intervalls noch warten, werden als Rückstau ins nächste übertragen |
 | **Anzahl Läufe** | Mehr Läufe = stabilere Statistik, längere Rechenzeit |
 | **Cowan M3 / Exponential** | Kolonnenbildung im HS ein-/ausschalten; Cowan ist bei qpi > 600 Fz/h deutlich realistischer |
-| **Erlang-Ordnung k** | k=1: alle Fahrer gleich (deterministisch). k=2 (Standard): deutliche Fahrerstreuung um t_c. k=3: geringere Streuung als k=2 (Varianz = t_c²/k) |
+| **Streuung t_c** | Standardabweichung der Grenzzeitlücke zwischen Fahrer*innen: keine (alle gleich, wie im analytischen Verfahren), σ = 0.5 s (Standard) oder σ = 1.0 s |
 | **Stauraum** | Begrenzt wartende Fahrzeuge; Überschuss wird verworfen (modelliert kurze Aufstellfläche) |
 | **t_c / t_f-Override** | Eigene Grenz-/Folgezeitlücken je Manövertyp, z. B. für Kalibrierung auf Feldmessungen |
 
@@ -656,15 +674,15 @@ Dauer:       t_block = Fahrbahnbreite / 0.80 m/s × (Mittelinsel ? 0.5 : 1)   [s
 
 *Verkehrlich:* Quert eine Fussgängergruppe den Hauptstrassen-Streifen, muss der Hauptstrom anhalten. Für den wartenden Nebenstrom ist das ein **Geschenk**: Während der Hauptstrom steht, entsteht eine erzwungene Lücke zum Einbiegen (sofern t_block ≥ t_c). Zwei Grössen bestimmen den Effekt getrennt: **Die Dauer** einer Sperre ist die Zeit, die Fussgänger*innen zum Queren brauchen — Fahrbahnbreite geteilt durch die Gehgeschwindigkeit 0.80 m/s (VSS 40 240, bewusst langsam für ältere Menschen und Menschen mit Behinderung). Die **Gruppengrösse ρ** verlängert die Sperre *nicht* (eine Gruppe quert gemeinsam), sondern macht Sperrungen *seltener*: Bei fg = 100 Fg/h und ρ = 1 gibt es 100 Sperrungen pro Stunde, bei ρ = 2 nur noch 50. Eine **Mittelinsel** halbiert die Sperrdauer, weil nur noch die halbe Fahrbahn am Stück gequert wird (Art. 47 Abs. 3 VRV). Standardmässig wird mit 8 m Fahrbahnbreite gerechnet (→ 10 s); alternativ lässt sich eine eigene Breite eingeben (ab 8.5 m weist die Norm VSS 40 241 eine Mittelinsel an).
 
-Während t_block ist der HS gesperrt — eine erzwungene Lücke für wartende NS-Fahrzeuge. HS-Fahrzeuge, die in dieser Zeit ankämen, stauen sich danach als Cluster (Mindestabstand t_m). Der NS-Einbieger kann die Sperrzeit nutzen, wenn t_block ≥ t_c. Dieser **positive Kapazitätseffekt** tritt bei stark belasteten HS-Strassen auf und ist der Grund, weshalb Fussgängerstreifen auf der Hauptstrasse bei hohem HS-Volumen die Einbiege-Qualität verbessern können.
+Während t_block ist der HS gesperrt — eine erzwungene Lücke für wartende NS-Fahrzeuge. Überlappende Sperrzeiten werden zu einer Sperrung zusammengefasst. HS-Fahrzeuge, die in dieser Zeit ankämen, stauen sich danach als Cluster (Mindestabstand t_m). Der NS-Einbieger kann die Sperrzeit nutzen, wenn t_block ≥ t_c. Dieser **positive Kapazitätseffekt** tritt bei stark belasteten HS-Strassen auf und ist der Grund, weshalb Fussgängerstreifen auf der Hauptstrasse bei hohem HS-Volumen die Einbiege-Qualität verbessern können.
 
 Zusätzlich wirkt jeder Fussgängerstreifen als **Direktsperre**: Jeder Fahrzeugstrom wird an seinem Abfahrts- **und** Ankunftsarm durch den dortigen Streifen blockiert — fällt die Abfahrt in eine Sperrzeit, wird sie ans Ende der Sperre verschoben. Das gilt auch für Streifen an den Nebenstrassen-Armen B und D.
 
-**Schritt 3 — Grenzzeitlücke pro Fahrer ziehen (Erlang)**
+**Schritt 3 — Grenzzeitlücke pro Fahrer ziehen (lognormal)**
 
-Jeder Fahrer hat einen persönlichen t_c-Wert, gezogen aus einer Erlang-Verteilung um den Nominalwert (HBS 2015 S5, Tabelle S5-5). Das modelliert Fahrerstreuung: aggressive Fahrer akzeptieren kürzere Lücken, vorsichtige brauchen längere. Erlang-verteilte, fahrerkonsistente t_c-Werte folgen dem Ansatz von Brilon, Troutbeck & Koenig (1999); dort wird für t_c eine verschobene Erlang-Verteilung mit k=5 verwendet — der Default k=2 in KnotenCheck ist eine eigene Wahl mit grösserer Streuung. Gezogene Werte werden auf minimal 1.0 s begrenzt.
+Jeder Fahrer hat einen persönlichen t_c-Wert, gezogen aus einer Lognormalverteilung mit dem Nominalwert (HBS 2015 S5, Tabelle S5-5) als Mittelwert und der gewählten Standardabweichung σ. Das modelliert Fahrerstreuung: forsche Fahrer akzeptieren kürzere Lücken, vorsichtige brauchen längere. Die Lognormalverteilung ist immer positiv und leicht rechtsschief (wenige sehr vorsichtige Fahrer). σ = 0.5 s als Standard ist eine eigene Annahme; mit «keine» rechnet die Simulation wie das analytische Verfahren mit festem t_c. Gezogene Werte werden auf minimal 1.0 s begrenzt.
 
-*Verkehrlich:* Nicht jeder Fahrer braucht dieselbe Lücke — der forsche fädelt schon in eine knappe 4-Sekunden-Lücke ein, der vorsichtige wartet auf 8 Sekunden. Würde die Simulation für alle denselben festen t_c verwenden, wäre dieses reale Verhalten verfälscht. Stattdessen erhält jedes Fahrzeug einen eigenen, zufällig gezogenen t_c-Wert. Die **Erlang-Ordnung k** steuert dabei, wie stark die Fahrer sich unterscheiden: kleines k = breite Streuung (sehr unterschiedliche Fahrer), grosses k = alle ähnlich (bei k → ∞ wieder ein fester Wert). Jeder Fahrer behält seinen einmal gezogenen Wert bis zur Abfahrt — er ist in sich konsistent.
+*Verkehrlich:* Nicht jeder Fahrer braucht dieselbe Lücke — der forsche fädelt schon in eine etwas knappere Lücke ein, der vorsichtige wartet auf eine grössere. Die Streuung σ gibt an, wie stark sich die Fahrer unterscheiden. Eine zu grosse Streuung verfälscht das Resultat: Einzelne Fahrer mit sehr grossem t_c blockieren die Haltelinie für alle Nachfolgenden und senken die Kapazität deutlich. Jeder Fahrer behält seinen einmal gezogenen Wert bis zur Abfahrt — er ist in sich konsistent.
 
 **Schritt 4 — Lückensuche**
 
@@ -676,7 +694,15 @@ Wartezeit = Abfahrtszeit − Ankunftszeit
 
 *Verkehrlich:* Das ist die eigentliche Lückenakzeptanz-Entscheidung aus der Grundidee, jetzt pro Fahrzeug durchgespielt. Das Fahrzeug prüft die ankommenden Hauptstrom-Lücken der Reihe nach: zu kleine lässt es verstreichen, die erste ausreichend grosse nutzt es zum Einfahren. Die Wartezeit ist schlicht die Zeit zwischen Ankunft an der Haltlinie und Abfahrt.
 
-Die Folgezeitlücke t_f wirkt an zwei Stellen: (1) ein Fahrzeug, das mindestens eine Lücke ablehnen musste (Einfädeln hinter einem Konfliktfahrzeug), fährt mit t_f-Aufschlag ab; (2) ein Fahrzeug, das bei Ankunft bereits hinter einem Vorgänger ansteht (Warteschlange), darf frühestens t_f nach dessen Abfahrt einfahren. Dadurch fliesst eine Warteschlange auch in einer grossen Hauptstromlücke nur mit dem Sättigungsabfluss 3600/t_f je Lücke ab — entsprechend der Definition der Folgezeitlücke als Kopffolge wartender Fahrzeuge in derselben Lücke (Troutbeck & Brilon, FHWA 1997, Kap. 8.4.1). Nur ein **frei** einfahrendes Fahrzeug (Server bei Ankunft frei, ausreichende Lücke ab Ankunft) fährt ohne t_f-Aufschlag ab — das vermeidet eine Überschätzung der Wartezeit bei gering belasteten Strömen.
+Ein Fahrzeug, das auf eine Lücke warten musste, fährt zu Beginn der akzeptierten Lücke ab (bei der Vorbeifahrt des letzten Konfliktfahrzeugs). Die Folgezeitlücke t_f wirkt bei der Warteschlange: Ein Fahrzeug, das bei Ankunft bereits hinter einem Vorgänger ansteht, darf frühestens t_f nach dessen Abfahrt einfahren und braucht ab dort wieder eine Lücke von t_c. In einer Hauptstromlücke der Länge t finden so n Fahrzeuge Platz, wenn t ≥ t_c + (n−1)·t_f — die Definition der Folgezeitlücke als Kopffolge wartender Fahrzeuge in derselben Lücke (Troutbeck & Brilon, FHWA 1997, Kap. 8). Mit exponentiellen Lücken und festem t_c ergibt das die Kapazität nach Harders:
+
+```
+c = q · e^(−q·t_c) / (1 − e^(−q·t_f))      q = qpi / 3600  [Fz/s]
+```
+
+Ein Unit-Test prüft, dass die simulierte Kapazität diese Formel auf ±4 % trifft.
+
+Hauptstrom und Fussgänger*innen laufen über das Periodenende T hinaus weiter (bis 2·T): Fahrzeuge, die bei T noch warten, finden weiterhin Konfliktverkehr vor. Neue Fahrzeuge kommen nur im Zeitraum [0, T] an.
 
 **Schritt 5 — Gemeinsame Haltlinie (NS-Arme simultan)**
 
@@ -686,7 +712,7 @@ Die NS-Ströme eines Arms (z. B. Arm B: Ströme 4, 5, 6) teilen eine gemeinsame 
 
 **Schritt 6 — Stauraum (optional)**
 
-Ist ein maximaler Stauraum gesetzt, werden Fahrzeuge bei vollem Aufstellbereich abgewiesen (modelliert kurze Aufstellflächen).
+Ist ein maximaler Stauraum gesetzt, werden Fahrzeuge bei vollem Aufstellbereich abgewiesen (modelliert kurze Aufstellflächen). Ein leeres Feld oder 0 bedeutet unbegrenzt.
 
 *Verkehrlich:* Hat die Nebenstrasse nur eine kurze Aufstellfläche vor der Haltlinie (z. B. eine kurze Abbiegetasche), passen dort nur wenige Fahrzeuge hinein. Ist sie voll, kann kein weiteres nachrücken — es blockiert dann andernorts (z. B. die durchgehende Spur). Diese Option begrenzt die Warteschlange entsprechend.
 
@@ -728,14 +754,14 @@ Die Ausgabe zeigt pro Intervall Mittelwert, P85 und QS in einer Ganglinie-Tabell
 
 Quelle: Brilon, W. (2016): [HBS 2015 — L5 & S5: Knotenpunkte ohne Lichtsignalanlage – Vortrag](https://silo.tips/download/hbs-l5-s5-knotenpunkte-ohne-lichtsignalanlage-vorfahrt-werner-brilon). Vortrag VSVI Baden-Württemberg, 23.02.2016.
 
-**Voreinstellung «SN 640 022 (implizit)»:** Alternativ können äquivalente Zeitlücken gewählt werden, die aus den Abb.-2-Kurven der SN 640 022 rückgerechnet sind — per Siegloch-Fit `G − 90 = 3600/t_f · e^(−qpi·(t_c − t_f/2)/3600)` auf die digitalisierten Stützpunkte (Genauigkeit ±0.2–0.4 s, Restabweichung der Kurven 6–13 %, abgesichert im Unit-Test «Preset SN 640 022»):
+**Voreinstellung «SN 640 022 (implizit)»:** Alternativ können äquivalente Zeitlücken gewählt werden, die aus den Abb.-2-Kurven der SN 640 022 rückgerechnet sind — per Siegloch-Formel `G − 90 = 3600/t_f · e^(−qpi·(t_c − t_f/2)/3600)`. Mit den folgenden Werten trifft die Formel jede der vier Abb.-2-Kurven über qpi = 0 … 1800 Fz/h auf höchstens 3 PWE/h (abgesichert im Unit-Test «Preset SN 640 022»):
 
 | Manöver | t_c [s] | t_f [s] |
 |---|---:|---:|
 | Linksabbiegen HS | 5.8 | 2.5 |
-| Rechtseinbiegen NS | 6.1 | 3.3 |
-| Kreuzen NS | 6.4 | 4.0 |
-| Linkseinbiegen NS | 6.9 | 4.1 |
+| Rechtseinbiegen NS | 6.5 | 3.1 |
+| Kreuzen NS | 6.5 | 4.0 |
+| Linkseinbiegen NS | 7.2 | 3.9 |
 
 Die t_f entsprechen der Verfahrensgeneration der Norm-Quellen ([6] FGSV-Merkblatt, [7] BMV Heft 669 — nahe HBS 2001). Zu beachten: Gap-Acceptance mit diesen Lücken bildet die Abb.-2-Kurven **ohne** die CH-Erhöhung von +90 PWE/h ab (Abschnitt 9 der Norm) — die Simulation rechnet mit diesem Preset entsprechend konservativ.
 
@@ -752,8 +778,10 @@ Pro Nebenstrom (Ränge 2–4):
 | **P50** | Median: 50 % der Fahrzeuge warten kürzer |
 | **P85** | 85 % der Fahrzeuge warten kürzer — üblicher Planungswert |
 | **P95** | 95 % der Fahrzeuge warten kürzer |
+| **x** | Auslastung der Haltelinie: Summe der Bedienzeiten / Simulationsdauer T. Bedienzeit = Zeit, die ein Fahrzeug an erster Stelle der Warteschlange auf seine Lücke wartet (ab Ankunft bzw. ab Abfahrt des Vordermanns). Nebenstrom-Arme teilen eine Haltelinie und haben dasselbe x |
+| **QS** | Nach der mittleren Wartezeit (Tab. 3 SN 640 022); **F**, wenn x ≥ 1 — dann reicht die Zeit nicht, um die in T ankommenden Fahrzeuge abzufertigen, und die Warteschlange wächst bis zum Periodenende |
 | **n** | Stichprobengrösse (Fahrzeuge über alle Läufe) |
-| **Histogramm** | Verteilung in Bins 0–10 / 10–20 / 20–30 / 30–45 / 45–60 / 60–90 / 90–120 / >120 s |
+| **Histogramm** | Verteilung in Klassen nach den QS-Grenzen: 0–10 / 10–15 / 15–25 / 25–45 / 45–60 / 60–90 / 90–120 / >120 s |
 
 Bei mehreren Intervallen zeigt eine Ganglinie-Tabelle die Entwicklung über den Zeitverlauf und den Carry-over-Rückstau. Einen Vergleich mit dem analytischen Rechner zeigt die Simulation nicht an — die beiden Verfahren beantworten unterschiedliche Fragen (Verteilung vs. Norm-Nachweis).
 
@@ -768,6 +796,10 @@ Auch wenn der analytische Mittelwert stimmt, streuen real beobachtete Wartezeite
 **Dateien:**
 - `KnotenCheckWeb/src/engine/stochasticSN640022.ts` — Engine (Simulation, Statistik, Multi-Intervall)
 - `KnotenCheckWeb/src/SimulationApp.tsx` — eigenständiger 5. Rechner
+- `KnotenCheckWeb/src/simulation.worker.ts` — führt die Simulation in einem Web Worker aus (Oberfläche bleibt bedienbar, Lauf ist abbrechbar)
+- Resultate lassen sich über «Drucken» mit der verwendeten Konfiguration ausgeben
+
+Ungültige Konfigurationswerte (z. B. aus einer beschädigten Datei: NaN, negative Dauer, ρ ≤ 0) ersetzt die Engine durch die Standardwerte.
 
 Konfigurierbar per `StochasticConfig`:
 
@@ -775,7 +807,8 @@ Konfigurierbar per `StochasticConfig`:
 |---|---|---|
 | `runs` | 150 (Web-UI: 200) | Anzahl Simulationsläufe |
 | `T` | 3600 | Simulationsdauer [s] (bei Multi-Intervall je Intervall) |
-| `erlangK` | 2 | Erlang-Ordnung für t_c (1 = deterministisch) |
+| `tcSigma` | 0.5 | Standardabweichung von t_c [s], lognormal (0 = konstant) |
+| `seed` | — | Startwert des Zufallsgenerators: gleiche Eingaben und gleicher seed ergeben dasselbe Resultat (die Tests nutzen das; die Web-Oberfläche rechnet ohne festen seed) |
 | `useCowan` | true | Cowan M3 statt Exponential |
 | `cowanA` | 7.0 | Platoon-Faktor A |
 | `cowanTm` | 1.8 | Mindestabstand t_m [s] |

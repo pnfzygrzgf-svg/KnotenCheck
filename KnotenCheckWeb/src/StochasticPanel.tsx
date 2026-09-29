@@ -2,13 +2,11 @@
 
 import { HIST_EDGES } from './engine/stochasticSN640022'
 import type { StochasticSN640022Result } from './engine/stochasticSN640022'
-import type { LevelOfService } from './engine/types'
-import { classifyLOS } from './engine/levelOfService'
 import { LOSBadge } from './ui'
-import { streamMovementName } from './ArmCard'
+import { streamMovementName, simLOS } from './uiHelpers'
 
 // Farbe je Histogramm-Bin (an HIST_EDGES gekoppelt)
-export const HIST_LOS_COLOR: string[] = [
+const HIST_LOS_COLOR: string[] = [
   '#16a34a', '#65a30d', '#ca8a04', '#ea580c', '#dc2626', '#dc2626', '#7f1d1d', '#7f1d1d',
 ]
 
@@ -46,11 +44,6 @@ export function SimHistBar({ freq, label }: { freq: number[]; label: string }) {
   )
 }
 
-// QS aus simulierter mittlerer Wartezeit — Tab.-3-Schwellen der SN 640 022;
-// Auslastungsgrad ist in der Simulation nicht definiert, daher 0.
-export function simLOS(mean: number): LevelOfService {
-  return classifyLOS(mean, 0)
-}
 
 export function StochasticPanel({ result }: { result: StochasticSN640022Result }) {
   const streams = result.streams.filter(s => s.stats !== null)
@@ -63,7 +56,7 @@ export function StochasticPanel({ result }: { result: StochasticSN640022Result }
 
       {streams.map(s => {
         const st = s.stats!
-        const los = simLOS(st.mean)
+        const los = simLOS(st.mean, s.utilization)
 
         return (
           <div key={s.streamNumber} style={{
@@ -107,6 +100,12 @@ export function StochasticPanel({ result }: { result: StochasticSN640022Result }
                 <span style={{ color: '#9ca3af' }}>P95 </span>
                 <strong>{Math.round(st.p95)} s</strong>
               </div>
+              <div title="Auslastung der Haltelinie: Anteil der Zeit, in der ein Fahrzeug an der Haltelinie auf eine Lücke wartet">
+                <span style={{ color: '#9ca3af' }}>x ≈ </span>
+                <strong style={{ color: s.utilization >= 1 ? '#dc2626' : undefined }}>
+                  {s.utilization.toFixed(2)}
+                </strong>
+              </div>
               <div>
                 <span style={{ color: '#9ca3af' }}>n = </span>
                 <strong>{st.n.toLocaleString()}</strong>
@@ -120,7 +119,8 @@ export function StochasticPanel({ result }: { result: StochasticSN640022Result }
       })}
 
       <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 4 }}>
-        Histogramm-Farben: grün = QS A–B (&lt;20 s) · gelb/orange = QS C–D · rot = QS E–F (&gt;45 s)
+        Histogramm-Klassen nach den QS-Grenzen: grün = QS A–B (&lt;15 s) · gelb/orange = QS C–D (15–45 s) ·
+        rot = QS E (&gt;45 s). QS F ergibt sich aus der Auslastung x ≥ 1, nicht aus der Wartezeit.
       </div>
     </div>
   )

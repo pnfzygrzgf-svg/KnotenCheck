@@ -8,9 +8,10 @@ import type {
 } from './types'
 
 // ── Grundleistungsfähigkeit G_i (Abb. 2, SN 640 022) ─────────────────────────
-// Stückweise lineare Interpolation auf abgelesenen Stützpunkten.
-// Ablesungen: Mai 2026, auf Gitterlinien qpi = 0–1800 Fz/h.
-// Inkl. CH-Erhöhung +90 PWE/h (SN 640 022, Abschnitt 9).
+// Stückweise lineare Interpolation auf Stützpunkten im Abstand 50 Fz/h.
+// Die Kurven liegen im Norm-PDF als Vektorpfade vor und wurden daraus exakt
+// ausgelesen (Sept. 2026; Abweichung von der gezeichneten Kurve < 1 PWE/h).
+// Die Werte enthalten die CH-Erhöhung +90 PWE/h (im Diagramm, SN 640 022 Ziff. 9).
 // Jenseits qpi = 1800: letzte Steigung linear extrapoliert, Minimum 0.
 // Dokumentation der Methode: siehe README.md, Abschnitt «Grundleistungsfähigkeit G_i».
 
@@ -36,31 +37,50 @@ function interpG(table: GTable, qpi: number): number {
 
 // Linksabbiegen von der Hauptstrasse (Ströme 1, 7)
 const G_MAIN_LEFT: GTable = [
-  [0, 1575], [200, 1200], [400, 950], [600, 775], [800, 600],
-  [1000, 500], [1200, 400], [1400, 375], [1600, 300], [1800, 225],
+  [0, 1530], [50, 1442], [100, 1359], [150, 1281], [200, 1208], [250, 1140], [300, 1076], [350, 1015],
+  [400, 959], [450, 905], [500, 855], [550, 809], [600, 765], [650, 723], [700, 684], [750, 648],
+  [800, 614], [850, 582], [900, 552], [950, 523], [1000, 497], [1050, 472], [1100, 448], [1150, 427],
+  [1200, 406], [1250, 387], [1300, 368], [1350, 351], [1400, 335], [1450, 320], [1500, 306], [1550, 293],
+  [1600, 281], [1650, 269], [1700, 258], [1750, 248], [1800, 238],
 ]
 // Rechtseinbiegen aus der Nebenstrasse (Ströme 6, 12)
 const G_SIDE_RIGHT: GTable = [
-  [0, 1250], [200, 975], [400, 750], [600, 600], [800, 475],
-  [1000, 400], [1200, 325], [1400, 320], [1600, 250], [1800, 200],
+  [0, 1251], [50, 1174], [100, 1102], [150, 1035], [200, 972], [250, 914], [300, 859], [350, 808],
+  [400, 760], [450, 715], [500, 674], [550, 635], [600, 599], [650, 565], [700, 534], [750, 504],
+  [800, 477], [850, 451], [900, 427], [950, 405], [1000, 384], [1050, 364], [1100, 346], [1150, 329],
+  [1200, 313], [1250, 298], [1300, 284], [1350, 271], [1400, 259], [1450, 248], [1500, 237], [1550, 228],
+  [1600, 219], [1650, 210], [1700, 202], [1750, 195], [1800, 188],
 ]
 // Kreuzen aus der Nebenstrasse (Ströme 5, 11)
-// Hinweis: Kurven «Kreuzen» und «Linkseinbiegen» schneiden sich bei qpi≈50.
-// Ab qpi>50 liegt Kreuzen über Linkseinbiegen; bei qpi=1400 sind beide ≈225.
+// Hinweis: Kurven «Kreuzen» und «Linkseinbiegen» schneiden sich bei qpi ≈ 122;
+// darunter liegt Linkseinbiegen über Kreuzen, darüber Kreuzen über Linkseinbiegen.
 const G_SIDE_CROSS: GTable = [
-  [0, 1000], [200, 800], [400, 625], [600, 525], [800, 425],
-  [1000, 375], [1200, 300], [1400, 225], [1600, 225], [1800, 200],
+  [0, 990], [50, 936], [100, 884], [150, 836], [200, 791], [250, 748], [300, 709], [350, 671],
+  [400, 636], [450, 603], [500, 572], [550, 542], [600, 515], [650, 489], [700, 465], [750, 442],
+  [800, 421], [850, 401], [900, 382], [950, 364], [1000, 348], [1050, 332], [1100, 318], [1150, 304],
+  [1200, 291], [1250, 279], [1300, 267], [1350, 257], [1400, 246], [1450, 237], [1500, 228], [1550, 220],
+  [1600, 212], [1650, 204], [1700, 197], [1750, 191], [1800, 185],
 ]
 // Linkseinbiegen aus der Nebenstrasse (Ströme 4, 10)
 const G_SIDE_LEFT: GTable = [
-  [0, 1000], [200, 800], [400, 600], [600, 475], [800, 375],
-  [1000, 300], [1200, 250], [1400, 225], [1600, 200], [1800, 175],
+  [0, 1013], [50, 948], [100, 888], [150, 832], [200, 779], [250, 731], [300, 686], [350, 644],
+  [400, 605], [450, 569], [500, 535], [550, 504], [600, 475], [650, 448], [700, 423], [750, 399],
+  [800, 377], [850, 357], [900, 338], [950, 321], [1000, 305], [1050, 290], [1100, 276], [1150, 263],
+  [1200, 250], [1250, 239], [1300, 229], [1350, 219], [1400, 210], [1450, 201], [1500, 194], [1550, 186],
+  [1600, 179], [1650, 173], [1700, 167], [1750, 162], [1800, 157],
 ]
 
 function gMainLeft(qpi: number):  number { return interpG(G_MAIN_LEFT,  qpi) }
 function gSideRight(qpi: number): number { return interpG(G_SIDE_RIGHT, qpi) }
 function gSideCross(qpi: number): number { return interpG(G_SIDE_CROSS, qpi) }
 function gSideLeft(qpi: number):  number { return interpG(G_SIDE_LEFT,  qpi) }
+
+// Grundleistungsfähigkeit je Manövertyp (für Tests und Nachvollzug)
+export type ManeuverType = 'mainLeft' | 'sideRight' | 'sideCross' | 'sideLeft'
+export function basicCapacityG(type: ManeuverType, qpi: number): number {
+  return type === 'mainLeft' ? gMainLeft(qpi) : type === 'sideRight' ? gSideRight(qpi)
+    : type === 'sideCross' ? gSideCross(qpi) : gSideLeft(qpi)
+}
 
 // ── p₀ Wahrscheinlichkeit staufreier Zustand [F12] ───────────────────────────
 function p0(q: number, L: number): number {
@@ -125,8 +145,10 @@ function mixed(
   parts: { q: number; L: number }[]
 ): SN640022MixedResult {
   const totalQ = parts.reduce((s, p) => s + p.q, 0)
-  const sumA   = parts.reduce((s, p) => p.L > 0 ? s + p.q / p.L : s, 0)
-  const Lm     = sumA > 0 ? totalQ / sumA : 0
+  // Ein belasteter Teilstrom ohne Leistungsfähigkeit (L = 0) kann nicht abfliessen
+  // und blockiert den Mischstreifen: Σa = ∞ → Lm = 0, QS F
+  const sumA   = parts.reduce((s, p) => p.q <= 0 ? s : p.L > 0 ? s + p.q / p.L : Infinity, 0)
+  const Lm     = sumA > 0 && isFinite(sumA) ? totalQ / sumA : 0
   const Rm     = Lm - totalQ
   const wm     = sumA < 1 ? w(totalQ, Lm) : Infinity
   const los    = classifyLOS(wm, sumA)

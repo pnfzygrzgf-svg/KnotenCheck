@@ -2,7 +2,7 @@
 // Reines JSX-SVG. Pfeile bleiben je Arm im eigenen Zufahrtsbereich (kein Überqueren).
 // 4-Arm: ein generischer West-Arm, 4× um die Mitte rotiert (Geometrie DRY); Labels upright.
 
-import { useId } from 'react'
+import { createContext, useContext, useId } from 'react'
 
 export type Los = 'A' | 'B' | 'C' | 'D' | 'E' | 'F'
 export type StreamKey =
@@ -115,6 +115,25 @@ const P = {
   lCB: [170, 135], lBA: [140, 190], lBC: [190, 190],
 } as const
 
+// Marker-ID der Diagramm-Instanz für die Pfeilspitzen (siehe useId unten)
+const MarkerIdContext = createContext('kd-arrow')
+
+function Arrow({ d, c, w = 2.8 }: { d: string; c: string; w?: number }) {
+  const mid = useContext(MarkerIdContext)
+  return <path d={d} fill="none" stroke={c} strokeWidth={w} strokeLinejoin="round" markerEnd={`url(#${mid}-${cid(c)})`} />
+}
+function Stem({ from, to }: { from: Pt; to: Pt }) {
+  return <path d={M(from) + L(to)} fill="none" stroke={STEM} strokeWidth="5" strokeLinecap="round" />
+}
+function ArmCircle({ at, fill, label }: { at: Pt; fill: string; label: string }) {
+  return (
+    <g>
+      <circle cx={at[0]} cy={at[1]} r="12" fill={fill} />
+      <text x={at[0]} y={at[1] + 4} textAnchor="middle" fontSize="12" fontWeight="700" fill="#FFFFFF">{label}</text>
+    </g>
+  )
+}
+
 export function KnotenDiagramm({
   armCount = 3, volumes = {}, losByStream = {},
   separateLaneA = false, islandA = false, leftLaneA = true,
@@ -134,18 +153,6 @@ export function KnotenDiagramm({
   // gemountete Diagramme (SN 022 + VSS 308) auf #kd-arrow → Pfeilspitze fehlt.
   const mid = 'kd-arrow-' + useId().replace(/:/g, '')
 
-  const Arrow = ({ d, c, w = 2.8 }: { d: string; c: string; w?: number }) => (
-    <path d={d} fill="none" stroke={c} strokeWidth={w} strokeLinejoin="round" markerEnd={`url(#${mid}-${cid(c)})`} />
-  )
-  const Stem = ({ from, to }: { from: Pt; to: Pt }) => (
-    <path d={M(from) + L(to)} fill="none" stroke={STEM} strokeWidth="5" strokeLinecap="round" />
-  )
-  const ArmCircle = ({ at, fill, label }: { at: Pt; fill: string; label: string }) => (
-    <g>
-      <circle cx={at[0]} cy={at[1]} r="12" fill={fill} />
-      <text x={at[0]} y={at[1] + 4} textAnchor="middle" fontSize="12" fontWeight="700" fill="#FFFFFF">{label}</text>
-    </g>
-  )
   const Marker = (
     <>
       {ARROW_COLORS.map(c => (
@@ -167,6 +174,7 @@ export function KnotenDiagramm({
       { deg: 270, s: 'q5',  r: 'q6',  l: 'q4',  rl: false,         ll: false     }, // B Süd
     ]
     return (
+      <MarkerIdContext.Provider value={mid}>
       <svg width={width} viewBox="0 0 360 360" role="img"
            xmlns="http://www.w3.org/2000/svg" fontFamily="sans-serif">
         <title>Kreuzung — Knotenschema</title>
@@ -249,11 +257,13 @@ export function KnotenDiagramm({
         {crosswalkD && fgD > 0 && <FgLabel at={[180, 70]}  v={fgD} />}
         {crosswalkB && fgB > 0 && <FgLabel at={[180, 290]} v={fgB} />}
       </svg>
+      </MarkerIdContext.Provider>
     )
   }
 
   // ── Einmündung (3-Arm) ─────────────────────────────────────────────────────
   return (
+    <MarkerIdContext.Provider value={mid}>
     <svg width={width} viewBox="0 0 300 345" role="img"
          xmlns="http://www.w3.org/2000/svg" fontFamily="sans-serif">
       <title>Einmündung — Knotenschema</title>
@@ -335,5 +345,6 @@ export function KnotenDiagramm({
       {crosswalkC && fgC > 0 && <FgLabel at={[230, 125]} v={fgC} />}
       {crosswalkB && fgB > 0 && <FgLabel at={[152, 225]} v={fgB} />}
     </svg>
+    </MarkerIdContext.Provider>
   )
 }

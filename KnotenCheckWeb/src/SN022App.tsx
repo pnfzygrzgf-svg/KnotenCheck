@@ -7,17 +7,18 @@ import { KnotenDiagramm } from './KnotenDiagramm'
 import { analyzeSN640022 } from './engine/sn640022Calculator'
 import {
   defaultIntersection, toSNVolumes, toSNRawVolumes, toSNLaneFlags,
+  conformIntersection,
 } from './engine/armConfiguration'
 import type { IntersectionConfiguration, ArmConfiguration } from './engine/armConfiguration'
 import type { SN640022Result, SN640022StreamResult, SN640022MixedResult } from './engine/types'
 import { exportTool, importTool } from './saveLoad'
+import { useIsActiveModule } from './activeModule'
 import { LegendBox, type LegendItem } from './LegendBox'
-import { useToast, Toast } from './Toast'
-import {
-  LOS_COLOR, LOS_BG, LOSBadge, UtilBar, delayText, utilizationColor,
-  ToggleBtn, ToolbarBtn,
-} from './ui'
-import { ArmCard, streamMovementName } from './ArmCard'
+import { Toast } from './Toast'
+import { LOS_BG, LOS_COLOR, delayText, streamMovementName, utilizationColor } from './uiHelpers'
+import { useToast } from './useToast'
+import { LOSBadge, UtilBar, ToggleBtn, ToolbarBtn } from './ui'
+import { ArmCard } from './ArmCard'
 
 // ── Ergebnis-Karten ───────────────────────────────────────────────────────────
 
@@ -212,6 +213,7 @@ function ResultsPanel({ result, onShowBerechnungsblatt }: {
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 
 export default function SN022App() {
+  const isActive = useIsActiveModule()  // Druckblatt nur im sichtbaren Modul
   const [cfg, setCfg] = useState<IntersectionConfiguration>(defaultIntersection(3))
   const [showBl, setShowBl] = useState(false)
   const openBl  = useCallback(() => setShowBl(true),  [])
@@ -222,7 +224,7 @@ export default function SN022App() {
     exportTool({ tool: 'sn022', filePrefix: 'SN022', name: cfg.name, data: cfg, showToast })
 
   const handleImport = () =>
-    importTool<IntersectionConfiguration>('sn022', data => setCfg(data), showToast)
+    importTool('sn022', data => setCfg(conformIntersection(data)), showToast)
 
   function handleReset() {
     setCfg(prev => ({
@@ -392,7 +394,7 @@ export default function SN022App() {
         </div>
       </footer>
     </main>
-    {result && showBl && createPortal(
+    {isActive && result && showBl && createPortal(
       <Berechnungsblatt cfg={cfg} result={result} onClose={closeBl} />,
       document.body
     )}
