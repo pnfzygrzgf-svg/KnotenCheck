@@ -1141,7 +1141,7 @@ function LSAPrintSheet({ nodeName, armCount, arms, volumes, moveLane, fgsConfig,
       <div style={{ borderTop:'1px solid #bbb', paddingTop:5,
                     display:'flex', justifyContent:'space-between', fontSize:8, color:'#888' }}>
         <span>Berechnung nach VSS 40 023a. Die Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.</span>
-        <span>KnotenCheck · pnfzygrzgf-svg.github.io/KnotenCheck</span>
+        <span>KnotenCheck · knotencheck.ch</span>
       </div>
     </div>
   )

@@ -569,7 +569,7 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
         <span>
           Berechnung nach SN 640 024a (VSS). Die Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.
         </span>
-        <span>KnotenCheck · pnfzygrzgf-svg.github.io/KnotenCheck</span>
+        <span>KnotenCheck · knotencheck.ch</span>
       </div>
 
     </div>

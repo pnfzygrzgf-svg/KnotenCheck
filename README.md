@@ -2,7 +2,7 @@
 
 Werkzeug zur Leistungsbeurteilung von Knoten innerorts. Fünf Rechner stehen zur Verfügung, je nach Knotentyp und Normgrundlage.
 
-**Web-Rechner: https://pnfzygrzgf-svg.github.io/KnotenCheck/**
+**Web-Rechner: https://knotencheck.ch**
 
 > **Beta** — Resultate mit Vorsicht verwenden und durch eine Fachperson prüfen lassen.
 
