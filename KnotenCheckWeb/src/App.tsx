@@ -102,7 +102,7 @@ function HomePage({ onSelect }: { onSelect: (m: Mode) => void }) {
         ))}
 
         {/* Querverweis auf VeloroutenCheck (externes Werkzeug) */}
-        <a href="https://pnfzygrzgf-svg.github.io/VeloroutenCheck/" target="_blank" rel="noopener noreferrer"
+        <a href="https://veloroutencheck.ch/" target="_blank" rel="noopener noreferrer"
            style={{ textAlign: 'left', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10,
                     padding: '20px', textDecoration: 'none', color: 'inherit', boxShadow: '0 1px 3px #0001',
                     transition: 'box-shadow 0.15s', display: 'flex', flexDirection: 'column', gap: 8 }}
@@ -118,7 +118,7 @@ function HomePage({ onSelect }: { onSelect: (m: Mode) => void }) {
         </a>
 
         {/* Querverweis auf fgsCheck (externes Werkzeug) */}
-        <a href="https://pnfzygrzgf-svg.github.io/fgsCheck/" target="_blank" rel="noopener noreferrer"
+        <a href="https://fgscheck.ch/" target="_blank" rel="noopener noreferrer"
            style={{ textAlign: 'left', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10,
                     padding: '20px', textDecoration: 'none', color: 'inherit', boxShadow: '0 1px 3px #0001',
                     transition: 'box-shadow 0.15s', display: 'flex', flexDirection: 'column', gap: 8 }}
