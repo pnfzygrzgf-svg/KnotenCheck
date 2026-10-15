@@ -197,6 +197,20 @@ export function calculateVSS308(input: VSS308Input): VSS308Result {
       beta = betaCubic(y_FgEntry) * betaCubic(y_FgExit)
       saturation = S_M1
       C = 0.5
+      // Linksabbieger von der HS: muss dem Gegenverkehr (Geradeaus + Rechts des
+      // gegenüberliegenden HS-Arms, vgl. SN 640 022 F1/F2) Vortritt gewähren →
+      // abbiegendes Fahrzeug gegenüber Rang 1 (Tab. 25): β_i = (1−y_gegen)³,
+      // S = S_m2 (Rang 2), C = 1
+      const oppIdx = def.fromArmIndex === 0 ? 1 : def.fromArmIndex === 1 ? 0 : -1
+      const opp = oppIdx >= 0 ? arms[oppIdx] : undefined
+      if (def.movement === 'left' && toArm && opp?.roadType === 'HS') {
+        const qOpp = defs
+          .filter(d => d.fromArmIndex === oppIdx && d.toArmIndex >= 0 && d.movement !== 'left')
+          .reduce((s, d) => s + getFlow(opp, d.movement), 0)
+        beta *= betaCubic(qOpp / S_M1)
+        saturation = S_M2
+        C = 1.0
+      }
     } else if (roadType === 'NS') {
       // Rang 2: senkrechte höherrangige Ströme = HS-Fz (gesamt) + Fg-Entry + Fg-Exit
       beta = betaCubic(yHS) * betaCubic(y_FgEntry) * betaCubic(y_FgExit)
@@ -267,6 +281,8 @@ export function calculateVSS308(input: VSS308Input): VSS308Result {
     const validStreams = armStreams.filter(s => s.toArmIndex >= 0)
     const qFz         = validStreams.reduce((sum, s) => sum + s.Q, 0)
     const loaded      = validStreams.filter(s => s.Q > 0)
+    // Arm-Anzeige: HS-Arm als Rang 1 (Geradeaus dominiert); der HS-Linksabbieger
+    // trägt seine Rang-2-Kapazität über L_i in x_Arm bei
     const saturation = arm.roadType === 'NS' ? S_M2 : S_M1
     const C          = arm.roadType === 'HS' ? 0.5 : 1.0
 

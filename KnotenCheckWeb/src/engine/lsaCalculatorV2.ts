@@ -85,8 +85,8 @@ export interface StreamResultV2 {
   laneLabel: string
   armIndex: number
   isFGS: boolean
-  Q: number
-  X: number
+  Q: number        // eigene Verkehrsstärke des Stroms [PWE/h bzw. Fg/h]
+  X: number        // Werte des Fahrstreifens (Ströme teilen Grünzeit und Rückstau)
   wm: number
   queueM: number   // L-95 [m]
   los: LevelOfService
@@ -196,12 +196,14 @@ export function losRank(los: LevelOfService): number { return LOS_RANK.indexOf(l
 export function calculateLSAV2(input: LSAInputV2): LSAResultV2 {
   const { volumes, lanes, phases, targetLos, armCount, manualZ } = input
 
-  // Q_krit pro Fahrstreifen = max Q der zugeordneten Ströme (bewusst nicht die Summe;
-  // VSS 40 023a Ziff. 10.4.1: «grösste … Verkehrsstärken pro Fahrstreifen»)
+  // Verkehrsstärke eines Fahrstreifens = Summe der zugeordneten Ströme (VSS 40 023a
+  // Ziff. 9.3). Ziff. 10.4.1 («grösste, unverträgliche Verkehrsstärken pro Fahrstreifen»)
+  // wählt unter diesen Fahrstreifenbelastungen die kritischen aus — ein Mischfahrstreifen
+  // muss alle seine Ströme abwickeln, nicht nur den grössten.
   // FGS: Einheit Fg/h; Kfz: Einheit PWE/h
   const laneQ = new Map<string, number>()
   for (const lane of lanes) {
-    laneQ.set(lane.id, Math.max(0, ...lane.streamIds.map(id => volumes[id] ?? 0)))
+    laneQ.set(lane.id, lane.streamIds.reduce((s, id) => s + Math.max(0, volumes[id] ?? 0), 0))
   }
 
   // Anzahl Phasen, in denen jeder Fahrstreifen vorkommt
@@ -370,38 +372,26 @@ export function calculateLSAV2(input: LSAInputV2): LSAResultV2 {
     (w, l) => losRank(l.los) > losRank(w) ? l.los : w, 'A'
   )
 
-  // VQS pro Strom: jeder Strom mit Q>0 erhält eigene Wartezeit (lambda vom Fahrstreifen)
-  const streamResults: StreamResultV2[] = laneResults.flatMap(lane => {
-    const sSat = lane.isFGS ? S_FGS : S
-    const tRed = Z - lane.tGr
-    return lane.streamIds
+  // VQS pro Strom: Ein Strom teilt Grünzeit und Rückstau mit allen Strömen seines
+  // Fahrstreifens — Auslastung, Wartezeit, Rückstau und VQS sind die Werte des
+  // Fahrstreifens (Ziff. 9.3/11.3); nur die eigene Verkehrsstärke Q wird ausgewiesen.
+  const streamResults: StreamResultV2[] = laneResults.flatMap(lane =>
+    lane.streamIds
       .filter(id => (volumes[id] ?? 0) > 0)
-      .map(id => {
-        const q = volumes[id] ?? 0
-        const { w0, wm, X } = streamDelay(q, lane.lambda, Z, sSat)
-        const los = losFromDelay(isFinite(wm) ? wm : Infinity)
-        let queueM = Infinity
-        if (!lane.isFGS && isFinite(X) && X < 1 && q > 0) {
-          const pweArrRed  = q * tRed / 3600
-          const pweResidual = (isFinite(w0) ? w0 : 0) * q / 3600 * X
-          const pweTotal = pweArrRed + pweResidual
-          queueM = (1.691 * Math.sqrt(pweTotal) + pweTotal) * 6
-        }
-        return {
-          streamId: id,
-          laneId: lane.laneId,
-          laneLabel: lane.label,
-          armIndex: lane.armIndex,
-          isFGS: lane.isFGS,
-          Q: q,
-          X: isFinite(X) ? X : Infinity,
-          wm: isFinite(wm) ? wm : Infinity,
-          queueM,
-          los,
-          meetsTarget: losRank(los) <= losRank(targetLos),
-        }
-      })
-  })
+      .map(id => ({
+        streamId: id,
+        laneId: lane.laneId,
+        laneLabel: lane.label,
+        armIndex: lane.armIndex,
+        isFGS: lane.isFGS,
+        Q: volumes[id] ?? 0,
+        X: lane.X,
+        wm: lane.wm,
+        queueM: lane.queueM,
+        los: lane.los,
+        meetsTarget: lane.meetsTarget,
+      }))
+  )
 
   return {
     Z, zIsManual, zRaised, zAboveMax: Z > 120, tZ: T_Z, sumQKrit, maxQKrit: qKritMax, overloaded,

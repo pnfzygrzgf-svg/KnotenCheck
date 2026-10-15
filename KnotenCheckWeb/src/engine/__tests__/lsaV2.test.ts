@@ -193,3 +193,32 @@ describe('LSA V2: Umlaufzeit und Grünzeitverteilung', () => {
     expect(calc({ manualZ: 90 }).zAboveMax).toBe(false)
   })
 })
+
+// ── Mischfahrstreifen: Verkehrsstärke des Fahrstreifens = Summe der Ströme (Ziff. 9.3) ──
+describe('LSA V2: Mischfahrstreifen zählt die Summe seiner Ströme', () => {
+  const base = defaultLanesAndPhases(4)
+  const vol = { q1: 300, q2: 500, q3: 300, q7: 300, q8: 500, q9: 300,
+                q4: 300, q5: 500, q6: 300, q10: 300, q11: 500, q12: 300 }
+  const r = calculateLSAV2({ armCount: 4, volumes: vol, lanes: base.lanes, phases: base.phases, targetLos: 'D', tZ: 5 })
+
+  test('Q_krit je Fahrstreifen = 1100 PWE/h, nicht 500', () => {
+    for (const l of r.lanes) expect(l.qKrit).toBe(1100)
+    expect(r.sumQKrit).toBe(2200)
+  })
+  test('2 × 1100 PWE/h übersteigt jede Umlaufzeit der Tab. 2 → überlastet', () => {
+    expect(r.overloaded).toBe(true)
+    for (const l of r.lanes) expect(l.los).toBe('F')
+  })
+  test('Strom-Ergebnisse tragen die Werte ihres Fahrstreifens', () => {
+    const r2 = calculateLSAV2({ armCount: 4, volumes: { q2: 400, q3: 200, q5: 300 },
+                                lanes: base.lanes, phases: base.phases, targetLos: 'D', tZ: 5 })
+    const lane = r2.lanes.find(l => l.laneId === 'FS1')!
+    expect(lane.qKrit).toBe(600)
+    for (const id of ['q2', 'q3']) {
+      const s = r2.streams.find(x => x.streamId === id)!
+      expect(s.X).toBe(lane.X)
+      expect(s.wm).toBe(lane.wm)
+      expect(s.los).toBe(lane.los)
+    }
+  })
+})

@@ -264,3 +264,10 @@ describe('Einfahrt ohne Verkehr bestimmt die Gesamt-QS nicht', () => {
 })
 
 function worstLOSOf(l: string[]) { return [...l].sort().at(-1) }
+
+describe('Q_K über dem Gültigkeitsbereich der L_E-Formel wird markiert', () => {
+  test.each([['1/1', 1400], ['2/1+', 2000], ['2/2', 1800]] as const)('%s: Grenze %i PWE/h', (type, limit) => {
+    const r = calculateRoundabout({ type, qe: [300, 300, 300], qk: [limit, limit + 1, 100], fg: [0, 0, 0] })
+    expect(r.entries.map(e => e.qkOutOfRange)).toEqual([false, true, false])
+  })
+})

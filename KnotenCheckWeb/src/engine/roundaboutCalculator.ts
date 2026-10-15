@@ -121,6 +121,12 @@ export function correctionFactorFF(type: RoundaboutType, fg: number, qk: number)
 // 1/1, 2/1+: linear nach SN 640 024a Abb. 6 (gültig Q_K ≤ 1400 bzw. ≤ 2000)
 // 2/2:       exponentiell nach VSS 2005/301 Abb. 4.25: Q_E = 1639.9·e^(−0.0006·Q_K)
 //            (Q_K > 1800 datenarm; setzt gleichmässige Fahrstreifenbelastung ±10 % voraus)
+// Gültigkeitsbereich der Bemessungszusammenhänge: SN 640 024a Abb. 6 gibt
+// 0 ≤ Q_K ≤ 1400 (1/1) bzw. ≤ 2000 (2/1+) an; die 2/2-Kurve ist nach VSS 2005/301
+// bei Q_K > 1800 PWE/h statistisch nicht abgestützt. Darüber wird extrapoliert
+// und das Resultat markiert.
+export const QK_MAX_NORM: Record<RoundaboutType, number> = { '1/1': 1400, '2/1+': 2000, '2/2': 1800 }
+
 export function basicCapacity(type: RoundaboutType, qk: number): number {
   if (type === '1/1')  return Math.max(0, 1141 - 0.578 * qk)
   if (type === '2/1+') return Math.max(0, 1455 - 0.537 * qk)
@@ -195,6 +201,7 @@ export interface EntryResult {
   levelOfService: LevelOfService
   loaded: boolean          // Q_E > 0; ohne Einfahrtsverkehr keine QS (zählt nicht zur Gesamt-QS)
   fgOutOfRange: boolean    // FG > 400: ausserhalb Abb. 3–5, mit 400er-Kurve gerechnet
+  qkOutOfRange: boolean    // Q_K über dem Gültigkeitsbereich der L_E-Formel (QK_MAX_NORM), extrapoliert
 }
 
 export interface ExitResult {
@@ -240,7 +247,8 @@ export function calculateRoundabout(input: RoundaboutInput): RoundaboutResult {
     const delay       = loaded ? entryDelay(q, capacity) : 0
     const los         = levelOfService(delay)
     return { armIndex: i, qe: q, qk: qk[i], fg: fg[i], fF, leBase, capacity, reserve, utilizationDegree: x,
-             delay, levelOfService: los, loaded, fgOutOfRange: fg[i] > FG_MAX_NORM }
+             delay, levelOfService: los, loaded,
+             fgOutOfRange: fg[i] > FG_MAX_NORM, qkOutOfRange: qk[i] > QK_MAX_NORM[type] }
   })
 
   // Ausfahrten-Check (Ziffer 10, Abb. 5): Q_A(i) ≤ L_A(i) an allen Ausfahrten

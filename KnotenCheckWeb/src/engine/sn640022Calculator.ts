@@ -130,9 +130,11 @@ function makeStream(
   streamNumber: number, name: string, rang: number,
   q: number, qpi: number, G: number, L: number
 ): SN640022StreamResult {
-  const a  = L > 0 ? q / L : Infinity
+  // Unbelasteter Strom (q = 0): Auslastung 0, Wartezeit = Bedienzeit; ohne Leistungs-
+  // fähigkeit (L = 0, z. B. gestauter Vorstrom) wartet niemand → keine Überlastung (QS F)
+  const a  = q <= 0 ? 0 : L > 0 ? q / L : Infinity
   const R  = L - q
-  const wt = a < 1 ? w(q, L) : Infinity
+  const wt = q <= 0 ? (L > 0 ? w(0, L) : 0) : a < 1 ? w(q, L) : Infinity
   const los = classifyLOS(wt, a)
   return { id: sid(), streamNumber, name, rang, volumePWE: q,
            qpi, basicCapacity: G, capacity: L, reserve: R,

@@ -150,7 +150,8 @@ describe('calculateVSS308 — Strom-Topologie', () => {
     })
     const armA = r.arms[0]
     expect(armA.streams.every(s => s.utilizationDegree < 1)).toBe(true)
-    approx(armA.utilizationDegree, 1900 / 1750, 1e-9)   // x_Arm = Σ Q_i / L_i, ohne Fg L_i = S
+    // x_Arm = Σ Q_i / L_i, ohne Fg und ohne Gegenverkehr L_i = S: Geradeaus+Rechts S_m1, Linksabbieger S_m2
+    approx(armA.utilizationDegree, 1300 / 1750 + 600 / 1650, 1e-9)
     expect(armA.levelOfService).toBe('F')
     expect(r.overallLevelOfService).toBe('F')
   })
@@ -379,3 +380,39 @@ describe('calculateVSS308 — Szenario II (parallele Fg)', () => {
   })
 })
 
+
+// ── HS-Linksabbieger: Rang 2 gegenüber dem Gegenverkehr (Tab. 25, abbiegende Fz) ──
+describe('calculateVSS308 — HS-Linksabbieger gegen Gegenverkehr', () => {
+  const r = calculateVSS308({
+    type: '3arm',
+    arms: [
+      { name: 'A', roadType: 'HS', right: 50, straight: 600, left: 0,  fg: 0 },
+      { name: 'C', roadType: 'HS', right: 0,  straight: 600, left: 50, fg: 0 },
+      { name: 'B', roadType: 'NS', right: 100, straight: 0,  left: 100, fg: 0 },
+    ],
+  })
+  const sCB = r.streams.find(s => s.id === 'C→B')!
+  const sCA = r.streams.find(s => s.id === 'C→A')!
+
+  test('β = (1 − (q2 + q3)/1750)³ (Gegenverkehr Geradeaus + Rechts von A)', () =>
+    approx(sCB.beta, (1 - (600 + 50) / 1750) ** 3, 1e-9))
+  test('S = 1650 Fz/h (Rang 2), L = S·β', () => {
+    expect(sCB.saturation).toBe(1650)
+    approx(sCB.capacity, 1650 * sCB.beta, 1e-6)
+  })
+  test('HS-Geradeaus bleibt Rang 1 (β = 1, S = 1750)', () => {
+    expect(sCA.beta).toBe(1)
+    expect(sCA.saturation).toBe(1750)
+  })
+  test('ohne Gegenverkehr: β = 1', () => {
+    const r0 = calculateVSS308({
+      type: '3arm',
+      arms: [
+        { name: 'A', roadType: 'HS', right: 0, straight: 0,   left: 0,  fg: 0 },
+        { name: 'C', roadType: 'HS', right: 0, straight: 600, left: 50, fg: 0 },
+        { name: 'B', roadType: 'NS', right: 0, straight: 0,   left: 0,  fg: 0 },
+      ],
+    })
+    expect(r0.streams.find(s => s.id === 'C→B')!.beta).toBe(1)
+  })
+})

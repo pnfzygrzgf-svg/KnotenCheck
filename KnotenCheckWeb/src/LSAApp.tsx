@@ -754,6 +754,10 @@ function ResultsPanelV2({ result, targetLos, onTargetLos, onPrint }: {
                         color:'#6b7280', textTransform:'uppercase', marginBottom:8 }}>
             VQS pro Strom (Kfz)
           </div>
+          <div style={{ fontSize:11, color:'#6b7280', marginBottom:6 }}>
+            Auslastung, Rückstau, Wartezeit und VQS sind die Werte des Fahrstreifens — die Ströme eines
+            Fahrstreifens teilen Grünzeit und Rückstau (Ziffer 9.3).
+          </div>
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
             <thead>
               <tr style={{ background:'#f9fafb', color:'#6b7280', fontWeight:700 }}>
@@ -805,7 +809,7 @@ function ResultsPanelV2({ result, targetLos, onTargetLos, onPrint }: {
         </div>
         <div><strong>Grundlagen:</strong> VSS 40 023a — <em>Knoten mit Lichtsignalanlagen, Leistungsfähigkeit und Verkehrsqualität</em> (VSS); VSS 40 837 — <em>Lichtsignalanlagen, Signalzeiten</em> (VSS); VSS 40 834 — <em>Lichtsignalanlagen, Phasentrennung</em> (VSS); Handbuch Lichtsignalanlagen (HB LSA), Tiefbauamt Stadt Bern, V 2.1, Anhang G — Mindestfreigabezeit FGS mind. 5 s</div>
         <div><strong>Fz → PWE</strong> nach Ziff. 10.2: PW = 1,0 · LW = 2,0 · MR = 0,5 · FR = 0,25</div>
-        <div><strong>Q_krit</strong> pro Phase = max Q der exklusiven Kfz-Fahrstreifen (Ziff. 11.2); S = 1800 PWE/h (Ziff. 11.3); FGS sind unkritisch (S = 8000 Fg/h, VSS 40 834)</div>
+        <div><strong>Q_krit</strong>: Verkehrsstärke eines Fahrstreifens = Summe seiner Ströme (Ziff. 9.3); pro Phase der grösste exklusive Kfz-Fahrstreifen (Ziff. 10.4.1/11.1); S = 1800 PWE/h (Ziff. 11.3). FGS gehen nicht in Q_krit ein, ihre Mindestgrünzeit wirkt über Q_krit_min (S = 8000 Fg/h, VSS 40 834)</div>
         <div><strong>Z</strong> aus Tab. 2: kleinste Umlaufzeit, bei der qKritMax &gt; ΣQ_krit; Grünzeiten proportional zu Q_krit</div>
         <div><strong>ST_RE95</strong> = 1,691·√(PWE_mr+PWE_GE) + (PWE_mr+PWE_GE); × 6 m/PWE (Ziff. 11.5); PWE_mr = Q·t_r/3600; PWE_GE = w₀·Q·X/3600</div>
         <div><strong>t_Gr_min</strong> nach VSS 40 837: FZ = 4 s; FGS = max(5 s, 2/3·L / 1,2 m·s⁻¹)</div>
@@ -1024,6 +1028,9 @@ function LSAPrintSheet({ nodeName, armCount, arms, volumes, moveLane, fgsConfig,
       {result.streams.filter(s => !s.isFGS).length > 0 && (<>
         <div style={{ fontWeight:700, fontSize:10, color:'#1e3a5f', textTransform:'uppercase',
                       letterSpacing:'0.06em', marginBottom:3 }}>VQS pro Strom (Kfz)</div>
+        <div style={{ fontSize:8.5, color:'#666', marginBottom:4 }}>
+          Auslastung, L-95, Wartezeit und VQS = Werte des Fahrstreifens (Ströme teilen Grünzeit und Rückstau, Ziff. 9.3).
+        </div>
         <table style={{ width:'100%', borderCollapse:'collapse', marginBottom:12 }}>
           <thead>
             <tr>
@@ -1131,7 +1138,7 @@ function LSAPrintSheet({ nodeName, armCount, arms, volumes, moveLane, fgsConfig,
                     padding:'6px 10px', fontSize:8.5, color:'#444', lineHeight:1.6, marginBottom:10 }}>
         <strong style={{ color:'#222' }}>Methodik:</strong>
         {' '}Fz → PWE: PW=1,0 · LW=2,0 · MR=0,5 · FR=0,25 (Ziff. 10.2).
-        Q_krit pro Phase = max Q exklusiver Kfz-Fahrstreifen (Ziff. 11.2); S = 1800 PWE/h.
+        Q_krit: Fahrstreifenbelastung = Summe der Ströme (Ziff. 9.3), pro Phase der grösste exklusive Kfz-Fahrstreifen; S = 1800 PWE/h.
         Z aus Tab. 2 (kleinste Umlaufzeit, bei der alle Q_krit gedeckt sind).
         w_m = w₁ + w₀ (Ziff. 12, C = 0,5); ST_RE95 nach Ziff. 11.5.
         VQS nach Tab. 4: A ≤20 s · B ≤35 s · C ≤50 s · D ≤70 s · E ≤100 s · F Überlast. Ohne ÖV-Privilegierung.
@@ -1160,7 +1167,7 @@ const LEGEND_ITEMS: LegendItem[] = [
   { abbr: 'w_m', unit: 's',   desc: 'Mittlere Wartezeit pro Motorfahrzeug — deterministischer Anteil w₁ und stochastischer Anteil w₀; w_m = w₁ + w₀ (Ziffer 12, VSS 40 023a)' },
   { abbr: 'VQS',     desc: 'Verkehrsqualitätsstufe A–F nach Tab. 4 (VSS 40 023a): A ≤20s · B ≤35s · C ≤50s · D ≤70s · E ≤100s · F >100s' },
   { abbr: 'Z',  unit: 's',    desc: 'Umlaufzeit — Gesamtdauer eines Signalprogramm-Umlaufs; praktisch 60–90 s (Ziffer 10.4.3); automatisch aus Tab. 2 oder manuell' },
-  { abbr: 'ΣQ_krit', unit: 'PWE/h', desc: 'Summe der kritischen Verkehrsstärken — grösster unverträglicher Strom je Phase, mindestens Q_krit_min (Mindestgrünzeit, Ziffer 10.4.1), summiert; massgebend für Wahl der Umlaufzeit Z (Ziffer 11.1, VSS 40 023a)' },
+  { abbr: 'ΣQ_krit', unit: 'PWE/h', desc: 'Summe der kritischen Verkehrsstärken — grösste unverträgliche Fahrstreifenbelastung je Phase (Summe der Ströme des Fahrstreifens, Ziffer 9.3), mindestens Q_krit_min (Mindestgrünzeit, Ziffer 10.4.1), summiert; massgebend für Wahl der Umlaufzeit Z (Ziffer 11.1, VSS 40 023a)' },
   { abbr: 'T_Z', unit: 's',   desc: 'Zwischenzeit je Phase — Norm-Pauschale 5 s/Phase (VSS 40 023a, Ziffer 11.2); die geschwindigkeitsabhängige Staffelung 3/4/5 s ist eine eigene Annahme, angelehnt an die Gelbzeiten der VSS 40 837' },
   { abbr: 'FGS',     desc: 'Fussgängerstreifen — LSA-gesicherter Fussgängerübergang; Mindestgrünzeit t_Gr_min = max(5 s, ⅔·L / 1,2 m·s⁻¹) — ⅔·L mit 1,2 m/s nach VSS 40 837 Tab. 1, Mindestwert 5 s nach HB LSA Bern V 2.1, Anhang G' },
 ]
@@ -1502,7 +1509,7 @@ export default function LSAApp() {
         <p style={{ fontSize:12, color:'#6b7280', margin:'0 0 12px' }}>
           Anzahl Fahrstreifen festlegen und Knotenströme den Fahrstreifen zuordnen (Ziffer 9.3).
           Bewegungen auf FS1 oder FS2 aufteilen. FGS: Fussgängerstreifen mit Querungslänge aktivieren.
-          Massgebend pro Fahrstreifen ist der grösste zugeordnete Strom, nicht die Summe (Ziffer 10.4.1).
+          Die Verkehrsstärke eines Fahrstreifens ist die Summe der zugeordneten Ströme (Ziffer 9.3); ein Mischfahrstreifen muss alle seine Ströme abwickeln.
         </p>
         <LanePlanSection armCount={armCount} volumes={volumes}
           moveLane={moveLane} onChange={handleMoveLaneChange}

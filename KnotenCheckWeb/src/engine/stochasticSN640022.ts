@@ -121,7 +121,7 @@ export function seededRandom(seed: number): () => number {
 }
 
 // ── Grenz- und Folgezeitlücken ────────────────────────────────────────────────
-// HBS 2015, Kap. S5 (Stadtstrassen), Tabelle S5-5, Zeichen 205 StVO (Vorfahrt gewähren).
+// HBS 2015, Kap. S5 (Stadtstrassen), Tabelle S5-3 (Nummer gemäss Brilon-Vortrag 2016), Zeichen 205 StVO (Vorfahrt gewähren).
 // Quelle: Brilon, W. (2016): HBS 2015 — L5 & S5: Knotenpunkte ohne Lichtsignalanlage – Vorfahrt.
 //         Vortrag VSVI Baden-Württemberg, 23.02.2016.
 // Nutzer kann Werte überschreiben.

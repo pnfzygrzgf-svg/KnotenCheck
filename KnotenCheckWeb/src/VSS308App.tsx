@@ -591,7 +591,7 @@ function VSS308PrintSheet({ nodeName, nodeType, arms, result }: {
                     padding: '6px 10px', fontSize: 8.5, color: '#444', lineHeight: 1.6,
                     marginBottom: 10 }}>
         <strong style={{ color: '#222' }}>Methodik (VSS 2011/308, Kap. 5):</strong>
-        {' '}Pro Strom: β = ∏(1 − y_i)³ über alle senkrechten Rang-1-Ströme (HS-Fz und/oder Fg, Ein- und Ausfahrt).
+        {' '}Pro Strom: β = ∏(1 − y_i)³ über alle senkrechten Rang-1-Ströme (HS-Fz und/oder Fg, Ein- und Ausfahrt); y_HS = gesamte HS-Belastung / S. HS-Linksabbieger: zusätzlich (1 − y_gegen)³ aus Geradeaus + Rechts des gegenüberliegenden HS-Arms, S = 1650 Fz/h, C = 1 (Rang 2, Tab. 25).
         L = S·β (Szenario I, Gl. 5); NS-Ströme mit parallelen vortrittsberechtigten Fg-Strömen (Streifen auf nicht überfahrenen HS-Armen, Marker «Sz II»): L = S·y_par + S·(1−y_par)·β (Szenario II, Gl. 6). S_Fz = 1750 Fz/h (HS), 1650 Fz/h (NS). S_Fg = 900·ρ Fg/h (ρ = mittlere Gruppengrösse, Tab. 9).
         Wartezeit nach Gl. 1 (S. 62): C = 0.5 (Rang 1), C = 1.0 (Rang 2 / gleicher Rang).
         Einfahrten-Werte: Volumen-gewichtete Mittel. LOS: A ≤10 s · B ≤20 s · C ≤30 s · D ≤45 s · E &gt;45 s · F Überlast.
@@ -614,7 +614,7 @@ const LEGEND_ITEMS: LegendItem[] = [
   { abbr: 'Fz/h',   desc: 'Fahrzeuge pro Stunde — Roheingabe Abbiegeströme' },
   { abbr: 'Fg/h',   desc: 'Fussgänger*innen pro Stunde am Fussgängerstreifen dieser Einfahrt — Gesamtvolumen, unabhängig davon ob eine Mittelinsel vorhanden ist' },
   { abbr: 'MI',     desc: 'Mittelinsel (Verkehrsinsel) am Fussgängerstreifen — teilt den Streifen in zwei selbständige Teile (Art. 47 Abs. 3 VRV). Fahrzeuge müssen Fg, die die Insel noch nicht erreicht haben, keinen Vortritt gewähren. Rechnerisch: wirksames Q_Fg = Q_Fg / 2 (konservative Annahme gleichmässiger Verteilung auf beide Hälften).' },
-  { abbr: 'HS',     desc: 'Hauptstrasse — Rang 1, hat Vortritt gegenüber NS-Fahrzeugen' },
+  { abbr: 'HS',     desc: 'Hauptstrasse — Rang 1, hat Vortritt gegenüber NS-Fahrzeugen. Ausnahme Linksabbieger: Rang 2 gegenüber dem Gegenverkehr (Geradeaus + Rechts des gegenüberliegenden HS-Arms), S = 1650 Fz/h, C = 1' },
   { abbr: 'NS',     desc: 'Nebenstrasse — Rang 2, muss Rang-1-Ströme und Fussgänger*innen abwarten' },
   { abbr: 'Q',  unit: 'Fz/h', desc: 'Belastung eines Stroms — Summe aller Fahrzeuge in dieser Bewegungsrichtung pro Stunde' },
   { abbr: 'S',       desc: 'Sättigungsfluss — empirische Richtwerte (Tab. 13, VSS 2011/308): Fahrzeuge Rang 1 = 1750 Fz/h, Rang 2 = 1650 Fz/h; Fussgänger*innen = 900·ρ Fg/h (ρ = mittlere Anzahl gemeinsam querender Fg, Tab. 9); Tram = 340 T/h; Bus = 600 B/h' },
@@ -876,7 +876,7 @@ export default function VSS308App() {
                           fontSize: 11, color: '#64748b', lineHeight: 1.6 }}>
               <strong style={{ color: '#334155' }}>Methodik:</strong> VSS 2011/308 Kap. 5
               (Menendez/Guler/Puffe). Pro Strom: β = ∏(1−y<sub>i</sub>)³
-              über alle senkrechten Rang-1-Ströme (HS-Fz + Fg Ein-/Ausfahrt).
+              über alle senkrechten Rang-1-Ströme (HS-Fz + Fg Ein-/Ausfahrt); HS-Linksabbieger zusätzlich (1−y_gegen)³ gegen den Gegenverkehr (S = 1650, C = 1).
               S_Fg = 900·ρ (bei Mittelinsel Q_Fg/2, Art. 47 Abs. 3 VRV). L = S·β (Szenario I, Gl. 5); für NS-Ströme mit parallelen vortrittsberechtigten Fg-Strömen (Fussgängerstreifen auf HS-Armen, die der Strom nicht überfährt) gilt L = S·y_par + S·(1−y_par)·β (Szenario II, Gl. 6, Abb. 22/35) — der Streifen blockiert den HS-Konfliktverkehr und verschafft dem NS-Strom Zeitfenster.
               Einfahrten-Werte: Volumen-gewichtetes Mittel.
               C = 0.5 (Rang 1), C = 1.0 (Rang 2 / gleicher Rang).

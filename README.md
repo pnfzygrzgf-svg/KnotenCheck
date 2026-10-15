@@ -14,7 +14,7 @@ Vibecoding. Don't trust, verify!
 |---|---|---|---|
 | [Einmündung & Kreuzung](#einmündung-und-kreuzung-sn-640-022) | Vorfahrtgeregelte T-Knoten (3 Arme) und Kreuzungen (4 Arme) | SN 640 022 | Beta |
 | [Kreisverkehr](#kreisverkehr-sn-640-024a) | Kreisel der Typen 1/1, 2/1+ und 2/2 | SN 640 024a · VSS 2005/301 | Beta |
-| [Ungesteuerter Knoten mit Fussgänger*innen](#ungesteuerter-knoten-mit-fussgängerinnen-vss-2011308) | Einmündung, Kreuzung und Rechtsvortritt mit Fussgängerstreifen | VSS 2011/308 | Beta |
+| [Ungesteuerter Knoten mit Fussgänger*innen](#ungesteuerter-knoten-mit-fussgängerinnen-vss-2011308) | Einmündung und Kreuzung mit Fussgängerstreifen | VSS 2011/308 | Beta |
 | [LSA-Knoten](#lsa-knoten-vss-40-023a) | Knoten mit Lichtsignalanlage, freier Fahrstreifen- und Phasenplan | VSS 40 023a u. a. | Alpha |
 | [Simulation](#simulation) | Stochastische Simulation vorfahrtgeregelter Knoten: Wartezeit-Verteilungen statt Einzelwert | SN 640 022 · HBS 2015 · VSS 2011/308 | Beta |
 
@@ -214,7 +214,9 @@ Die Grundleistungsfähigkeit L_E(i) hängt linear von der Kreiselfahrbahnbelastu
 2/2:   L_E = 1639.9 · e^(−0.0006 · Q_K) (VSS 2005/301, Abb. 4.25, exponentiell)
 ```
 
-Vorbehalte aus VSS 2005/301 zur 2/2-Kurve: Bei Q_K > 1800 PWE/h beruht sie auf wenigen Messdaten; vorausgesetzt ist eine annähernd gleichmässige Fahrstreifenbelastung in der Einfahrt (50 % ± 10 %) — bei ungleicher Belastung liegt die Leistungsfähigkeit um ca. 100–150 PWE/h tiefer.
+Liegt Q_K über dem Gültigkeitsbereich (1400 bzw. 2000 PWE/h; bei Typ 2/2 über 1800 PWE/h, wo die Kurve auf wenigen Messdaten beruht), rechnet KnotenCheck mit der Formel weiter und markiert die Einfahrt: L_E ist dann extrapoliert.
+
+Vorbehalte aus VSS 2005/301 zur 2/2-Kurve: Bei Q_K > 1800 PWE/h beruht sie auf wenigen Messdaten; vorausgesetzt ist eine annähernd gleichmässige Fahrstreifenbelastung in der Einfahrt (50 % ± 10 %) — bei ungleicher Belastung liegt die Leistungsfähigkeit um ca. 150 PWE/h tiefer.
 
 Sind querende Fussgänger*innen vorhanden, wird L_E mit dem Korrekturfaktor f_F multipliziert (Abbildung 3, Seite 10 für 1/1, Abbildung 4, Seite 10 für 2/1+). f_F ist kleiner als 1 — querende Fussgänger*innen reduzieren die Einfahrtsleistungsfähigkeit, der Effekt nimmt mit wachsendem Q_K ab. Für Typ 2/2 liefert VSS 2005/301 keinen f_F (zu wenig Fussgänger*innen an den Untersuchungsstandorten); KnotenCheck verwendet die Abb.-4-Kurven (2/1+) analog.
 
@@ -238,7 +240,9 @@ Die mittlere Wartezeit wird in Abhängigkeit von R und L_E bestimmt (Abbildung 7
 | E | > 45 s | Mangelhaft |
 | F | Überlastet | Zufluss grösser als Kapazität |
 
-Massgebend für den Gesamtknoten ist der Arm mit der schlechtesten Qualitätsstufe. Einfahrten ohne Verkehr (Q_E = 0) erhalten keine Qualitätsstufe und zählen nicht mit.
+Massgebend für den Gesamtknoten ist der Arm mit der schlechtesten Qualitätsstufe. Einfahrten ohne Verkehr (Q_E = 0) erhalten keine Qualitätsstufe und zählen nicht mit. KnotenCheck vergibt F nur bei Überlastung (X ≥ 1); das Anwendungsbeispiel der Norm (Tab. 7) stuft eine Einfahrt mit X = 0,95 und 67 s Wartezeit bereits als F ein, nach Tabelle 3 ist das E.
+
+**Nicht implementiert:** die 95-%-Rückstaulänge der Einfahrten (Abbildung 8, Ziffer 13). Sie ist nach der Norm massgebend, wenn der Rückstau benachbarte Knoten blockieren könnte, und muss bei Bedarf separat aus Abbildung 8 abgelesen werden.
 
 ### Technische Details
 
@@ -251,6 +255,7 @@ Wie beim Rechner [Einmündung & Kreuzung](#einmündung-und-kreuzung-sn-640-022):
 | **Abb. 4** | f_F, zweistreifige Einfahrt | **abgelesen** (Stützpunkte, bilinear interpoliert) |
 | **Abb. 5** | L_A Ausfahrtsleistungsfähigkeit | **abgelesen** (Stützpunkte, linear interpoliert) |
 | **Abb. 7** | w mittlere Wartezeit | **Formel** (zeitabhängig, wie SN 640 022) |
+| **Abb. 8** | 95-%-Rückstaulänge | **nicht implementiert** |
 
 **Einfahrtsleistungsfähigkeit L_E — Abbildung 6 (Formeln):** Die Norm gibt algebraische Regressionskurven an, KnotenCheck verwendet sie direkt:
 
@@ -305,7 +310,7 @@ mit T = 1.0 h (Spitzenstunde), a = Q_E / L_E — derselbe T-Wert, der bei SN 640
 
 Der Forschungsbericht *Verkehrsablauf an ungesteuerten Knoten innerorts unter Berücksichtigung der verschiedenen Verkehrsarten; Ermittlung repräsentativer Richtwerte und Zusammenhänge* (VSS 2011/308) ist eine empirisch validierte Vereinfachung und Erweiterung der Methodik aus dem Bericht *Verkehrsqualität und Leistungsfähigkeit von komplexen ungesteuerten Knoten: Analytisches Schätzverfahren* (VSS 2008/301). Im Unterschied zur SN 640 022 werden **Fussgänger*innen** als Konfliktgrösse berücksichtigt. Alle Berechnungen erfolgen rein algebraisch — keine Diagramme zum Ablesen.
 
-Der Rechner deckt zweirangige und gleichrangige Knoten ab (Tram und Bus Eigentrasse sind nicht implementiert). Komplexe Knoten mit mehr als zwei Rängen oder Rückstauwirkung von Nachbarknoten sind nicht vollständig abgedeckt.
+Der Rechner deckt zweirangige Knoten ab: Einmündung und Kreuzung mit Hauptstrasse (Rang 1) und Nebenstrasse (Rang 2). Gleichrangige Knoten (Rechtsvortritt) sind in der Oberfläche vorerst ausgeblendet; Tram und Bus auf Eigentrasse sind nicht implementiert. Komplexe Knoten mit mehr als zwei Rängen oder Rückstauwirkung von Nachbarknoten sind nicht vollständig abgedeckt.
 
 **Funktionen des Rechners:**
 - Einmündung (T-Knoten) und Kreuzung (4 Arme)
@@ -341,11 +346,16 @@ Die Berechnung erfolgt **pro Bewegungsrichtung** (A→C, B→A, etc.):
 
 | Strom | β |
 |---|---|
-| HS (Rang 1) | `(1 − y_FgEinfahrt)³ × (1 − y_FgAusfahrt)³` |
-| NS (Rang 2) | `(1 − y_HS)³ × (1 − y_FgEinfahrt)³ × (1 − y_FgAusfahrt)³` |
+| HS Geradeaus / Rechts (Rang 1) | `(1 − y_FgEinfahrt)³ × (1 − y_FgAusfahrt)³` |
+| HS Linksabbieger (Rang 2 gegenüber dem Gegenverkehr) | `(1 − y_gegen)³ × (1 − y_FgEinfahrt)³ × (1 − y_FgAusfahrt)³` mit `y_gegen = (Geradeaus + Rechts des gegenüberliegenden HS-Arms) / S_m1`; S = S_m2, C = 1 |
+| NS (Rang 2) | `(1 − y_HS)³ × (1 − y_FgEinfahrt)³ × (1 − y_FgAusfahrt)³` mit `y_HS = gesamte HS-Belastung (beide HS-Arme, alle Richtungen) / S_m1` |
 | Gleicher Rang | `y_this / (y_this + y_partner)` |
 
 Ein HS-Fahrzeug, das von A nach C fährt, passiert den Fussgängerstreifen bei Arm A (Einfahrt) **und** den Fussgängerstreifen bei Arm C (Ausfahrt). Beide gehen in das β des Stroms A→C ein.
+
+Der Linksabbieger von der Hauptstrasse muss dem Gegenverkehr Vortritt gewähren (wie Strom 1/7 in der SN 640 022): Er ist gegenüber dem gegenüberliegenden Geradeaus- und Rechtsabbiegeverkehr ein abbiegendes Fahrzeug im Sinn von Tab. 25 des Berichts und erhält β_i = (1 − y)³, den Sättigungsfluss des Rangs 2 und C = 1.
+
+Für NS-Ströme setzt KnotenCheck vereinfachend die gesamte HS-Belastung als konfligierend an, auch für Rechtseinbieger (die nach SN 640 022 nur den Verkehr von links abwarten müssten) — das ist konservativ.
 
 **Schritt 3 — LSA-Korrektur (Gl. 13)**
 
@@ -439,12 +449,12 @@ Für jeden Arm werden die Abbiegeströme (links, geradeaus, rechts) in Fahrzeuge
 Jeder Arm erhält einen oder zwei Fahrstreifen (FS1, FS2). Jeder Strom wird einem Fahrstreifen zugewiesen. Die **kritische Verkehrsstärke Q_krit eines Fahrstreifens** ist die grösste Verkehrsstärke der zugeordneten Ströme:
 
 ```
-Q_krit(FS) = max(Q_i) aller Ströme auf diesem FS
+Q_krit(FS) = Σ Q_i aller Ströme auf diesem FS
 ```
 
-Massgebend ist bewusst der **grösste** Strom, nicht die Summe der Ströme (VSS 40 023a Ziff. 10.4.1: kritisch sind die grössten Verkehrsstärken pro Fahrstreifen). Beispiel: Links 300, Geradeaus 500 und Rechts 300 PWE/h auf einem gemeinsamen Fahrstreifen ergeben Q_krit = 500 PWE/h, nicht 1100 PWE/h. Ein Mischfahrstreifen mit mehreren ähnlich starken Strömen wird dadurch günstiger beurteilt als bei einer Summenbetrachtung.
+Die Verkehrsstärke eines Fahrstreifens ist die **Summe** der ihm zugeordneten Ströme (VSS 40 023a Ziff. 9.3). Ziff. 10.4.1 («die grössten, unverträglichen Verkehrsstärken pro Fahrstreifen») wählt unter diesen Fahrstreifenbelastungen die kritischen aus, sie halbiert nicht die Belastung eines Mischfahrstreifens: Links 300, Geradeaus 500 und Rechts 300 PWE/h auf einem gemeinsamen Fahrstreifen ergeben Q_krit = 1100 PWE/h, denn der Fahrstreifen muss alle drei Ströme in seiner Grünzeit abwickeln. (Bis zum 15.10.2026 rechnete KnotenCheck hier mit dem grössten Strom; Mischfahrstreifen wurden dadurch deutlich zu günstig beurteilt.)
 
-In der Tabelle «VQS pro Strom» wird jeder Strom mit seiner eigenen Verkehrsstärke und dem Grünzeitanteil seines Fahrstreifens bewertet.
+Die Tabelle «VQS pro Strom» listet die Ströme eines Fahrstreifens mit ihrer eigenen Verkehrsstärke; Auslastung, Rückstau, Wartezeit und VQS sind die Werte des Fahrstreifens, weil die Ströme Grünzeit und Rückstau teilen. Geradeaus-Äquivalente für vortrittsbelastete Abbieger auf Mischfahrstreifen (VSS 40 834, Tab. 1) sind nicht implementiert.
 
 ### Schritt 3: Phasenplan festlegen
 
@@ -613,7 +623,7 @@ Die Simulation ergänzt den analytischen Rechner um vier Aspekte:
 ### Grundlagen
 
 - **SN 640 022** liefert: Ränge der Verkehrsströme, qpi-Konfliktstromberechnung (F1–F8), Fahrzeugkategorien (PCE). Die SN 640 022 definiert t_c und t_f nicht — sie arbeitet mit Kapazitätskurven (Abb. 2). Die SN 640 022 kennt keine Fussgänger*innen.
-- **HBS 2015, Kap. S5, Tabelle S5-5 (Zeichen 205 StVO)** liefert die Grenzzeitlücken t_c und Folgezeitlücken t_f je Manöver.
+- **HBS 2015, Kap. S5, Tabelle S5-3 (Zeichen 205 StVO; Tabellennummer gemäss Brilon-Vortrag 2016)** liefert die Grenzzeitlücken t_c und Folgezeitlücken t_f je Manöver.
 - **Troutbeck & Brilon (FHWA 1997, Kap. 8)** liefert die Gap-Acceptance-Theorie: Lückenakzeptanz mit t_c und t_f, Cowan-M3-Headwaymodell für Kolonnenbildung.
 - **VSS 2011/308** liefert die Gruppengrösse ρ — sie steuert die *Häufigkeit* der Fussgänger-Sperrungen (eine Gruppe quert gemeinsam = ein Ereignis für ρ Personen), konsistent mit `S_Fg = 900·ρ` der Norm.
 - **VSS 40 240** liefert die Gehgeschwindigkeit v_FG = 0.80 m/s (konservativ für ältere Menschen und Menschen mit Behinderung); sie bestimmt die *Dauer* einer Sperrung aus der Fahrbahnbreite. Die Halbierung bei Mittelinseln stützt sich auf Art. 47 Abs. 3 VRV (jede Streifenhälfte gilt als selbständiger Streifen); der Mittelinsel-Schwellenwert ab 8.5 m auf VSS 40 241.
@@ -680,7 +690,7 @@ Zusätzlich wirkt jeder Fussgängerstreifen als **Direktsperre**: Jeder Fahrzeug
 
 **Schritt 3 — Grenzzeitlücke pro Fahrer ziehen (lognormal)**
 
-Jeder Fahrer hat einen persönlichen t_c-Wert, gezogen aus einer Lognormalverteilung mit dem Nominalwert (HBS 2015 S5, Tabelle S5-5) als Mittelwert und der gewählten Standardabweichung σ. Das modelliert Fahrerstreuung: forsche Fahrer akzeptieren kürzere Lücken, vorsichtige brauchen längere. Die Lognormalverteilung ist immer positiv und leicht rechtsschief (wenige sehr vorsichtige Fahrer). σ = 0.5 s als Standard ist eine eigene Annahme; mit «keine» rechnet die Simulation wie das analytische Verfahren mit festem t_c. Gezogene Werte werden auf minimal 1.0 s begrenzt.
+Jeder Fahrer hat einen persönlichen t_c-Wert, gezogen aus einer Lognormalverteilung mit dem Nominalwert (HBS 2015 S5, Tabelle S5-3) als Mittelwert und der gewählten Standardabweichung σ. Das modelliert Fahrerstreuung: forsche Fahrer akzeptieren kürzere Lücken, vorsichtige brauchen längere. Die Lognormalverteilung ist immer positiv und leicht rechtsschief (wenige sehr vorsichtige Fahrer). σ = 0.5 s als Standard ist eine eigene Annahme; mit «keine» rechnet die Simulation wie das analytische Verfahren mit festem t_c. Gezogene Werte werden auf minimal 1.0 s begrenzt.
 
 *Verkehrlich:* Nicht jeder Fahrer braucht dieselbe Lücke — der forsche fädelt schon in eine etwas knappere Lücke ein, der vorsichtige wartet auf eine grössere. Die Streuung σ gibt an, wie stark sich die Fahrer unterscheiden. Eine zu grosse Streuung verfälscht das Resultat: Einzelne Fahrer mit sehr grossem t_c blockieren die Haltelinie für alle Nachfolgenden und senken die Kapazität deutlich. Jeder Fahrer behält seinen einmal gezogenen Wert bis zur Abfahrt — er ist in sich konsistent.
 
@@ -743,7 +753,7 @@ Die Ausgabe zeigt pro Intervall Mittelwert, P85 und QS in einer Ganglinie-Tabell
 
 ### Grenzzeitlücken t_c und Folgezeitlücken t_f
 
-**Standardwerte** — HBS 2015, Kapitel S5 (Stadtstrassen), Tabelle S5-5, Zeichen 205 StVO (Vorfahrt gewähren):
+**Standardwerte** — HBS 2015, Kapitel S5 (Stadtstrassen), Tabelle S5-3, Zeichen 205 StVO (Vorfahrt gewähren):
 
 | Manöver | Ströme | t_c [s] | t_f [s] |
 |---|---|---:|---:|

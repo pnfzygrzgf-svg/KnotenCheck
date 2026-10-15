@@ -452,3 +452,20 @@ describe('Fn 2: rechter Fahrstreifen höchstens ganzer Geradeausverkehr', () => 
     expect(toSNLaneFlags(defaultIntersection(3)).armAQ2Override).toBeUndefined()
   })
 })
+
+// ─── Unbelasteter Strom ohne Leistungsfähigkeit ──────────────────────────────
+describe('Unbelasteter Strom (q = 0) erhält keine Überlastung', () => {
+  // Strom 7 überlastet → p0,7 = 0 → L4 = 0; Arm B und D ohne Verkehr
+  const r = analyzeSN640022([[0, 900, 100, 0], [900, 0, 900, 0], [0, 0, 0, 0], [0, 0, 0, 0]])!
+  const s = (n: number) => r.streams.find(s => s.streamNumber === n)!
+  test('Strom 4: L = 0, q = 0 → a = 0, nicht QS F', () => {
+    expect(s(4).capacity).toBe(0)
+    expect(s(4).utilizationDegree).toBe(0)
+    expect(s(4).levelOfService).not.toBe('F')
+  })
+  test('unbelasteter Rang-2-Strom: Wartezeit = Bedienzeit 3600/L', () => {
+    acc(s(1).delay, 3600 / s(1).capacity, 1e-9)
+    expect(s(1).levelOfService).toBe('A')
+  })
+  test('überlasteter Strom 7 bleibt QS F', () => { expect(s(7).levelOfService).toBe('F') })
+})

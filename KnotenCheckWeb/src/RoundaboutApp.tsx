@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { calculateRoundabout, computeQKfromTurnings, computeQAfromTurnings,
-  entryFactor, ringFactor, RB_PCE_MOTOR, FG_MAX_NORM } from './engine/roundaboutCalculator'
+  entryFactor, ringFactor, RB_PCE_MOTOR, FG_MAX_NORM, QK_MAX_NORM } from './engine/roundaboutCalculator'
 import { conform, conformFixed, oneOf } from './engine/conform'
 import type { RoundaboutType, LevelOfService, EntryResult, ExitResult,
   GradientPCE, RbVehicleMix } from './engine/roundaboutCalculator'
@@ -197,7 +197,7 @@ function ArmCard({ arm, index, armCount, qkFzh, onChange }: {
 
 // ── Ergebnis-Karte pro Arm ────────────────────────────────────────────────────
 
-function EntryCard({ e, arm, armNumber }: { e: EntryResult; arm: ArmInput; armNumber: number }) {
+function EntryCard({ e, arm, armNumber, type }: { e: EntryResult; arm: ArmInput; armNumber: number; type: RoundaboutType }) {
   const col = utilizationColor(e.utilizationDegree)
   const pct = Math.min(999, Math.round(e.utilizationDegree * 100))
   const overflow = !isFinite(e.delay)
@@ -261,6 +261,12 @@ function EntryCard({ e, arm, armNumber }: { e: EntryResult; arm: ArmInput; armNu
           <div style={{ gridColumn: '1 / -1', marginTop: 4, color: '#b45309' }}>
             FG über {FG_MAX_NORM} FG/h liegt ausserhalb der Normdiagramme (Abb. 3–5): gerechnet mit
             der {FG_MAX_NORM}er-Kurve, die Leistungsfähigkeit ist eher überschätzt.
+          </div>
+        )}
+        {e.qkOutOfRange && (
+          <div style={{ gridColumn: '1 / -1', marginTop: 4, color: '#b45309' }}>
+            Q_K über {QK_MAX_NORM[type]} PWE/h liegt ausserhalb des Gültigkeitsbereichs der L_E-Formel
+            ({type === '2/2' ? 'VSS 2005/301: wenige Messdaten' : 'SN 640 024a, Abb. 6'}): L_E ist extrapoliert.
           </div>
         )}
       </div>
@@ -451,7 +457,7 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
                   {arms[i].name ? ` — ${arms[i].name}` : ''}
                 </td>
                 <td style={td}>{e.qe}</td>
-                <td style={td}>{e.qk}</td>
+                <td style={td}>{e.qk}{e.qkOutOfRange ? '²' : ''}</td>
                 <td style={td}>{Math.round(e.leBase)}</td>
                 <td style={td}>{e.fF.toFixed(3)}</td>
                 <td style={td}>{Math.round(e.capacity)}</td>
@@ -546,6 +552,11 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
               (Leistungsfähigkeit eher überschätzt).
             </div>
           )}
+          {result.entries.some(e => e.qkOutOfRange) && (
+            <div style={{ fontSize: 9, color: '#666', marginTop: 2 }}>
+              ² Q_K über {QK_MAX_NORM[result.type]} PWE/h: ausserhalb des Gültigkeitsbereichs der L_E-Formel, extrapoliert.
+            </div>
+          )}
         </div>
       </div>
 
@@ -556,7 +567,7 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
         <strong style={{ color: '#222' }}>Methodik:</strong>
         {' '}Q_E = Summe Abbiegeströme × f (Tab. 2, Längsneigung).
         Q_K = Kreisfahrbahnquerschnitt aus Abbiegeströmen × 1,1 (Abb. 10).
-        L_E: 1141 − 0,578·Q_K (1/1, SN 640 024a) | 1455 − 0,537·Q_K (2/1+, SN 640 024a) | 1639,9·e^(−0,0006·Q_K) (2/2, VSS 2005/301).
+        L_E: 1141 − 0,578·Q_K (1/1, Q_K ≤ 1400) | 1455 − 0,537·Q_K (2/1+, Q_K ≤ 2000) (SN 640 024a, Abb. 6) | 1639,9·e^(−0,0006·Q_K) (2/2, VSS 2005/301, Q_K &gt; 1800 datenarm).
         f_F nach Abb. 3/4 (bilinear interpoliert); Typ 2/2 verwendet Abb. 4 (mangels eigener Messwerte).
         Ausfahrten-Check (Ziffer 10, Abb. 5): Q_A ≤ L_A; L_A ≤ 1400 PWE/h, durch FG reduziert. Wartezeit w nach Kimber &amp; Hollis, T = 1,0 h.
         VQS nach Tab. 3: A ≤10 s · B ≤20 s · C ≤30 s · D ≤45 s · E &gt;45 s · F Überlast.
@@ -816,7 +827,7 @@ export default function RoundaboutApp() {
                 Einfahrten
               </div>
               {result!.entries.map((e, i) => (
-                <EntryCard key={i} e={e} arm={activeArms[i]} armNumber={i + 1} />
+                <EntryCard key={i} e={e} arm={activeArms[i]} armNumber={i + 1} type={result!.type} />
               ))}
 
               {/* Ausfahrten-Check (Ziffer 10, Abb. 5) */}
