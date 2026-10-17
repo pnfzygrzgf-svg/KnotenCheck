@@ -11,6 +11,7 @@ import { ModuleErrorBoundary } from './ModuleErrorBoundary'
 import heroImg from './assets/KnotenCheck.png'
 import veloLogo from './assets/VeloroutenCheck.svg'
 import fgsLogo from './assets/fgsCheck.svg'
+import sichtLogo from './assets/SichtweitenCheck.svg'
 import './App.css'
 
 type Mode = 'home' | 'sn022' | 'sn024a' | 'vss308' | 'lsa' | 'simulation'
@@ -130,6 +131,22 @@ function HomePage({ onSelect }: { onSelect: (m: Mode) => void }) {
           </div>
           <span style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
             Sichtprüfung an Fussgängerstreifen.
+          </span>
+        </a>
+
+        {/* Querverweis auf SichtweitenCheck (externes Werkzeug) */}
+        <a href="https://sichtweitencheck.ch/" target="_blank" rel="noopener noreferrer"
+           style={{ textAlign: 'left', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10,
+                    padding: '20px', textDecoration: 'none', color: 'inherit', boxShadow: '0 1px 3px #0001',
+                    transition: 'box-shadow 0.15s', display: 'flex', flexDirection: 'column', gap: 8 }}
+           onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 4px 12px #0002')}
+           onMouseLeave={e => (e.currentTarget.style.boxShadow = '0 1px 3px #0001')}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <img src={sichtLogo} alt="" width={36} height={36} style={{ flexShrink: 0 }} />
+            <span style={{ fontSize: 15, fontWeight: 700, color: '#1e3a5f' }}>SichtweitenCheck&nbsp;↗</span>
+          </div>
+          <span style={{ fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
+            Sichtprüfung an Knoten und Grundstückzufahrten.
           </span>
         </a>
       </div>
