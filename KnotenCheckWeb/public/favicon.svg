@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- KnotenCheck-Favicon: Kreuzung mit roter Route, Farben aus KnotenCheck.png -->
+  <rect width="64" height="64" rx="14" fill="#1e3a5f"/>
+  <path d="M32 0 V64 M0 32 H64" stroke="#ffffff" stroke-width="6"/>
+  <path d="M0 32 H32 V64" stroke="#ff0000" stroke-width="9" fill="none" stroke-linejoin="round"/>
+  <circle cx="32" cy="32" r="8" fill="#ff0000"/>
+</svg>

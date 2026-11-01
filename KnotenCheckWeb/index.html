@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KnotenCheck – Leistungsbeurteilung von Knoten</title>
+    <!-- Nutzungsstatistik: GoatCounter (cookielos, keine Personendaten, privates Dashboard).
+         Zählt nicht auf localhost → Dev/Preview verfälscht die Statistik nicht. -->
+    <!-- Versionierte Datei mit Integritäts-Hash (SRI): Der Browser führt das Skript nur
+         aus, wenn es unverändert ist. Bei einem Wechsel der Version Hash neu berechnen:
+         curl -s https://gc.zgo.at/count.vN.js | openssl dgst -sha384 -binary | openssl base64 -A -->
+    <script data-goatcounter="https://knotenc.goatcounter.com/count"
+            async src="https://gc.zgo.at/count.v4.js" crossorigin="anonymous"
+            integrity="sha384-nRw6qfbWyJha9LhsOtSb2YJDyZdKvvCFh0fJYlkquSFjUxp9FVNugbfy8q1jdxI+"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
