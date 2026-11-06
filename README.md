@@ -37,6 +37,11 @@ Alle Berechnungen laufen vollständig im Browser. Nach dem Laden der Seite werde
 - **Speichern / Laden** schreibt eine JSON-Datei auf den lokalen Rechner resp. liest von dort — kein Upload, kein Cloud-Speicher. Beim Laden werden fehlende oder ungültige Werte durch Standardwerte ersetzt; eine Datei eines anderen Rechners wird abgewiesen.
 - **Nutzungsstatistik:** Seitenaufrufe werden mit GoatCounter gezählt (cookielos, ohne Speicherung der IP-Adresse, keine personenbezogenen Daten) — übermittelt wird nur ein anonymer Seitenaufruf, **keine** Eingaben oder Ergebnisse. GitHub Pages loggt zusätzlich serverseitig Zugriffe (IP, User-Agent), wie jeder Webserver.
 
+## Versionen
+
+- **0.2.0** (6. November 2026): Rechnung korrigiert. Gesamt-QS ohne unbelastete Ströme; Knoten mit Fussgänger*innen mit C = 1 und S = 1650 für Hauptstrassenströme mit Vortrittspflicht; Kreiseltyp je Einfahrt; LSA-Rückstau nach den Normtabellen und Zwischenzeit-Vorgabe 5 s; Simulation mit Lückenprüfung nach Sperren, Hauptstrom je Fahrstreifen und Rückstaukopplung. Resultate können von früheren Berechnungen abweichen.
+- **0.1.0** (1. November 2026): Neubeginn des Verlaufs nach dem Lizenzwechsel.
+
 ---
 
 # Methodik
