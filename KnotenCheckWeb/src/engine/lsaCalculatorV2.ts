@@ -1,14 +1,14 @@
 // VSS 40 023a — Stufe 3: freier Fahrstreifen- und Phasenplan
 // Wartezeit w_m nach Kimber & Hollis (1979), TRRL Report LR 909 [Ref. 18 der Norm]
-// VQS nach Tab. 4 der Norm, in Anlehnung an FGSV HBS 2001 [Ref. 17]
+// VQS nach Tab. 4 der Norm (S. 14), in Anlehnung an FGSV HBS 2001 [Ref. 17]
 
 import { streamDelay, losFromDelay, TAB2 } from './lsaCalculator'
 import type { LevelOfService } from './lsaCalculator'
 
 export type { LevelOfService }
 
-const S     = 1800  // PWE/h (Ziffer 11.3)
-const S_FGS = 8000  // Fg/h  (VSS 40 834, Ziffer 5)
+const S     = 1800  // PWE/h (Ziffer 11.3, S. 10)
+const S_FGS = 8000  // Fg/h  (VSS 40 834, Ziffer 4, S. 3)
 
 // ── Typen ─────────────────────────────────────────────────────────────────────
 
@@ -27,14 +27,36 @@ export interface PhaseDefinition {
   // fgLength nicht mehr hier — kommt von der FGS-Lane in der Phase
 }
 
+// Zwischenzeit T_Z: Norm-Pauschale 5 s/Phase (VSS 40 023a Ziffer 11.2, S. 10) oder die
+// eigene Staffelung nach v_zul (Annahme, ≈ Gelbzeit VSS 40 837 Ziffer 16, S. 5, + 1 s)
+export const TZ_NORM = 5
+export type TzMode = 'norm' | 'staffel'
+export type DesignSpeed = 30 | 50 | 60
+
+export function tzFromSpeed(v: DesignSpeed = 50): number {
+  return v === 30 ? 3 : v === 60 ? 5 : 4
+}
+
+// Knoteneinheitlich: Bei der Staffelung gilt das Maximum über alle Arme
+export function tzFor(mode: TzMode, speeds: (DesignSpeed | undefined)[]): number {
+  return mode === 'norm' ? TZ_NORM : Math.max(...speeds.map(v => tzFromSpeed(v)))
+}
+
+// Speicherdatei: Dateien ohne Angabe wurden mit der Staffelung gerechnet. Sie bleibt, wenn sie
+// ein anderes T_Z ergibt als die Pauschale, damit die Resultate der Datei gleich bleiben.
+export function tzModeFromFile(saved: unknown, speeds: (DesignSpeed | undefined)[]): TzMode {
+  if (saved === 'norm' || saved === 'staffel') return saved
+  return tzFor('staffel', speeds) === TZ_NORM ? 'norm' : 'staffel'
+}
+
 export interface LSAInputV2 {
   armCount: 3 | 4
   volumes: Record<string, number>   // stream-ID → PWE/h (Kfz) oder Fg/h (FGS)
   lanes: Lane[]
   phases: PhaseDefinition[]
   targetLos: LevelOfService
-  manualZ?: number                  // manuell gesetzte Umlaufzeit [s]; undefined = auto (Tab. 2)
-  tZ?: number                       // Zwischenzeit [s] pro Phase; default 5 (Norm-Pauschale VSS 40 023a Ziff. 11.2)
+  manualZ?: number                  // manuell gesetzte Umlaufzeit [s]; undefined = auto (Tab. 2, S. 10)
+  tZ?: number                       // Zwischenzeit [s] pro Phase; default 5 (Norm-Pauschale VSS 40 023a Ziff. 11.2, S. 10)
 }
 
 export interface PhaseResultV2 {
@@ -66,7 +88,7 @@ export interface LaneResultV2 {
   w1: number
   w0: number
   wm: number
-  stRE95: number   // 95%-Rückstau [PWE] gemäss VSS 40 023a Ziff. 11.5
+  stRE95: number   // 95%-Rückstau [PWE] gemäss VSS 40 023a Ziff. 11.5, S. 13
   queueM: number   // physische Rückstaulänge [m] (ST_RE95 × 6 m/PWE)
   los: LevelOfService
   isCritical: boolean
@@ -77,6 +99,17 @@ export interface ConflictWarning {
   phaseId: number
   streamA: string
   streamB: string
+}
+
+// Fahrstreifen in mehreren Phasen: Er zählt nicht zu ΣQ_krit (Ziff. 10.4.2, S. 9). Das Grün
+// folgt den Phasen (Ziff. 11.3, S. 10), er kann also trotz Reserve überlastet sein.
+export interface OverlapIssue {
+  laneId: string
+  label: string
+  X: number
+  pathSum: number     // Q des Fahrstreifens + Q_krit der Phasen ohne ihn [PWE/h]
+  pathMax: number     // verfügbare Summe bei dieser Umlaufzeit [PWE/h]
+  pathExceeded: boolean
 }
 
 export interface StreamResultV2 {
@@ -97,17 +130,22 @@ export interface LSAResultV2 {
   Z: number
   zIsManual: boolean
   zRaised: boolean          // manuelle Z unter Σ T_Z + Σ t_Gr,min → auf dieses Minimum angehoben
-  zAboveMax: boolean        // Z > 120 s: nach Ziff. 10.4.3 nicht zu verwenden
+  zAboveMax: boolean        // Z > 120 s: nach Ziff. 10.4.3, S. 9 nicht zu verwenden
   tZ: number
   sumQKrit: number          // Σ max(Q_krit, Q_krit,min) über die Phasen
   maxQKrit: number
   overloaded: boolean
+  overlapIssues: OverlapIssue[]   // überlappende Fahrstreifen mit X ≥ 1 oder überschrittenem Pfad
+  fgsOverloaded: string[]         // laneIds der FGS mit X ≥ 1
+  hasVehicleTraffic: boolean      // mindestens ein Kfz-Fahrstreifen mit Verkehr
   phases: PhaseResultV2[]
   lanes: LaneResultV2[]
   streams: StreamResultV2[]
   conflicts: ConflictWarning[]
   overallLos: LevelOfService
   meetsTargetLos: boolean
+  // Auto-Z verfehlt die Ziel-VQS: kleinste Umlaufzeit im Rahmen 60–90 s, die sie erreicht
+  zForTarget: { Z: number; los: LevelOfService } | null
 }
 
 // ── Unverträglichkeitsmatrix ──────────────────────────────────────────────────
@@ -177,11 +215,22 @@ export function streamsConflict(armCount: 3 | 4, a: string, b: string): boolean 
   return isConflict(armCount === 4 ? CONFLICTS_4 : CONFLICTS_3, a, b)
 }
 
+// ── Rückstau bei Rot-Ende ─────────────────────────────────────────────────────
+// VSS 40 023a Ziffer 11.5 (S. 13) druckt PWE_GE = w₀·Q·3600⁻¹·X. Tab. 7 (S. 20), Tab. 10 (S. 22)
+// und die Diagramme (Abb. 15, S. 28) sind aber mit X⁻¹ gerechnet: nur so treffen sie die
+// Normwerte. Massgebend sind hier Tabellen und Diagramme, also PWE_GE = w₀·(Q/X)/3600.
+export function queue95(Q: number, tRed: number, w0: number, X: number): number {
+  const pweArrRed  = Q * tRed / 3600       // PWE_mr
+  const pweResidual = w0 * Q / 3600 / X    // PWE_GE
+  const pweTotal = pweArrRed + pweResidual
+  return 1.691 * Math.sqrt(pweTotal) + pweTotal
+}
+
 // ── Mindestgrünzeit ────────────────────────────────────────────────────────────
-// Fahrzeuge ohne FG-Streifen: 4 s (Mindestfreigabezeit, VSS 40 837 Tab. 1)
+// Fahrzeuge ohne FG-Streifen: 4 s (Mindestfreigabezeit, VSS 40 837 Ziffer 18, S. 6)
 // Mit FG-Streifen: max(5 s, (2/3 · L) / 1.2 m·s⁻¹)
-//   2/3 der Querungslänge mit 1,2 m/s: VSS 40 837 Tab. 1 (Fussgänger);
-//   Mindestwert 5 s: Berechnungstool HB LSA Stadt Bern V 2.1, Anhang G
+//   2/3 der Querungslänge mit 1,2 m/s: VSS 40 837 Ziffer 18, S. 6 (Fussgänger);
+//   Mindestwert 5 s: HB LSA Stadt Bern V 2.1, Tabelle 53, S. 151, und Anhang G
 // Ohne FGS (undefined): 4 s; mit FGS mindestens 5 s, auch bei fehlender Querungslänge
 function tGrMin(fgLength?: number): number {
   if (fgLength === undefined) return 4
@@ -192,12 +241,15 @@ function tGrMin(fgLength?: number): number {
 const LOS_RANK: LevelOfService[] = ['A', 'B', 'C', 'D', 'E', 'F']
 export function losRank(los: LevelOfService): number { return LOS_RANK.indexOf(los) }
 
+// Übliche Umlaufzeiten für den praktischen Einsatz (VSS 40 023a Ziff. 10.4.3, S. 9)
+export const Z_PRACTICAL = { min: 60, max: 90 } as const
+
 // ── Hauptberechnung ───────────────────────────────────────────────────────────
 export function calculateLSAV2(input: LSAInputV2): LSAResultV2 {
   const { volumes, lanes, phases, targetLos, armCount, manualZ } = input
 
   // Verkehrsstärke eines Fahrstreifens = Summe der zugeordneten Ströme (VSS 40 023a
-  // Ziff. 9.3). Ziff. 10.4.1 («grösste, unverträgliche Verkehrsstärken pro Fahrstreifen»)
+  // Ziff. 9.3, S. 8). Ziff. 10.4.1, S. 8 («grösste, unverträgliche Verkehrsstärken pro Fahrstreifen»)
   // wählt unter diesen Fahrstreifenbelastungen die kritischen aus — ein Mischfahrstreifen
   // muss alle seine Ströme abwickeln, nicht nur den grössten.
   // FGS: Einheit Fg/h; Kfz: Einheit PWE/h
@@ -213,7 +265,9 @@ export function calculateLSAV2(input: LSAInputV2): LSAResultV2 {
     for (const id of ph.laneIds)
       lanePhaseCount.set(id, (lanePhaseCount.get(id) ?? 0) + 1)
 
-  // Q_krit pro Phase: nur Kfz-Fahrstreifen — FGS sind unkritisch (VSS 40 834)
+  // Q_krit pro Phase: nur Kfz-Fahrstreifen. VSS 40 023a Ziff. 10.4.1 (S. 8) rechnet Q_krit in PWE;
+  // ein FGS wirkt über seine Mindestgrünzeit. VSS 40 834 führt Q_krit und Q_krit,min = 800 Fg/h
+  // dagegen auch für FGS (Ziffer 4, S. 3; Ziffer 7, S. 8): Annahme, darum Warnung bei X ≥ 1.
   const phaseQKrit = phases.map(ph => {
     const vehIds = ph.laneIds.filter(id => !lanes.find(l => l.id === id)?.isFGS)
     const exclusive = vehIds.filter(id => (lanePhaseCount.get(id) ?? 0) === 1)
@@ -244,11 +298,10 @@ export function calculateLSAV2(input: LSAInputV2): LSAResultV2 {
     return Math.max(...fgsInPhase.map(l => tGrMin(l.fgLength ?? 0)))
   })
 
-  // T_Z: Norm-Pauschale 5 s/Phase (VSS 40 023a Ziff. 11.2, abweichende Werte zulässig).
-  // Staffelung 3/4/5 s nach v_zul = eigene Annahme (≈ Gelbzeit VSS 40 837 Tab. 1 + 1 s)
-  const T_Z = input.tZ ?? 5
+  // T_Z: Norm-Pauschale 5 s/Phase (VSS 40 023a Ziff. 11.2, S. 10); andere Werte gibt der Aufrufer vor
+  const T_Z = input.tZ ?? TZ_NORM
 
-  // Ziff. 10.4.1: Jede Phase zählt mindestens mit Q_krit,min = t_Gr,min / Z · S — so erhält
+  // Ziff. 10.4.1, S. 8–9: Jede Phase zählt mindestens mit Q_krit,min = t_Gr,min / Z · S — so erhält
   // auch eine Phase mit kleinem Q_krit (z. B. reine FGS-Phase) ihre Mindestgrünzeit.
   // Q_krit,min hängt von Z ab, darum wird es je geprüfter Umlaufzeit neu bestimmt.
   const effQKrit = (z: number) => phases.map((_, i) =>
@@ -256,7 +309,7 @@ export function calculateLSAV2(input: LSAInputV2): LSAResultV2 {
   const sumOf = (a: number[]) => a.reduce((x, y) => x + y, 0)
   const qKritMaxFor = (z: number) => z > 0 ? Math.max(0, z - n * T_Z) / z * S : 0
 
-  // Z-Auswahl: manuell oder automatisch (kleinste Z aus Tab. 2 mit Reserve)
+  // Z-Auswahl: manuell oder automatisch (kleinste Z aus Tab. 2, S. 10, mit Reserve)
   // Manuell: mindestens Σ Zwischenzeiten + Σ Mindestgrünzeiten, sonst angehoben
   const zMin = n * T_Z + sumOf(phases.map((_, i) => phaseActive[i] ? phaseTGrMinVal[i] : 0))
   const zIsManual = (manualZ ?? 0) > 0
@@ -325,15 +378,11 @@ export function calculateLSAV2(input: LSAInputV2): LSAResultV2 {
     const los = losFromDelay(isFinite(wm) ? wm : Infinity)
     const isCritical = phaseResults.some(ph => ph.criticalLaneId === lane.id)
 
-    // ST_RE95 nur für Kfz-Fahrstreifen (VSS 40 023a Ziff. 11.5)
+    // ST_RE95 nur für Kfz-Fahrstreifen (VSS 40 023a Ziff. 11.5, S. 12–13)
     let stRE95 = Infinity
     let queueM = Infinity
     if (!lane.isFGS && isFinite(X) && X < 1 && q > 0) {
-      const tRed = Z - effectiveTGr
-      const pweArrRed  = q * tRed / 3600            // PWE_mr
-      const pweResidual = (isFinite(w0) ? w0 : 0) * q / 3600 * X  // PWE_GE
-      const pweTotal = pweArrRed + pweResidual
-      stRE95  = 1.691 * Math.sqrt(pweTotal) + pweTotal
+      stRE95  = queue95(q, Z - effectiveTGr, isFinite(w0) ? w0 : 0, X)
       queueM  = stRE95 * 6
     }
 
@@ -366,15 +415,33 @@ export function calculateLSAV2(input: LSAInputV2): LSAResultV2 {
           conflicts.push({ phaseId: ph.id, streamA: streams[i], streamB: streams[j] })
   }
 
-  // Gesamturteil: nur Kfz-Fahrstreifen (FGS-VQS ist Sache von VSS 40 834)
+  // Gesamturteil: nur Kfz-Fahrstreifen. Für Fussgänger*innen gilt Ziff. 12 (S. 13): separat berücksichtigen
   const activeVehLanes = laneResults.filter(l => l.qKrit > 0 && !l.isFGS)
   const overallLos = activeVehLanes.reduce<LevelOfService>(
     (w, l) => losRank(l.los) > losRank(w) ? l.los : w, 'A'
   )
 
+  // Überlappende Fahrstreifen: Vergleich auf dem kritischen Pfad (der Fahrstreifen und alle Phasen
+  // ohne ihn). Die Zwischenzeiten zwischen zwei seiner Phasen zählen zu seinem Grün (S. 19).
+  const activeIdxAll = phases.map((_, i) => i).filter(i => phaseActive[i])
+  const overlapIssues: OverlapIssue[] = activeVehLanes.flatMap(l => {
+    const inLane = activeIdxAll.filter(i => phases[i].laneIds.includes(l.laneId))
+    if (inLane.length < 2) return []
+    const shared = activeIdxAll.filter((i, k) =>
+      phases[i].laneIds.includes(l.laneId)
+      && phases[activeIdxAll[(k + 1) % activeIdxAll.length]].laneIds.includes(l.laneId)).length
+    const pathSum = l.qKrit + sumOf(activeIdxAll.filter(i => !inLane.includes(i)).map(i => qEff[i]))
+    const pathMax = Math.max(0, Z - (n - shared) * T_Z) / Z * S
+    const pathExceeded = pathSum >= pathMax
+    if (!pathExceeded && l.X < 1) return []
+    return [{ laneId: l.laneId, label: l.label, X: l.X, pathSum, pathMax, pathExceeded }]
+  })
+
+  const fgsOverloaded = laneResults.filter(l => l.isFGS && l.qKrit > 0 && l.X >= 1).map(l => l.laneId)
+
   // VQS pro Strom: Ein Strom teilt Grünzeit und Rückstau mit allen Strömen seines
   // Fahrstreifens — Auslastung, Wartezeit, Rückstau und VQS sind die Werte des
-  // Fahrstreifens (Ziff. 9.3/11.3); nur die eigene Verkehrsstärke Q wird ausgewiesen.
+  // Fahrstreifens (Ziff. 9.3, S. 8; Ziff. 11.3, S. 10); nur die eigene Verkehrsstärke Q wird ausgewiesen.
   const streamResults: StreamResultV2[] = laneResults.flatMap(lane =>
     lane.streamIds
       .filter(id => (volumes[id] ?? 0) > 0)
@@ -393,10 +460,27 @@ export function calculateLSAV2(input: LSAInputV2): LSAResultV2 {
       }))
   )
 
+  const meetsTargetLos = losRank(overallLos) <= losRank(targetLos)
+
+  // Tab. 2 führt die kleinste passende Z (Ziff. 11.2, S. 10). Sie steht «unter Vorbehalt einer
+  // ausreichenden Verkehrsqualität» (S. 18); für die Praxis gelten 60–90 s (Ziff. 10.4.3, S. 9).
+  let zForTarget: LSAResultV2['zForTarget'] = null
+  if (!zIsManual && !meetsTargetLos && activeVehLanes.length > 0) {
+    for (const row of TAB2) {
+      if (row.Z < Z_PRACTICAL.min || row.Z > Z_PRACTICAL.max || row.Z === Z) continue
+      const r = calculateLSAV2({ ...input, manualZ: row.Z })
+      if (r.meetsTargetLos && !r.overloaded && r.overlapIssues.length === 0) {
+        zForTarget = { Z: row.Z, los: r.overallLos }
+        break
+      }
+    }
+  }
+
   return {
     Z, zIsManual, zRaised, zAboveMax: Z > 120, tZ: T_Z, sumQKrit, maxQKrit: qKritMax, overloaded,
+    overlapIssues, fgsOverloaded, hasVehicleTraffic: activeVehLanes.length > 0,
     phases: phaseResults, lanes: laneResults, streams: streamResults, conflicts,
-    overallLos, meetsTargetLos: losRank(overallLos) <= losRank(targetLos),
+    overallLos, meetsTargetLos, zForTarget,
   }
 }
 
@@ -463,6 +547,7 @@ export function armStreamIds(armCount: 3 | 4, armIndex: number): string[] {
 // ── Minimaler Phasenplan (Backtracking-Coloring) ──────────────────────────────
 // Findet die kleinstmögliche Anzahl Phasen, in der alle aktiven Lanes
 // mindestens einmal grün sind und keine feindlichen Ströme zusammen landen.
+// Ströme ohne Verkehr (Q = 0) erzeugen keinen Konflikt, wie in der Konfliktprüfung.
 
 export function suggestPhasePlan(
   lanes: Lane[],
@@ -470,15 +555,16 @@ export function suggestPhasePlan(
   armCount: 3 | 4,
 ): PhaseDefinition[] {
   const conflictSet = armCount === 4 ? CONFLICTS_4 : CONFLICTS_3
-  const active = lanes.filter(l => l.streamIds.some(s => (volumes[s] ?? 0) > 0))
+  const loaded = (l: Lane) => l.streamIds.filter(s => (volumes[s] ?? 0) > 0)
+  const active = lanes.filter(l => loaded(l).length > 0)
   if (active.length === 0) return []
 
   const n = active.length
   const adj: boolean[] = new Array(n * n).fill(false)
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
-      const conflict = active[i].streamIds.some(sa =>
-        active[j].streamIds.some(sb => isConflict(conflictSet, sa, sb))
+      const conflict = loaded(active[i]).some(sa =>
+        loaded(active[j]).some(sb => isConflict(conflictSet, sa, sb))
       )
       adj[i * n + j] = adj[j * n + i] = conflict
     }

@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import {
   calculateLSAV2, defaultLanesAndPhases, armStreamIds, armMovements, STREAM_LABELS, suggestPhasePlan,
+  tzFor, tzFromSpeed, tzModeFromFile, Z_PRACTICAL, TZ_NORM,
 } from './engine/lsaCalculatorV2'
 import { exportTool, importTool } from './saveLoad'
 import { conform, conformFixed, oneOf } from './engine/conform'
@@ -12,7 +13,7 @@ import { useToast } from './useToast'
 import { LegendBox, type LegendItem } from './LegendBox'
 import { LOSBadge, NumInput } from './ui'
 import type {
-  Lane, PhaseDefinition, LevelOfService, LSAResultV2,
+  Lane, PhaseDefinition, LevelOfService, LSAResultV2, OverlapIssue, TzMode, DesignSpeed,
 } from './engine/lsaCalculatorV2'
 import lsa4ArmSvg from './assets/LSA_4_Arm.svg?url'
 import lsa3ArmSvg from './assets/LSA_3_Arm.svg?url'
@@ -31,16 +32,11 @@ interface FGSArmConfig { enabled: boolean; volume: number; length: number }
 const DEFAULT_FGS: FGSArmConfig = { enabled: false, volume: 0, length: 6 }
 
 // ── UI-Arm-Eingabe ────────────────────────────────────────────────────────────
-interface UIArmInput { name: string; left: number; straight: number; right: number; mix?: VehicleMix; vDesign?: 30|50|60 }
+interface UIArmInput { name: string; left: number; straight: number; right: number; mix?: VehicleMix; vDesign?: DesignSpeed }
 interface ArmInput   { name: string; left: number; straight: number; right: number }
 function toEngineArm(a: UIArmInput): ArmInput {
   const f = armFactor(a.mix)
   return { name: a.name, left: Math.round(a.left*f), straight: Math.round(a.straight*f), right: Math.round(a.right*f) }
-}
-function tzFromSpeed(v?: 30|50|60): number {
-  if (v === 30) return 3
-  if (v === 60) return 5
-  return 4  // eigene Staffelung (≈ Gelbzeit VSS 40 837 Tab. 1 + 1 s); Norm-Pauschale: 5 s
 }
 function defaultArms(n: 3|4): UIArmInput[] {
   if (n === 3) return [
@@ -83,6 +79,40 @@ function delayText(w:number) {
   return `${Math.round(w)} s`
 }
 
+// Zwischenzeit in Worten: Pauschale der Norm oder gekennzeichnete Annahme
+function tzText(tZ: number, mode: TzMode): string {
+  return mode === 'norm'
+    ? `T_Z = ${tZ} s je Phase (Norm-Pauschale, Ziffer 11.2, Seite 10)`
+    : `T_Z = ${tZ} s je Phase (Annahme: nach zulässiger Geschwindigkeit gestaffelt, grösster Wert aller Arme; Norm-Pauschale ${TZ_NORM} s je Phase, Ziffer 11.2, Seite 10)`
+}
+
+const xText = (x: number) => isFinite(x) ? x.toFixed(2).replace('.', ',') : 'über 1'
+
+function overlapText(i: OverlapIssue): string {
+  const parts = i.X >= 1 ? [`überlastet (X = ${xText(i.X)})`] : []
+  if (i.pathExceeded)
+    parts.push(`kritischer Pfad überschritten (${Math.round(i.pathSum)} von ${Math.round(i.pathMax)} PWE/h)`)
+  return `${i.label}: ${parts.join(', ')}`
+}
+const OVERLAP_NOTE = 'Der Fahrstreifen ist in mehreren Phasen grün und zählt darum nicht zu ΣQ_krit '
+  + '(Ziffer 10.4.2, Seite 9); sein Grün folgt den Phasen (Ziffer 11.3, Seite 10). '
+  + 'Die Reserve gilt hier nicht: Phasenplan oder Grünzeiten anpassen.'
+
+function fgsOverloadText(r: LSAResultV2): string {
+  const names = r.lanes.filter(l => r.fgsOverloaded.includes(l.laneId))
+    .map(l => `${l.label} (X = ${xText(l.X)})`).join(', ')
+  return `Fussgängerstreifen überlastet: ${names}. Die Qualitätsstufe gilt nur für den Motorfahrzeugverkehr; `
+    + 'für den Fussverkehr reicht die Grünzeit nicht.'
+}
+
+function zTargetText(r: LSAResultV2, targetLos: LevelOfService): string {
+  const frame = `${Z_PRACTICAL.min} bis ${Z_PRACTICAL.max} s`
+  const head = `Mit der kleinsten passenden Umlaufzeit (Z = ${r.Z} s) wird die Ziel-VQS ${targetLos} nicht erreicht.`
+  return r.zForTarget
+    ? `${head} Bei Z = ${r.zForTarget.Z} s wird sie erreicht (VQS ${r.zForTarget.los}). Für die Praxis gelten ${frame} (Ziffer 10.4.3, Seite 9).`
+    : `${head} Auch keine andere Umlaufzeit von ${frame} erreicht sie (Ziffer 10.4.3, Seite 9).`
+}
+
 // ── Kleine Hilfskomponenten ───────────────────────────────────────────────────
 function StepBadge({ n, label }: { n:number|string; label:string }) {
   return (
@@ -97,8 +127,8 @@ function StepBadge({ n, label }: { n:number|string; label:string }) {
 }
 
 // ── ArmCard ───────────────────────────────────────────────────────────────────
-function ArmCard({ arm, index, armCount, onChange }: {
-  arm:UIArmInput; index:number; armCount:3|4; onChange:(a:UIArmInput)=>void
+function ArmCard({ arm, index, armCount, tzMode, onChange }: {
+  arm:UIArmInput; index:number; armCount:3|4; tzMode:TzMode; onChange:(a:UIArmInput)=>void
 }) {
   const labels = ['A','C','B','D']
   const lbl = labels[index]
@@ -162,8 +192,8 @@ function ArmCard({ arm, index, armCount, onChange }: {
           </div>
         </div>
       )}
-      {/* Zulässige Geschwindigkeit → Zwischenzeit T_Z (eigene Staffelung, angelehnt an Gelbzeiten VSS 40 837) */}
-      <div style={{ padding:'5px 12px 8px', display:'flex', alignItems:'center', gap:5,
+      {/* Annahme: zulässige Geschwindigkeit → Zwischenzeit T_Z (angelehnt an Gelbzeiten VSS 40 837 Ziffer 16, Seite 5) */}
+      {tzMode === 'staffel' && <div style={{ padding:'5px 12px 8px', display:'flex', alignItems:'center', gap:5,
                     fontSize:12, color:'#6b7280', borderTop:'1px solid #f3f4f6' }}>
         <span style={{ whiteSpace:'nowrap', marginRight:2 }}>v<sub>zul</sub>:</span>
         {([30, 50, 60] as const).map(v => (
@@ -178,7 +208,7 @@ function ArmCard({ arm, index, armCount, onChange }: {
         <span style={{ marginLeft:'auto', color:'#9ca3af', fontSize:11 }}>
           T_Z = {tzFromSpeed(arm.vDesign ?? 50)} s
         </span>
-      </div>
+      </div>}
     </div>
   )
 }
@@ -201,9 +231,10 @@ function LanePlanSection({ armCount, volumes, moveLane, onChange, fgsConfig, onF
     <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))', gap:12 }}>
       {armLabels.map((lbl,armIdx) => {
         const moves = armMovements(armCount, armIdx)
-        const fs1Q = Math.max(0,...moves.filter(m=>(moveLane[m.id]??1)===1).map(m=>volumes[m.id]??0))
+        const sumQ = (ms: typeof moves) => ms.reduce((q,m)=>q+(volumes[m.id]??0),0)
+        const fs1Q = sumQ(moves.filter(m=>(moveLane[m.id]??1)===1))
         const fs2Moves = moves.filter(m=>moveLane[m.id]===2)
-        const fs2Q = fs2Moves.length>0 ? Math.max(0,...fs2Moves.map(m=>volumes[m.id]??0)) : null
+        const fs2Q = fs2Moves.length>0 ? sumQ(fs2Moves) : null
         const fgs = fgsConfig[lbl] ?? DEFAULT_FGS
 
         return (
@@ -360,7 +391,7 @@ function PhasePlanSection({ lanes, phaseStates, onChange, onApplyDefault, onSugg
           <span style={{ fontWeight:600 }}>Vorschlag laden:</span> Fixer Standard HS (A+C) | NS (B{lanes.some(l=>l.armIndex===3)?'+D':''}), unabhängig von Verkehrsstärken
         </span>
         <span style={{ fontSize:11, color:'#6b7280' }}>
-          <span style={{ fontWeight:600 }}>Minimaler Phasenplan:</span> Kleinstmögliche Phasenzahl für aktive Ströme (Backtracking-Coloring, Ziffer 11 VSS 40 023a)
+          <span style={{ fontWeight:600 }}>Minimaler Phasenplan:</span> Kleinstmögliche Phasenzahl für aktive Ströme (Ziffer 11, Seite 9)
         </span>
       </div>
 
@@ -518,16 +549,21 @@ function PhasePlanSection({ lanes, phaseStates, onChange, onApplyDefault, onSugg
 }
 
 // ── Ergebnis-Panel ────────────────────────────────────────────────────────────
-function ResultsPanelV2({ result, targetLos, onTargetLos, onPrint }: {
+function ResultsPanelV2({ result, targetLos, tzMode, onTargetLos, onManualZ, onPrint }: {
   result: LSAResultV2
   targetLos: LevelOfService
+  tzMode: TzMode
   onTargetLos: (l:LevelOfService) => void
+  onManualZ: (z:number) => void
   onPrint: () => void
 }) {
-  const { Z, zIsManual, zRaised, zAboveMax, sumQKrit, maxQKrit, overloaded, lanes, overallLos, meetsTargetLos } = result
+  const { Z, zIsManual, zRaised, zAboveMax, sumQKrit, maxQKrit, overloaded, lanes, overallLos, meetsTargetLos,
+          overlapIssues, fgsOverloaded, zForTarget } = result
   const reserve = maxQKrit - sumQKrit
   const activeVehLanes = lanes.filter(l=>l.qKrit>0 && !l.isFGS)
   const activeFgsLanes = lanes.filter(l=>l.qKrit>0 && l.isFGS)
+  const lanesNoGreen = activeVehLanes.filter(l=>l.lambda===0)
+  const reserveInvalid = overloaded || overlapIssues.length>0 || lanesNoGreen.length>0
 
   return (
     <div style={{ background:'#fff', borderRadius:10, border:'1px solid #e5e7eb', overflow:'hidden' }}>
@@ -542,8 +578,8 @@ function ResultsPanelV2({ result, targetLos, onTargetLos, onPrint }: {
         </button>
         <StepBadge n="4/5" label="Leistungsfähigkeit L und Verkehrsqualität beurteilen" />
         <p style={{ fontSize:12, color:'#6b7280', margin:'-6px 0 8px' }}>
-          Schritt 4: L, λ, X und w_m je Fahrstreifen (Ziffer 11.3, 12). Schritt 5: VQS zugeordnet vs. tatsächlich (Tab. 4).
-          Annahmen: S = 1800 PWE/h, T_Z = {result.tZ} s/Phase. <strong>Ohne ÖV-Privilegierung</strong> (Ziffer 11.4).
+          Schritt 4: L, λ, X und w_m je Fahrstreifen (Ziffern 11.3 und 12, Seiten 10 und 13). Schritt 5: VQS zugeordnet vs. tatsächlich (Tab. 4, Seite 14).
+          Grundlagen: S = 1800 PWE/h, {tzText(result.tZ, tzMode)}. <strong>Ohne ÖV-Privilegierung</strong> (Ziffer 11.4, Seiten 11–12).
         </p>
       </div>
 
@@ -586,6 +622,11 @@ function ResultsPanelV2({ result, targetLos, onTargetLos, onPrint }: {
             <span style={{ marginLeft:8, color:'#16a34a', fontWeight:600 }}>✓</span>
           )}
         </div>
+        {fgsOverloaded.length>0 && (
+          <div style={{ marginTop:8, fontSize:12, fontWeight:700, color:'#991b1b' }}>
+            {fgsOverloadText(result)}
+          </div>
+        )}
       </div>
 
       {/* Kennzahlen */}
@@ -594,8 +635,8 @@ function ResultsPanelV2({ result, targetLos, onTargetLos, onPrint }: {
         {[
           ['Umlaufzeit Z', `${Z} s${zIsManual ? ' ✎' : ''}`, overloaded ? '#dc2626' : '#1e3a5f'],
           ['ΣQ_krit', `${Math.round(sumQKrit)} PWE/h`, overloaded ? '#dc2626' : '#374151'],
-          ['Reserve', overloaded ? '—' : `+${Math.round(reserve)} PWE/h`,
-           overloaded ? '#dc2626' : reserve>100 ? '#16a34a' : '#ca8a04'],
+          ['Reserve', reserveInvalid ? '—' : `+${Math.round(reserve)} PWE/h`,
+           reserveInvalid ? '#dc2626' : reserve>100 ? '#16a34a' : '#ca8a04'],
         ].map(([lbl,val,col]) => (
           <div key={String(lbl)} style={{ textAlign:'center' }}>
             <div style={{ fontSize:20, fontWeight:800, color:String(col) }}>{val}</div>
@@ -613,6 +654,34 @@ function ResultsPanelV2({ result, targetLos, onTargetLos, onPrint }: {
           Knoten überlastet oder mehr Fahrstreifen nötig.
         </div>
       )}
+      {overlapIssues.length>0 && (
+        <div style={{ margin:'8px 12px', padding:'8px 12px', borderRadius:6,
+                      background:'#fee2e2', border:'1px solid #fca5a5',
+                      fontSize:12, color:'#991b1b' }}>
+          {overlapIssues.map(i => <div key={i.laneId}><strong>{overlapText(i)}</strong></div>)}
+          <div style={{ marginTop:3 }}>{OVERLAP_NOTE}</div>
+        </div>
+      )}
+      {lanesNoGreen.length>0 && (
+        <div style={{ margin:'8px 12px', padding:'8px 12px', borderRadius:6,
+                      background:'#fee2e2', border:'1px solid #fca5a5',
+                      fontSize:12, color:'#991b1b' }}>
+          Ohne Grün: {lanesNoGreen.map(l=>l.label).join(', ')}. Der Fahrstreifen ist in keiner Phase eingetragen.
+        </div>
+      )}
+      {!zIsManual && !meetsTargetLos && !overloaded && (
+        <div style={{ margin:'8px 12px', padding:'8px 12px', borderRadius:6,
+                      background:'#fff7ed', border:'1px solid #fdba74', fontSize:12, color:'#9a3412' }}>
+          {zTargetText(result, targetLos)}
+          {zForTarget && (
+            <button onClick={() => onManualZ(zForTarget.Z)}
+              style={{ marginLeft:8, padding:'2px 8px', fontSize:11, borderRadius:4, cursor:'pointer',
+                       background:'#fff', border:'1px solid #fdba74', color:'#9a3412', fontWeight:600 }}>
+              Z = {zForTarget.Z} s übernehmen
+            </button>
+          )}
+        </div>
+      )}
       {zRaised && (
         <div style={{ margin:'8px 12px', padding:'8px 12px', borderRadius:6,
                       background:'#fff7ed', border:'1px solid #fdba74', fontSize:12, color:'#9a3412' }}>
@@ -623,7 +692,7 @@ function ResultsPanelV2({ result, targetLos, onTargetLos, onPrint }: {
       {zAboveMax && (
         <div style={{ margin:'8px 12px', padding:'8px 12px', borderRadius:6,
                       background:'#fff7ed', border:'1px solid #fdba74', fontSize:12, color:'#9a3412' }}>
-          Z = {Z} s liegt über 120 s — solche Umlaufzeiten sind nach Ziffer 10.4.3 nicht zu verwenden
+          Z = {Z} s liegt über 120 s — solche Umlaufzeiten sind nach Ziffer 10.4.3, Seite 9 nicht zu verwenden
           (u. a. zu lange Wartezeiten für Fussgänger*innen).
         </div>
       )}
@@ -742,7 +811,9 @@ function ResultsPanelV2({ result, targetLos, onTargetLos, onPrint }: {
             </tbody>
           </table>
           <div style={{ fontSize:10, color:'#6b7280', marginTop:4 }}>
-            S = 8000 Fg/h (VSS 40 834) · VQS nach VSS 40 023a Tab. 4 · Gesamturteil nur Kfz
+            S = 8000 Fg/h (VSS 40 834, Ziffer 4, Seite 3). Annahme: Wartezeit und VQS mit den Formeln für Motorfahrzeuge;
+            Tab. 4 (Seite 14) gilt für den Individualverkehr, der Fussverkehr ist separat zu beurteilen (Ziffer 12, Seite 13).
+            Gesamturteil nur Kfz.
           </div>
         </div>
       )}
@@ -756,7 +827,7 @@ function ResultsPanelV2({ result, targetLos, onTargetLos, onPrint }: {
           </div>
           <div style={{ fontSize:11, color:'#6b7280', marginBottom:6 }}>
             Auslastung, Rückstau, Wartezeit und VQS sind die Werte des Fahrstreifens — die Ströme eines
-            Fahrstreifens teilen Grünzeit und Rückstau (Ziffer 9.3).
+            Fahrstreifens teilen Grünzeit und Rückstau (Ziffer 9.3, Seite 8).
           </div>
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
             <thead>
@@ -807,22 +878,22 @@ function ResultsPanelV2({ result, targetLos, onTargetLos, onPrint }: {
         <div style={{ fontWeight:700, color:'#1e293b', marginBottom:4 }}>
           Methodik (VSS 40 023a)
         </div>
-        <div><strong>Grundlagen:</strong> VSS 40 023a — <em>Knoten mit Lichtsignalanlagen, Leistungsfähigkeit und Verkehrsqualität</em> (VSS); VSS 40 837 — <em>Lichtsignalanlagen, Signalzeiten</em> (VSS); VSS 40 834 — <em>Lichtsignalanlagen, Phasentrennung</em> (VSS); Handbuch Lichtsignalanlagen (HB LSA), Tiefbauamt Stadt Bern, V 2.1, Anhang G — Mindestfreigabezeit FGS mind. 5 s</div>
-        <div><strong>Fz → PWE</strong> nach Ziff. 10.2: PW = 1,0 · LW = 2,0 · MR = 0,5 · FR = 0,25</div>
-        <div><strong>Q_krit</strong>: Verkehrsstärke eines Fahrstreifens = Summe seiner Ströme (Ziff. 9.3); pro Phase der grösste exklusive Kfz-Fahrstreifen (Ziff. 10.4.1/11.1); S = 1800 PWE/h (Ziff. 11.3). FGS gehen nicht in Q_krit ein, ihre Mindestgrünzeit wirkt über Q_krit_min (S = 8000 Fg/h, VSS 40 834)</div>
-        <div><strong>Z</strong> aus Tab. 2: kleinste Umlaufzeit, bei der qKritMax &gt; ΣQ_krit; Grünzeiten proportional zu Q_krit</div>
-        <div><strong>ST_RE95</strong> = 1,691·√(PWE_mr+PWE_GE) + (PWE_mr+PWE_GE); × 6 m/PWE (Ziff. 11.5); PWE_mr = Q·t_r/3600; PWE_GE = w₀·Q·X/3600</div>
-        <div><strong>t_Gr_min</strong> nach VSS 40 837: FZ = 4 s; FGS = max(5 s, 2/3·L / 1,2 m·s⁻¹)</div>
-        <div><strong>w_m</strong> = w₁ + w₀ (Ziff. 12): w₁ = Z·(1−λ)² / (2·(1−λ·X)); w₀ nach Gl. (6), C = 0,5 (isolierte LSA)</div>
-        <div><strong>VQS</strong> nach Tab. 4: A ≤ 20 s · B ≤ 35 s · C ≤ 50 s · D ≤ 70 s · E ≤ 100 s · F = Überlast</div>
-        <div style={{ marginTop:4, color:'#94a3b8', fontSize:10.5 }}>Ohne ÖV-Privilegierung (Ziffer 11.4). Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.</div>
+        <div><strong>Grundlagen:</strong> VSS 40 023a — <em>Leistungsfähigkeit, Verkehrsqualität, Belastbarkeit; Knoten mit Lichtsignalanlagen</em>; VSS 40 837 — <em>Lichtsignalanlagen; Übergangszeiten und Mindestzeiten</em>; VSS 40 834 — <em>Lichtsignalanlagen; Phasentrennung</em>; Handbuch Lichtsignalanlagen (HB LSA), Tiefbauamt Stadt Bern, V 2.1, Anhang G — Mindestfreigabezeit FGS mind. 5 s</div>
+        <div><strong>Fz → PWE</strong> nach Ziffer 10.2, Seite 8: PW = 1,0 · LW = 2,0 · MR = 0,5 · FR = 0,25</div>
+        <div><strong>Q_krit</strong>: Verkehrsstärke eines Fahrstreifens = Summe seiner Ströme (Ziffer 9.3, Seite 8); pro Phase der grösste exklusive Kfz-Fahrstreifen (Ziffern 10.4.1 und 11.1, Seiten 8–9); S = 1800 PWE/h (Ziffer 11.3, Seite 10). Annahme: FGS gehen nicht in Q_krit ein, ihre Mindestgrünzeit wirkt über Q_krit_min; VSS 40 834 führt Q_krit auch für FGS (S = 8000 Fg/h, Ziffer 4, Seite 3; mindestens 800 Fg/h, Ziffer 7, Seite 8)</div>
+        <div><strong>Z</strong> aus Tab. 2, Seite 10: kleinste Umlaufzeit, bei der qKritMax &gt; ΣQ_krit; Grünzeiten proportional zu Q_krit</div>
+        <div><strong>ST_RE95</strong> = 1,691·√(PWE_mr+PWE_GE) + (PWE_mr+PWE_GE); × 6 m/PWE (Ziffer 11.5, Seiten 12–13); PWE_mr = Q·t_r/3600; PWE_GE = w₀·Q/(3600·X) wie in Tab. 7, Tab. 10 und Abb. 15 (Seiten 20, 22, 28); der Druck auf Seite 13 nennt ·X</div>
+        <div><strong>t_Gr_min</strong> nach VSS 40 837 (Ziffer 18, Seite 6): FZ = 4 s; FGS = max(5 s, 2/3·L / 1,2 m·s⁻¹). Die 5 s stammen aus dem HB LSA Stadt Bern (Tabelle 53, Seite 151), die Norm nennt 4 s</div>
+        <div><strong>w_m</strong> = w₁ + w₀ (Ziffer 12, Seite 13): w₁ = Z·(1−λ)² / (2·(1−λ·X)); w₀ nach der Formel auf Seite 13, C = 0,5 (isolierte LSA)</div>
+        <div><strong>VQS</strong> nach Tab. 4, Seite 14: A ≤ 20 s · B ≤ 35 s · C ≤ 50 s · D ≤ 70 s · E ≤ 100 s · F = Überlast</div>
+        <div style={{ marginTop:4, color:'#94a3b8', fontSize:10.5 }}>Ohne ÖV-Privilegierung (Ziffer 11.4, Seiten 11–12). Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.</div>
       </div>
     </div>
   )
 }
 
 // ── Auswertungsblatt (Druckansicht) ───────────────────────────────────────────
-function LSAPrintSheet({ nodeName, armCount, arms, volumes, moveLane, fgsConfig, lanes, phaseStates, result, targetLos }: {
+function LSAPrintSheet({ nodeName, armCount, arms, volumes, moveLane, fgsConfig, lanes, phaseStates, result, targetLos, tzMode }: {
   nodeName: string
   armCount: 3 | 4
   arms: UIArmInput[]
@@ -833,6 +904,7 @@ function LSAPrintSheet({ nodeName, armCount, arms, volumes, moveLane, fgsConfig,
   phaseStates: PhaseState[]
   result: LSAResultV2
   targetLos: LevelOfService
+  tzMode: TzMode
 }) {
   const date = new Date().toLocaleDateString('de-CH', { day:'2-digit', month:'2-digit', year:'numeric' })
   const armLabels = armCount === 3 ? ['A','C','B'] : ['A','C','B','D']
@@ -840,6 +912,9 @@ function LSAPrintSheet({ nodeName, armCount, arms, volumes, moveLane, fgsConfig,
   const reserve = result.maxQKrit - result.sumQKrit
   const activeVehLanes = result.lanes.filter(l => l.qKrit > 0 && !l.isFGS)
   const activeFgsLanes = result.lanes.filter(l => l.qKrit > 0 && l.isFGS)
+  const reserveInvalid = result.overloaded || result.overlapIssues.length > 0
+    || activeVehLanes.some(l => l.lambda === 0)
+  const speeds = armLabels.map((lbl, i) => `${lbl} ${arms[i]?.vDesign ?? 50}`).join(' · ')
 
   const th: React.CSSProperties = { padding:'3px 6px', border:'1px solid #bbb', background:'#ececec', fontSize:9, fontWeight:700, textAlign:'right', whiteSpace:'nowrap' }
   const thL: React.CSSProperties = { ...th, textAlign:'left' }
@@ -863,7 +938,7 @@ function LSAPrintSheet({ nodeName, armCount, arms, volumes, moveLane, fgsConfig,
             Bewertungsblatt LSA-Knoten
           </div>
           <div style={{ fontSize:10, color:'#555', marginTop:2 }}>
-            VSS 40 023a — Knoten mit Lichtsignalanlagen, Leistungsfähigkeit und Verkehrsqualität
+            VSS 40 023a — Leistungsfähigkeit, Verkehrsqualität, Belastbarkeit; Knoten mit Lichtsignalanlagen
           </div>
         </div>
         <div style={{ textAlign:'right', fontSize:9, color:'#777' }}>
@@ -882,6 +957,14 @@ function LSAPrintSheet({ nodeName, armCount, arms, volumes, moveLane, fgsConfig,
             <td style={{ ...tdL, width:'20%' }}>{armCount===3?'Einmündung (3-Arm)':'Kreuzung (4-Arm)'}</td>
             <td style={{ ...thL, width:'6%' }}>Ziel-VQS</td>
             <td style={tdL}>{targetLos}</td>
+          </tr>
+          <tr>
+            <td style={thL}>Zwischenzeit</td>
+            <td style={tdL} colSpan={5}>{tzText(result.tZ, tzMode)}</td>
+          </tr>
+          <tr>
+            <td style={thL}>v_zul [km/h]</td>
+            <td style={tdL} colSpan={5}>{speeds}{tzMode === 'norm' ? ' (für die Pauschale nicht verwendet)' : ''}</td>
           </tr>
         </tbody>
       </table>
@@ -1029,7 +1112,7 @@ function LSAPrintSheet({ nodeName, armCount, arms, volumes, moveLane, fgsConfig,
         <div style={{ fontWeight:700, fontSize:10, color:'#1e3a5f', textTransform:'uppercase',
                       letterSpacing:'0.06em', marginBottom:3 }}>VQS pro Strom (Kfz)</div>
         <div style={{ fontSize:8.5, color:'#666', marginBottom:4 }}>
-          Auslastung, L-95, Wartezeit und VQS = Werte des Fahrstreifens (Ströme teilen Grünzeit und Rückstau, Ziff. 9.3).
+          Auslastung, L-95, Wartezeit und VQS = Werte des Fahrstreifens (Ströme teilen Grünzeit und Rückstau, Ziffer 9.3, Seite 8).
         </div>
         <table style={{ width:'100%', borderCollapse:'collapse', marginBottom:12 }}>
           <thead>
@@ -1115,10 +1198,26 @@ function LSAPrintSheet({ nodeName, armCount, arms, volumes, moveLane, fgsConfig,
           <div style={{ fontSize:10, color:'#444', marginTop:1 }}>{LOS_DESC[overall]}</div>
           <div style={{ fontSize:9, color:'#666', marginTop:2 }}>
             Z = {result.Z} s · ΣQ_krit = {Math.round(result.sumQKrit)} PWE/h
-            {!result.overloaded && ` · Reserve = +${Math.round(reserve)} PWE/h`}
-            {result.overloaded && ' · Überlastet'}
+            {!reserveInvalid && ` · Reserve = +${Math.round(reserve)} PWE/h`}
+            {reserveInvalid && ' · Überlastet'}
             {' · '}Ziel-VQS {targetLos}: {result.meetsTargetLos ? '✓' : '✗'}
           </div>
+          {result.overlapIssues.map(i => (
+            <div key={i.laneId} style={{ fontSize:10, fontWeight:700, color:'#b91c1c', marginTop:2 }}>
+              {overlapText(i)}
+            </div>
+          ))}
+          {result.overlapIssues.length > 0 && (
+            <div style={{ fontSize:9, color:'#666', marginTop:2 }}>{OVERLAP_NOTE}</div>
+          )}
+          {result.fgsOverloaded.length > 0 && (
+            <div style={{ fontSize:10, fontWeight:700, color:'#b91c1c', marginTop:2 }}>
+              {fgsOverloadText(result)}
+            </div>
+          )}
+          {!result.zIsManual && !result.meetsTargetLos && !result.overloaded && (
+            <div style={{ fontSize:9, color:'#666', marginTop:2 }}>{zTargetText(result, targetLos)}</div>
+          )}
         </div>
       </div>
 
@@ -1137,11 +1236,11 @@ function LSAPrintSheet({ nodeName, armCount, arms, volumes, moveLane, fgsConfig,
       <div style={{ background:'#f5f5f5', border:'1px solid #ccc', borderRadius:3,
                     padding:'6px 10px', fontSize:8.5, color:'#444', lineHeight:1.6, marginBottom:10 }}>
         <strong style={{ color:'#222' }}>Methodik:</strong>
-        {' '}Fz → PWE: PW=1,0 · LW=2,0 · MR=0,5 · FR=0,25 (Ziff. 10.2).
-        Q_krit: Fahrstreifenbelastung = Summe der Ströme (Ziff. 9.3), pro Phase der grösste exklusive Kfz-Fahrstreifen; S = 1800 PWE/h.
-        Z aus Tab. 2 (kleinste Umlaufzeit, bei der alle Q_krit gedeckt sind).
-        w_m = w₁ + w₀ (Ziff. 12, C = 0,5); ST_RE95 nach Ziff. 11.5.
-        VQS nach Tab. 4: A ≤20 s · B ≤35 s · C ≤50 s · D ≤70 s · E ≤100 s · F Überlast. Ohne ÖV-Privilegierung.
+        {' '}Fz → PWE: PW=1,0 · LW=2,0 · MR=0,5 · FR=0,25 (Ziffer 10.2, Seite 8).
+        Q_krit: Fahrstreifenbelastung = Summe der Ströme (Ziffer 9.3, Seite 8), pro Phase der grösste exklusive Kfz-Fahrstreifen; S = 1800 PWE/h.
+        Z aus Tab. 2, Seite 10 (kleinste Umlaufzeit, bei der alle Q_krit gedeckt sind).
+        w_m = w₁ + w₀ (Ziffer 12, Seite 13, C = 0,5); ST_RE95 nach Ziffer 11.5 mit PWE_GE = w₀·Q/(3600·X) wie Tab. 7, Tab. 10 und Abb. 15 (Seiten 20, 22, 28; der Druck auf Seite 13 nennt ·X).
+        VQS nach Tab. 4, Seite 14: A ≤20 s · B ≤35 s · C ≤50 s · D ≤70 s · E ≤100 s · F Überlast. Ohne ÖV-Privilegierung.
       </div>
 
       {/* Fusszeile */}
@@ -1158,18 +1257,18 @@ function LSAPrintSheet({ nodeName, armCount, arms, volumes, moveLane, fgsConfig,
 
 const LEGEND_ITEMS: LegendItem[] = [
   { abbr: 'Fz/h',    desc: 'Fahrzeuge pro Stunde — Roheingabe Abbiegeströme' },
-  { abbr: 'PWE/h',   desc: 'Personenwageneinheiten/h — umgerechnet gemäss Ziffer 10.2: PW=1, LW=2, MR=0.5, FR=0.25' },
-  { abbr: 'Q',  unit: 'PWE/h', desc: 'Verkehrsstärke des Knotenstroms resp. Fahrstreifens in PWE/h (Ziffer 9, VSS 40 023a)' },
-  { abbr: 'S',  unit: 'PWE/h', desc: 'Fahrstreifensättigung — Richtwert 1800 PWE/h für durchschnittliche Verhältnisse (Ziffer 11.3, VSS 40 023a)' },
-  { abbr: 'λ',       desc: 'Grünzeitanteil — Anteil der nutzbaren Grünzeit an der Umlaufzeit Z; λ = t_Gr · Z⁻¹ (Ziffer 11.3, VSS 40 023a)' },
-  { abbr: 'X',       desc: 'Auslastungsgrad — X = Q · L⁻¹; massgebend ist das Maximum je Phase (Ziffer 11.3, VSS 40 023a)' },
-  { abbr: 'L',  unit: 'PWE/h', desc: 'Leistungsfähigkeit des Fahrstreifens — L = λ · S (Ziffer 11.3, VSS 40 023a)' },
-  { abbr: 'w_m', unit: 's',   desc: 'Mittlere Wartezeit pro Motorfahrzeug — deterministischer Anteil w₁ und stochastischer Anteil w₀; w_m = w₁ + w₀ (Ziffer 12, VSS 40 023a)' },
-  { abbr: 'VQS',     desc: 'Verkehrsqualitätsstufe A–F nach Tab. 4 (VSS 40 023a): A ≤20s · B ≤35s · C ≤50s · D ≤70s · E ≤100s · F >100s' },
-  { abbr: 'Z',  unit: 's',    desc: 'Umlaufzeit — Gesamtdauer eines Signalprogramm-Umlaufs; praktisch 60–90 s (Ziffer 10.4.3); automatisch aus Tab. 2 oder manuell' },
-  { abbr: 'ΣQ_krit', unit: 'PWE/h', desc: 'Summe der kritischen Verkehrsstärken — grösste unverträgliche Fahrstreifenbelastung je Phase (Summe der Ströme des Fahrstreifens, Ziffer 9.3), mindestens Q_krit_min (Mindestgrünzeit, Ziffer 10.4.1), summiert; massgebend für Wahl der Umlaufzeit Z (Ziffer 11.1, VSS 40 023a)' },
-  { abbr: 'T_Z', unit: 's',   desc: 'Zwischenzeit je Phase — Norm-Pauschale 5 s/Phase (VSS 40 023a, Ziffer 11.2); die geschwindigkeitsabhängige Staffelung 3/4/5 s ist eine eigene Annahme, angelehnt an die Gelbzeiten der VSS 40 837' },
-  { abbr: 'FGS',     desc: 'Fussgängerstreifen — LSA-gesicherter Fussgängerübergang; Mindestgrünzeit t_Gr_min = max(5 s, ⅔·L / 1,2 m·s⁻¹) — ⅔·L mit 1,2 m/s nach VSS 40 837 Tab. 1, Mindestwert 5 s nach HB LSA Bern V 2.1, Anhang G' },
+  { abbr: 'PWE/h',   desc: 'Personenwageneinheiten/h — umgerechnet gemäss Ziffer 10.2, Seite 8: PW=1, LW=2, MR=0.5, FR=0.25' },
+  { abbr: 'Q',  unit: 'PWE/h', desc: 'Verkehrsstärke des Knotenstroms resp. Fahrstreifens in PWE/h (Ziffer 9, Seiten 7–8, VSS 40 023a)' },
+  { abbr: 'S',  unit: 'PWE/h', desc: 'Fahrstreifensättigung — Richtwert 1800 PWE/h für durchschnittliche Verhältnisse (Ziffer 11.3, Seite 10, VSS 40 023a)' },
+  { abbr: 'λ',       desc: 'Grünzeitanteil — Anteil der nutzbaren Grünzeit an der Umlaufzeit Z; λ = t_Gr · Z⁻¹ (Ziffer 11.3, Seite 10, VSS 40 023a)' },
+  { abbr: 'X',       desc: 'Auslastungsgrad — X = Q · L⁻¹ (Ziffer 11.3, Seite 10, VSS 40 023a)' },
+  { abbr: 'L',  unit: 'PWE/h', desc: 'Leistungsfähigkeit des Fahrstreifens — L = λ · S (Ziffer 11.3, Seite 10, VSS 40 023a)' },
+  { abbr: 'w_m', unit: 's',   desc: 'Mittlere Wartezeit pro Motorfahrzeug — deterministischer Anteil w₁ und stochastischer Anteil w₀; w_m = w₁ + w₀ (Ziffer 12, Seite 13, VSS 40 023a)' },
+  { abbr: 'VQS',     desc: 'Verkehrsqualitätsstufe A–F nach Tab. 4, Seite 14 (VSS 40 023a): A ≤20s · B ≤35s · C ≤50s · D ≤70s · E ≤100s · F >100s' },
+  { abbr: 'Z',  unit: 's',    desc: 'Umlaufzeit — Gesamtdauer eines Signalprogramm-Umlaufs; praktisch 60–90 s (Ziffer 10.4.3, Seite 9); automatisch aus Tab. 2, Seite 10, oder manuell' },
+  { abbr: 'ΣQ_krit', unit: 'PWE/h', desc: 'Summe der kritischen Verkehrsstärken — grösste unverträgliche Fahrstreifenbelastung je Phase (Summe der Ströme des Fahrstreifens, Ziffer 9.3, Seite 8), mindestens Q_krit_min (Mindestgrünzeit, Ziffer 10.4.1, Seiten 8–9), summiert; massgebend für Wahl der Umlaufzeit Z (Ziffer 11.1, Seite 9, VSS 40 023a)' },
+  { abbr: 'T_Z', unit: 's',   desc: 'Zwischenzeit je Phase — Vorgabe ist die Norm-Pauschale 5 s/Phase (VSS 40 023a, Ziffer 11.2, Seite 10). Wählbar als Annahme: Staffelung 3/4/5 s nach zulässiger Geschwindigkeit, angelehnt an die Gelbzeiten der VSS 40 837 (Ziffer 16, Seite 5)' },
+  { abbr: 'FGS',     desc: 'Fussgängerstreifen — LSA-gesicherter Fussgängerübergang; Mindestgrünzeit t_Gr_min = max(5 s, ⅔·L / 1,2 m·s⁻¹) — ⅔·L mit 1,2 m/s nach VSS 40 837 (Ziffer 18, Seite 6), Mindestwert 5 s nach HB LSA Bern V 2.1, Anhang G' },
 ]
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
@@ -1183,6 +1282,8 @@ export default function LSAApp() {
   const [phaseStates, setPhaseStates] = useState<PhaseState[]>([])
   const [targetLos,   setTargetLos]   = useState<LevelOfService>('D')
   const [manualZ,     setManualZ]     = useState<number>(0)
+  const [tzMode,      setTzMode]      = useState<TzMode>('norm')
+  const [loadHint,    setLoadHint]    = useState<string|null>(null)
 
   const skipArmCountEffect = useRef(false)
   const [showGrundlagen, setShowGrundlagen] = useState(false)
@@ -1274,7 +1375,7 @@ export default function LSAApp() {
     exportTool({
       tool: 'lsa', filePrefix: 'LSA',
       name: nodeName, showToast,
-      data: { lsaSchema: 2, nodeName, armCount, arms, moveLane, fgsConfig, phaseStates, targetLos, manualZ },
+      data: { lsaSchema: 3, nodeName, armCount, arms, moveLane, fgsConfig, phaseStates, targetLos, manualZ, tzMode },
     })
 
   const handleImport = () =>
@@ -1283,7 +1384,7 @@ export default function LSAApp() {
       let loadedArms = conformFixed(defaultArms(newCount), d.arms).map(a => ({
         ...a,
         mix: a.mix ? conform<VehicleMix>({ pctLW:0, pctMR:0, pctFR:0 }, a.mix) : undefined,
-        vDesign: oneOf<30|50|60>([30, 50, 60], a.vDesign, 50),
+        vDesign: oneOf<DesignSpeed>([30, 50, 60], a.vDesign, 50),
       }))
       // Dateien vor lsaSchema 2: 4-Arm-Zeilen 4/6 (Arm B) und 10/12 (Arm D) waren mit
       // vertauschtem Links/Rechts beschriftet und gespeichert. Werte beim Zielarm belassen.
@@ -1314,6 +1415,14 @@ export default function LSAApp() {
       setPhaseStates(phaseStates)
       setTargetLos(oneOf<LevelOfService>(['A','B','C','D','E','F'], d.targetLos, 'D'))
       setManualZ(conform(0, d.manualZ))
+      // Dateien ohne Angabe wurden nach Tempo gestaffelt gerechnet: Resultate bleiben, mit Hinweis
+      const newMode = tzModeFromFile(d.tzMode, loadedArms.map(a => a.vDesign))
+      setTzMode(newMode)
+      setLoadHint(d.tzMode === undefined && newMode === 'staffel'
+        ? `Ältere Datei: Die Zwischenzeit bleibt wie gespeichert nach Tempo gestaffelt `
+          + `(T_Z = ${tzFor('staffel', loadedArms.map(a => a.vDesign))} s, Annahme), damit die Resultate gleich bleiben. `
+          + `Neue Vorgabe ist die Norm-Pauschale von ${TZ_NORM} s je Phase (Ziffer 11.2, Seite 10); die Umschaltung liegt bei der Umlaufzeit.`
+        : null)
     }, showToast)
 
   function handleReset() {
@@ -1328,6 +1437,8 @@ export default function LSAApp() {
     setPhaseStates(defPhases.map(dp => ({ id: dp.id, selectedLaneIds: dp.laneIds.map(id=>defToReal[id]).filter(Boolean) })))
     setTargetLos('D')
     setManualZ(0)
+    setTzMode('norm')
+    setLoadHint(null)
     showToast('Zurückgesetzt')
   }
 
@@ -1381,11 +1492,8 @@ export default function LSAApp() {
     }
   }
 
-  // Zwischenzeit: Maximum über alle Arme (eigene Staffelung nach v_zul)
-  const tZ = useMemo(
-    () => Math.max(...arms.map(a => tzFromSpeed(a.vDesign ?? 50))),
-    [arms],
-  )
+  // Zwischenzeit: Norm-Pauschale oder Annahme (Staffelung, Maximum über alle Arme)
+  const tZ = useMemo(() => tzFor(tzMode, arms.map(a => a.vDesign)), [tzMode, arms])
 
   // Berechnung
   const result = useMemo<LSAResultV2|null>(() => {
@@ -1438,9 +1546,9 @@ export default function LSAApp() {
           <div style={{ padding:'0 16px 12px', fontSize:12, color:'#475569',
                         display:'flex', flexDirection:'column', gap:3 }}>
             {([
-              ['VSS SN 640 023a', 'Knoten mit Lichtsignalanlagen — Leistungsfähigkeit und Verkehrsqualität'],
-              ['VSS 40 837',  'Lichtsignalanlagen — Übergangszeiten und Mindestzeiten (Gelbzeiten Tab. 1; Basis der T_Z-Staffelung)'],
-              ['VSS SN 640 834',  'Lichtsignalanlagen — Phasentrennung (S = 8000 Fg/h für FGS)'],
+              ['VSS 40 023a', 'Leistungsfähigkeit, Verkehrsqualität, Belastbarkeit; Knoten mit Lichtsignalanlagen'],
+              ['VSS 40 837',  'Lichtsignalanlagen — Übergangszeiten und Mindestzeiten (Gelbzeiten Ziffer 16, Seite 5; Basis der als Annahme wählbaren T_Z-Staffelung)'],
+              ['VSS 40 834',  'Lichtsignalanlagen — Phasentrennung (S = 8000 Fg/h für FGS, Ziffer 4, Seite 3)'],
               ['VSS SN 640 835',  'Lichtsignalanlagen — Leistungsfähigkeit (Korrekturfaktoren; nicht implementiert)'],
               ['HB LSA Bern V 2.1', 'Anhang G — Mindestfreigabezeit FGS ≥ 5 s'],
             ] as [string,string][]).map(([norm, desc]) => (
@@ -1459,7 +1567,7 @@ export default function LSAApp() {
                     padding:'14px 16px', marginBottom:16 }}>
         <StepBadge n={1} label="Massgebende Verkehrsstärken je Knotenstrom bestimmen" />
         <p style={{ fontSize:12, color:'#6b7280', margin:'0 0 12px' }}>
-          Stündliche Spitzenstunden-Verkehrsstärken Q [Fz/h] je Knotenstrom eingeben und in PWE umrechnen (Ziffer 9, VSS 40 023a). Schwerverkehr (LW, MR, FR) wird gemäss Ziffer 10.2 berücksichtigt.
+          Stündliche Spitzenstunden-Verkehrsstärken Q [Fz/h] je Knotenstrom eingeben und in PWE umrechnen (Ziffer 9, Seiten 7–8, VSS 40 023a). Schwerverkehr (LW, MR, FR) wird gemäss Ziffer 10.2, Seite 8 berücksichtigt.
         </p>
         <div style={{ display:'flex', gap:16, alignItems:'flex-start', marginBottom:14, flexWrap:'wrap' }}>
           <div style={{ flex:'1 1 auto' }}>
@@ -1478,7 +1586,7 @@ export default function LSAApp() {
             </div>
             <div className={`arms-grid${armCount===4?' arms-grid-4':''}`}>
               {arms.map((arm,i) => (
-                <ArmCard key={i} arm={arm} index={i} armCount={armCount}
+                <ArmCard key={i} arm={arm} index={i} armCount={armCount} tzMode={tzMode}
                   onChange={a => setArms(prev=>prev.map((x,j)=>j===i?a:x))} />
               ))}
             </div>
@@ -1507,9 +1615,9 @@ export default function LSAApp() {
                     padding:'14px 16px', marginBottom:16 }}>
         <StepBadge n={2} label="Fahrstreifenplan — Knotenströme zuordnen" />
         <p style={{ fontSize:12, color:'#6b7280', margin:'0 0 12px' }}>
-          Anzahl Fahrstreifen festlegen und Knotenströme den Fahrstreifen zuordnen (Ziffer 9.3).
+          Anzahl Fahrstreifen festlegen und Knotenströme den Fahrstreifen zuordnen (Ziffer 9.3, Seite 8).
           Bewegungen auf FS1 oder FS2 aufteilen. FGS: Fussgängerstreifen mit Querungslänge aktivieren.
-          Die Verkehrsstärke eines Fahrstreifens ist die Summe der zugeordneten Ströme (Ziffer 9.3); ein Mischfahrstreifen muss alle seine Ströme abwickeln.
+          Die Verkehrsstärke eines Fahrstreifens ist die Summe der zugeordneten Ströme (Ziffer 9.3, Seite 8); ein Mischfahrstreifen muss alle seine Ströme abwickeln.
         </p>
         <LanePlanSection armCount={armCount} volumes={volumes}
           moveLane={moveLane} onChange={handleMoveLaneChange}
@@ -1522,7 +1630,7 @@ export default function LSAApp() {
                       padding:'14px 16px' }}>
           <StepBadge n={3} label="Phasenplan — ΣQkrit und Umlaufzeit Z festlegen" />
           <p style={{ fontSize:12, color:'#6b7280', margin:'0 0 8px' }}>
-            Fahrstreifen den Phasen zuordnen (☑ = Grün in dieser Phase, Ziffer 11 VSS 40 023a).
+            Fahrstreifen den Phasen zuordnen (☑ = Grün in dieser Phase, Ziffer 11, Seite 9).
             Daraus werden ΣQkrit, Umlaufzeit Z und Leistungsfähigkeit L je Fahrstreifen berechnet.
             FGS-Lanes (grün) manuell zuweisen.
           </p>
@@ -1548,10 +1656,32 @@ export default function LSAApp() {
             <span style={{ color: manualZ > 0 ? '#1e3a5f' : '#9ca3af', marginLeft:4 }}>
               {manualZ > 0 ? 'Manuell — überschreibt Tab. 2' : 'Leer = automatisch aus Tab. 2 (kleinste passende Z)'}
             </span>
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10, flexWrap:'wrap',
+                        padding:'6px 10px', borderRadius:6, background:'#f8fafc',
+                        border:'1px solid #e2e8f0', fontSize:12 }}>
+            <span style={{ color:'#374151', fontWeight:600 }}>Zwischenzeit:</span>
+            {([
+              ['norm', `${TZ_NORM} s je Phase (Norm-Pauschale, Ziffer 11.2, Seite 10)`],
+              ['staffel', `Annahme: nach Tempo gestaffelt, 3/4/5 s (Norm-Pauschale ${TZ_NORM} s)`],
+            ] as const).map(([mode, label]) => (
+              <label key={mode} style={{ display:'flex', alignItems:'center', gap:4, cursor:'pointer', color:'#475569' }}>
+                <input type="radio" name="lsa-tz-mode" checked={tzMode===mode}
+                  onChange={() => { setTzMode(mode); setLoadHint(null) }}
+                  style={{ accentColor:'#1e3a5f', cursor:'pointer' }} />
+                {label}
+              </label>
+            ))}
             <span style={{ marginLeft:'auto', color:'#475569', whiteSpace:'nowrap' }}>
               T_Z = <strong>{tZ}</strong> s/Phase
             </span>
           </div>
+          {loadHint && (
+            <div style={{ marginBottom:10, padding:'8px 12px', borderRadius:6, background:'#fff7ed',
+                          border:'1px solid #fdba74', fontSize:12, color:'#9a3412' }}>
+              {loadHint}
+            </div>
+          )}
           <PhasePlanSection lanes={lanes} phaseStates={phaseStates}
             onChange={setPhaseStates} onApplyDefault={applyDefault}
             onSuggestMinimal={applyMinimalPlan}
@@ -1559,9 +1689,9 @@ export default function LSAApp() {
         </div>
 
         <div className="results-panel">
-          {result
-            ? <ResultsPanelV2 result={result} targetLos={targetLos}
-                onTargetLos={setTargetLos}
+          {result?.hasVehicleTraffic
+            ? <ResultsPanelV2 result={result} targetLos={targetLos} tzMode={tzMode}
+                onTargetLos={setTargetLos} onManualZ={setManualZ}
                 onPrint={() => {
                   const prev = document.title
                   document.title = `KnotenCheck – VSS 40 023a${nodeName ? ' – ' + nodeName : ''}`
@@ -1569,7 +1699,9 @@ export default function LSAApp() {
                   window.print()
                 }} />
             : <div style={{ padding:20, color:'#9ca3af', fontSize:13 }}>
-                Fahrstreifen und Phasen definieren, um Ergebnisse zu sehen.
+                {result
+                  ? 'Noch keine Verkehrsstärken eingegeben: Ohne Motorfahrzeugverkehr gibt es keine Qualitätsstufe.'
+                  : 'Fahrstreifen und Phasen definieren, um Ergebnisse zu sehen.'}
               </div>
           }
         </div>
@@ -1604,7 +1736,7 @@ export default function LSAApp() {
       </footer>
     </div>
 
-    {isActive && result && createPortal(
+    {isActive && result?.hasVehicleTraffic && createPortal(
       <div className="print-portal" style={{ padding:'14mm 16mm', background:'#fff',
                                              fontFamily:'system-ui, Arial, sans-serif' }}>
         <LSAPrintSheet
@@ -1618,6 +1750,7 @@ export default function LSAApp() {
           phaseStates={phaseStates}
           result={result}
           targetLos={targetLos}
+          tzMode={tzMode}
         />
       </div>,
       document.body

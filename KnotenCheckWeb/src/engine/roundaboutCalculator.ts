@@ -5,6 +5,7 @@ import type { LevelOfService } from './types'
 import { classifyDelayLOS, worstLOS } from './levelOfService'
 
 export type RoundaboutType = '1/1' | '2/1+' | '2/2'
+export const ROUNDABOUT_TYPES: readonly RoundaboutType[] = ['1/1', '2/1+', '2/2']
 
 export type { LevelOfService }
 
@@ -57,8 +58,9 @@ export function ringFactor(mix?: RbVehicleMix): number {
   return entryFactor('±0%', mix)
 }
 
-// ── f_F Lookup-Tabellen (Abb. 3 und Abb. 4) ──────────────────────────────────
-// Abb. 3, SN 640 024a — abgelesen aus Diagramm
+// ── f_F Lookup-Tabellen (Abb. 3 und Abb. 4, SN 640 024a S. 10) ───────────────
+// Stützpunkte im Abstand 100 PWE/h aus den Vektorkurven der Norm-PDF ausgelesen
+// (Abweichung zur Kurve ≤ 0,002). Die Kurven enden bei f_F = 1,00 (Abb. 3: Q_K = 900).
 // FG=0 → f_F=1.0 (kein Einfluss); zwischen 0 und 100 FG/h linear zur 100er-Kurve.
 // Die Diagramme (auch Abb. 5) reichen bis 400 FG/h; darüber wird mit der
 // 400er-Kurve gerechnet und das Resultat als ausserhalb des Normbereichs markiert.
@@ -66,19 +68,25 @@ export const FG_MAX_NORM = 400
 
 const FF_1_1: Record<number, [number, number][]> = {
   100: [[0, 0.99], [800, 0.99], [900, 1.00]],
-  200: [[0, 0.93], [100, 0.935], [200, 0.94], [300, 0.945], [400, 0.95],
-        [500, 0.955], [600, 0.96], [700, 0.965], [800, 0.97], [900, 1.00]],
-  300: [[0, 0.87], [100, 0.875], [200, 0.88], [300, 0.89], [400, 0.90],
-        [500, 0.92], [600, 0.93], [700, 0.95], [800, 0.97], [900, 1.00]],
-  400: [[0, 0.81], [100, 0.82], [200, 0.83], [300, 0.84], [400, 0.86],
-        [500, 0.88], [600, 0.90], [700, 0.95], [800, 0.96], [900, 1.00]],
+  200: [[0, 0.932], [100, 0.935], [200, 0.94], [300, 0.945], [400, 0.95],
+        [500, 0.956], [600, 0.961], [700, 0.97], [800, 0.98], [900, 1.00]],
+  300: [[0, 0.871], [100, 0.875], [200, 0.882], [300, 0.89], [400, 0.90],
+        [500, 0.913], [600, 0.93], [700, 0.95], [800, 0.97], [900, 1.00]],
+  400: [[0, 0.809], [100, 0.82], [200, 0.83], [300, 0.843], [400, 0.86],
+        [500, 0.88], [600, 0.903], [700, 0.93], [800, 0.96], [900, 1.00]],
 }
 
 const FF_2_1PLUS: Record<number, [number, number][]> = {
-  100: [[0, 0.89], [200, 0.90], [400, 0.93], [600, 0.95], [800, 0.97], [900, 1.00]],
-  200: [[0, 0.86], [200, 0.87], [400, 0.89], [600, 0.91], [800, 0.94], [900, 0.95], [1000, 0.96], [1200, 1.00]],
-  300: [[0, 0.83], [200, 0.84], [400, 0.86], [600, 0.87], [800, 0.90], [900, 0.92], [1000, 0.93], [1200, 0.96], [1400, 1.00]],
-  400: [[0, 0.80], [200, 0.81], [400, 0.82], [600, 0.84], [800, 0.86], [900, 0.87], [1000, 0.88], [1200, 0.92], [1400, 0.95]],
+  100: [[0, 0.89], [100, 0.895], [200, 0.901], [300, 0.91], [400, 0.922],
+        [500, 0.935], [600, 0.95], [700, 0.965], [800, 0.981], [900, 1.00]],
+  200: [[0, 0.86], [100, 0.866], [200, 0.872], [300, 0.881], [400, 0.89], [500, 0.90], [600, 0.911],
+        [700, 0.925], [800, 0.939], [900, 0.953], [1000, 0.968], [1100, 0.984], [1200, 1.00]],
+  300: [[0, 0.83], [100, 0.836], [200, 0.842], [300, 0.85], [400, 0.859], [500, 0.868], [600, 0.878],
+        [700, 0.889], [800, 0.902], [900, 0.915], [1000, 0.93], [1100, 0.946], [1200, 0.963],
+        [1300, 0.981], [1400, 1.00]],
+  400: [[0, 0.80], [100, 0.805], [200, 0.811], [300, 0.817], [400, 0.824], [500, 0.832], [600, 0.84],
+        [700, 0.849], [800, 0.86], [900, 0.872], [1000, 0.885], [1100, 0.899], [1200, 0.914],
+        [1300, 0.932], [1400, 0.95]],
 }
 
 // Stückweise lineare Interpolation einer [x, y]-Tabelle
@@ -93,7 +101,7 @@ function lerpPoints(pts: [number, number][], x: number): number {
   return pts[pts.length - 1][1]
 }
 
-// Bilineare Interpolation in der FG-Dimension (Abb. 3 / Abb. 4)
+// Bilineare Interpolation in der FG-Dimension (Abb. 3 / Abb. 4, S. 10)
 // Typ 2/2: f_F konnte in der Forschungsarbeit 2005/301 nicht ermittelt werden
 // (zu wenig Fussgänger an Untersuchungsstandorten) → Abb.-4-Kurven der Norm
 // für 2-streifige Einfahrten (FF_2_1PLUS) werden analog verwendet.
@@ -118,10 +126,10 @@ export function correctionFactorFF(type: RoundaboutType, fg: number, qk: number)
 }
 
 // ── Grenzleistungsfähigkeit L_E ───────────────────────────────────────────────
-// 1/1, 2/1+: linear nach SN 640 024a Abb. 6 (gültig Q_K ≤ 1400 bzw. ≤ 2000)
-// 2/2:       exponentiell nach VSS 2005/301 Abb. 4.25: Q_E = 1639.9·e^(−0.0006·Q_K)
+// 1/1, 2/1+: linear nach SN 640 024a Abb. 6, S. 12 (gültig Q_K ≤ 1400 bzw. ≤ 2000)
+// 2/2:       exponentiell nach VSS 2005/301 Abb. 4.25, S. 55: Q_E = 1639.9·e^(−0.0006·Q_K)
 //            (Q_K > 1800 datenarm; setzt gleichmässige Fahrstreifenbelastung ±10 % voraus)
-// Gültigkeitsbereich der Bemessungszusammenhänge: SN 640 024a Abb. 6 gibt
+// Gültigkeitsbereich der Bemessungszusammenhänge: SN 640 024a Abb. 6 (S. 12) gibt
 // 0 ≤ Q_K ≤ 1400 (1/1) bzw. ≤ 2000 (2/1+) an; die 2/2-Kurve ist nach VSS 2005/301
 // bei Q_K > 1800 PWE/h statistisch nicht abgestützt. Darüber wird extrapoliert
 // und das Resultat markiert.
@@ -133,27 +141,42 @@ export function basicCapacity(type: RoundaboutType, qk: number): number {
   return Math.max(0, 1639.9 * Math.exp(-0.0006 * qk))
 }
 
-// ── Ausfahrtsleistungsfähigkeit L_A — Abb. 5, SN 640 024a (Ziffer 10) ────────
+// ── Ausfahrtsleistungsfähigkeit L_A — Abb. 5, SN 640 024a (Ziffer 10, S. 11) ─
 // L_A,MAX = 1400 PWE/h (ohne Fussgänger); querende Fussgänger reduzieren sie,
 // abhängig von der Ausfahrtsbreite B (3.5 m bzw. 4.5 m, Fussgängerstreifenlänge).
-// Stützpunkte aus Abb. 5 abgelesen (Schritt 50 FG/h). Die 3.5-m-Kurve deckt sich mit
-// Tab. 5 des Anwendungsbeispiels (FG 100→1310, 300→1160, 0→1400; FG 250→1195 ggü.
-// gedruckt 1190, innerhalb Ablesetoleranz).
+// Stützpunkte aus den Vektorkurven der Norm-PDF ausgelesen (Schritt 50 FG/h). Tab. 5
+// (S. 19) ist vom Diagramm abgelesen: FG 100→1310, 250→1190, 300→1160, Kurve 1309, 1193, 1159.
 const LA_TABLE_3_5: [number, number][] = [
-  [0, 1400], [50, 1355], [100, 1310], [150, 1270], [200, 1230],
-  [250, 1195], [300, 1160], [350, 1130], [400, 1095],
+  [0, 1400], [50, 1353], [100, 1309], [150, 1268], [200, 1229],
+  [250, 1193], [300, 1159], [350, 1126], [400, 1095],
 ]
 const LA_TABLE_4_5: [number, number][] = [
-  [0, 1400], [50, 1340], [100, 1280], [150, 1240], [200, 1190],
-  [250, 1140], [300, 1100], [350, 1055], [400, 1020],
+  [0, 1400], [50, 1340], [100, 1284], [150, 1233], [200, 1184],
+  [250, 1139], [300, 1097], [350, 1057], [400, 1017],
 ]
 export function exitCapacity(fg: number, wide = false): number {
   return lerpPoints(wide ? LA_TABLE_4_5 : LA_TABLE_3_5, Math.max(0, fg))
 }
 
-// ── Ausfahrtsvolumen Q_A aus Abbiegeströmen (Umkehrung von Abb. 10) ──────────
+// Ausfahrten an zweistreifigen Kreiseln: VSS 2005/301 Ziffer 5.2.3 (S. 64) gibt Richtwerte
+// ohne Fussgänger: einstreifig 1700 Fz/h, zweistreifig 1850 Fz/h. Einen Abzug für Fussgänger
+// nennt die Quelle nicht («einzeln abklären», Ziffer 4.2, S. 58), und SN 640 024a Ziffer 1
+// (S. 3) schliesst zweistreifige Ausfahrten mit Fussgängerstreifen aus.
+// Annahmen: Der Abzug folgt anteilig Abb. 5 (zweistreifig: 4,5-m-Kurve); die Richtwerte
+// in Fz/h werden direkt mit Q_A in PWE/h verglichen.
+export const LA_MAX_2_2 = { oneLane: 1700, twoLanes: 1850 } as const
+
+export function exitCapacityFor(type: RoundaboutType, fg: number, wide = false, twoLanes = false): number {
+  if (type !== '2/2') return exitCapacity(fg, wide)
+  const base = twoLanes ? LA_MAX_2_2.twoLanes : LA_MAX_2_2.oneLane
+  return base * exitCapacity(fg, wide || twoLanes) / exitCapacity(0)
+}
+
+// ── Ausfahrtsvolumen Q_A aus Abbiegeströmen (Umkehrung von Abb. 10, S. 18) ──────────
 // Q_A[j] = Summe aller Bewegungen, die an Arm j ausfahren. Erhält die Einheit
 // der Eingabe-Arrays (Fz/h oder PWE/h, falls bereits gewichtet übergeben).
+// Annahme im Rechner: Gewichtung mit f der Herkunftsarme, auch mit der Neigung ihrer Einfahrt;
+// die Norm nennt für Ausfahrten keinen Faktor (Ziffer 9.2, S. 8–9).
 //   right[i]    → fährt an Arm (i+1) aus
 //   straight[i] → fährt an Arm (i+2) aus   (nur 4-Arm)
 //   left[i]     → fährt an Arm (i+3) bzw. (i+2) aus   (4-/3-Arm)
@@ -168,7 +191,7 @@ export function computeQAfromTurnings(
   )
 }
 
-// ── Wartezeit — Abb. 7 (Ref. [10] = Kimber & Hollis 1979) ────────────────────
+// ── Wartezeit — Abb. 7, S. 15 (Ref. [10] = Kimber & Hollis 1979) ────────────────────
 // Formel: Brilon (2008), TRR 2071, Gl. 9 (Fall D2+A2) + Bedienzeit 3600/L,
 // T = 1.0 h — wie beim SN-640-022-Rechner (dort per Abb.-4-Ablesung verifiziert)
 export function entryDelay(qe: number, capacity: number): number {
@@ -181,7 +204,7 @@ export function entryDelay(qe: number, capacity: number): number {
   return t0 + 900 * T * ((a - 1) + Math.sqrt(inner))
 }
 
-// ── LOS-Klassierung (Tab. 3, SN 640 024a) ─────────────────────────────────────
+// ── LOS-Klassierung (Tab. 3, S. 14, SN 640 024a) ─────────────────────────────────────
 // F = Overflow (x ≥ 1, Zufluss > Kapazität), sonst nach Delay-Schwellen
 export const levelOfService = classifyDelayLOS
 
@@ -189,6 +212,7 @@ export const levelOfService = classifyDelayLOS
 
 export interface EntryResult {
   armIndex: number
+  type: RoundaboutType     // Fahrstreifenanordnung dieser Einfahrt
   qe: number               // Einfahrtsbelastung [PWE/h]
   qk: number               // Kreisfahrbahnbelastung [PWE/h]
   fg: number               // Fussgängerbelastung [FG/h]
@@ -200,12 +224,15 @@ export interface EntryResult {
   delay: number            // w [s]
   levelOfService: LevelOfService
   loaded: boolean          // Q_E > 0; ohne Einfahrtsverkehr keine QS (zählt nicht zur Gesamt-QS)
-  fgOutOfRange: boolean    // FG > 400: ausserhalb Abb. 3–5, mit 400er-Kurve gerechnet
+  fgOutOfRange: boolean    // FG > 400: ausserhalb Abb. 3–5 (S. 10–11), mit 400er-Kurve gerechnet
   qkOutOfRange: boolean    // Q_K über dem Gültigkeitsbereich der L_E-Formel (QK_MAX_NORM), extrapoliert
 }
 
 export interface ExitResult {
   armIndex: number
+  type: RoundaboutType      // Typ des Arms: 2/2 prüft nach VSS 2005/301 (S. 64), sonst nach Abb. 5 (S. 11)
+  twoLanes: boolean         // zweistreifige Ausfahrt (nur Typ 2/2)
+  fgAssumed: boolean        // Typ 2/2 mit Fussgängern: L_A enthält den angenommenen Abzug
   qa: number                // Ausfahrtsvolumen [PWE/h]
   fg: number                // Fussgängerbelastung [FG/h]
   capacity: number          // L_A [PWE/h]
@@ -214,7 +241,6 @@ export interface ExitResult {
 }
 
 export interface RoundaboutResult {
-  type: RoundaboutType
   entries: EntryResult[]
   exits: ExitResult[]
   exitOverload: boolean     // mind. eine Ausfahrt überlastet (Q_A > L_A)
@@ -225,18 +251,23 @@ export interface RoundaboutResult {
 // Q_K wird direkt eingegeben (kommt aus Verkehrsmodell / OD-Umlegung)
 
 export interface RoundaboutInput {
-  type: RoundaboutType
+  // Fahrstreifenanordnung je Einfahrt (Ziffer 11, S. 12); ein einzelner Wert gilt für alle
+  type: RoundaboutType | RoundaboutType[]
   qe: number[]   // Einfahrtsvolumen [PWE/h]
   qk: number[]   // Kreisfahrbahnbelastung je Einfahrt [PWE/h]
   fg: number[]   // Fussgängerbelastung je Einfahrt [FG/h]
-  qa?: number[]      // Ausfahrtsvolumen [PWE/h] — für Ausfahrten-Check (Ziffer 10)
+  qa?: number[]      // Ausfahrtsvolumen [PWE/h] — für Ausfahrten-Check (Ziffer 10, S. 11)
   exitWide?: boolean[]  // Ausfahrtsbreite 4.5 m statt 3.5 m je Arm
+  exitTwoLanes?: boolean[]  // zweistreifige Ausfahrt je Arm (nur Typ 2/2)
 }
 
 export function calculateRoundabout(input: RoundaboutInput): RoundaboutResult {
-  const { type, qe, qk, fg, qa, exitWide } = input
+  const { qe, qk, fg, qa, exitWide, exitTwoLanes } = input
+  const typeOf = (i: number): RoundaboutType =>
+    Array.isArray(input.type) ? input.type[i] ?? input.type[0] : input.type
 
   const entries: EntryResult[] = qe.map((q, i) => {
+    const type        = typeOf(i)
     const fF          = correctionFactorFF(type, fg[i], qk[i])
     const leBase      = basicCapacity(type, qk[i])
     const capacity    = leBase * fF
@@ -246,20 +277,23 @@ export function calculateRoundabout(input: RoundaboutInput): RoundaboutResult {
     // Ohne Einfahrtsverkehr wartet niemand: keine Wartezeit, QS nur Platzhalter
     const delay       = loaded ? entryDelay(q, capacity) : 0
     const los         = levelOfService(delay)
-    return { armIndex: i, qe: q, qk: qk[i], fg: fg[i], fF, leBase, capacity, reserve, utilizationDegree: x,
+    return { armIndex: i, type, qe: q, qk: qk[i], fg: fg[i], fF, leBase, capacity, reserve, utilizationDegree: x,
              delay, levelOfService: los, loaded,
              fgOutOfRange: fg[i] > FG_MAX_NORM, qkOutOfRange: qk[i] > QK_MAX_NORM[type] }
   })
 
-  // Ausfahrten-Check (Ziffer 10, Abb. 5): Q_A(i) ≤ L_A(i) an allen Ausfahrten
+  // Ausfahrten-Check (Ziffer 10, S. 11): Q_A(i) ≤ L_A(i) an allen Ausfahrten
   const exits: ExitResult[] = (qa ?? []).map((q, i) => {
-    const capacity = exitCapacity(fg[i], exitWide?.[i] ?? false)
+    const type     = typeOf(i)
+    const twoLanes = type === '2/2' && (exitTwoLanes?.[i] ?? false)
+    const capacity = exitCapacityFor(type, fg[i], exitWide?.[i] ?? false, twoLanes)
     const xa       = capacity > 0 ? q / capacity : Infinity
-    return { armIndex: i, qa: q, fg: fg[i], capacity, utilizationDegree: xa, overloaded: q > capacity }
+    return { armIndex: i, type, twoLanes, fgAssumed: type === '2/2' && fg[i] > 0,
+             qa: q, fg: fg[i], capacity, utilizationDegree: xa, overloaded: q > capacity }
   })
 
   return {
-    type, entries, exits,
+    entries, exits,
     exitOverload: exits.some(e => e.overloaded),
     overallLevelOfService: worstLOS(entries.filter(e => e.loaded).map(e => e.levelOfService)),
   }
@@ -278,7 +312,7 @@ export function computeQKfromOD(qe: number[], qa: number[], qk0: number): number
   return qk
 }
 
-// ── Q_K aus Abbiegeströmen (Abb. 10, SN 640 024a S. 10) ──────────────────────
+// ── Q_K aus Abbiegeströmen (Abb. 10, SN 640 024a S. 18) ──────────────────────
 // Einheit: Fz/h — Caller multipliziert mit PCE_RING für PWE/h
 // rights[i]    = 1. Ausfahrt (Rechtsabbieger) von Arm i
 // straights[i] = 2. Ausfahrt (Geradeaus)     von Arm i  [4-Arm: belegt, 3-Arm: ignoriert]
@@ -297,5 +331,19 @@ export function computeQKfromTurnings(
     return n === 4
       ? straights[p1] + lefts[p1] + lefts[p2]
       : lefts[p1]
+  })
+}
+
+// ── Speicherdatei: Typ je Einfahrt ────────────────────────────────────────────
+// Neuere Dateien führen den Typ je Arm; ältere einen Typ je Knoten, der dann für alle Arme gilt.
+export function entryTypesFromFile(
+  data: { type?: unknown; arms?: unknown }, count: number,
+): RoundaboutType[] {
+  const isType = (v: unknown): v is RoundaboutType => ROUNDABOUT_TYPES.includes(v as RoundaboutType)
+  const common = isType(data.type) ? data.type : '1/1'
+  const arms = Array.isArray(data.arms) ? data.arms as { type?: unknown }[] : []
+  return Array.from({ length: count }, (_, i) => {
+    const t = arms[i]?.type
+    return isType(t) ? t : common
   })
 }

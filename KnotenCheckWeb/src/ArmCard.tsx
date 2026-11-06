@@ -1,7 +1,7 @@
 // Arm-Eingabekarte und Bewegungs-Labels nach SN 640 022
 // Geteilt zwischen SN022App (analytischer Rechner) und SimulationApp
 
-import { armLabel, armFactor, totalVolume, pctPW } from './engine/armConfiguration'
+import { armLabel, armFactor, pctPW } from './engine/armConfiguration'
 import type {
   ArmConfiguration, GradientCategory, VehicleCategoryMix,
 } from './engine/armConfiguration'
@@ -79,18 +79,18 @@ export function MixedLaneHint({ index, arm, opposingHSSeparateLane }: {
   if (arm.hasRightTurnTriangleIsland) {
     recommendation = {
       combo: `Links+Kreuzen (${streams.leftThrough})`,
-      reason: `Fn 4 (Dreiecksinsel) ist aktiv: Der NS-Rechtsabbieger (Strom ${streams.right}) wartet an einer baulich getrennten Haltlinie und gehört nicht zum Mischstreifen.`,
+      reason: `Die Dreiecksinsel ist aktiv: Der NS-Rechtsabbieger (Strom ${streams.right}) wartet an einer baulich getrennten Haltlinie und gehört nicht zum Mischstreifen.`,
     }
   } else if (opposingHSSeparateLane) {
     if (isB) {
       recommendation = {
         combo: `Links+Kreuzen (${streams.leftThrough})`,
-        reason: `Arm A hat Fn 1 (separater Rechtsabbiegestreifen): Strom ${streams.right} muss nur dem rechten Fahrstreifen von A Vortritt geben und erhält dadurch deutlich mehr Kapazität als Strom ${streams.left} und ${streams.through}. Das Berechnungsbeispiel Punkt 22 der Norm (S. 13) wählt in diesem Fall Links+Kreuzen — der Rechtseinbieger wird separat beurteilt.`,
+        reason: `Arm A hat einen separaten Rechtsabbiegestreifen: Strom ${streams.right} muss nur dem rechten Fahrstreifen von A Vortritt geben und erhält dadurch deutlich mehr Kapazität als Strom ${streams.left} und ${streams.through}. Das Berechnungsbeispiel Ziff. 22 der Norm (S. 13–14) wählt in diesem Fall Links+Kreuzen — der Rechtseinbieger wird separat beurteilt.`,
       }
     } else {
       recommendation = {
-        combo: `Kreuzen+Rechts (${streams.throughRight})`,
-        reason: `Arm C hat Fn 1 (separater Rechtsabbiegestreifen): Strom ${streams.right} muss nur dem rechten Fahrstreifen von C Vortritt geben und erhält mehr Kapazität. Das Berechnungsbeispiel Punkt 22 der Norm (S. 13) wählt in diesem Fall Kreuzen+Rechts — der Linkseinbieger (Strom ${streams.left}) wird separat beurteilt.`,
+        combo: `Links+Kreuzen (${streams.leftThrough})`,
+        reason: `Arm C hat einen separaten Rechtsabbiegestreifen: Strom ${streams.right} muss nur dem rechten Fahrstreifen von C Vortritt geben und erhält mehr Kapazität. Annahme: gleich behandelt wie Arm B im Berechnungsbeispiel Ziff. 22 (S. 13–14); das Beispiel selbst zeigt für Arm D keinen solchen Fall.`,
       }
     }
   }
@@ -100,10 +100,10 @@ export function MixedLaneHint({ index, arm, opposingHSSeparateLane }: {
                   background: '#f8fafc', border: '1px solid #e2e8f0', fontSize: 11,
                   color: '#475569', lineHeight: 1.6 }}>
       <div style={{ fontWeight: 600, color: '#334155', marginBottom: 6 }}>
-        Was bedeuten die Optionen? (SN 640 022, Abschn. 13, F21)
+        Was bedeuten die Optionen? (SN 640 022, Ziff. 13, S. 7)
       </div>
       <div style={{ marginBottom: 4 }}>
-        <strong>Formel F21:</strong> L_m = Σqᵢ / Σaᵢ — harmonisches Mittel der Einzelströme.
+        <strong>Formel:</strong> L_m = Σqᵢ / Σaᵢ — harmonisches Mittel der Einzelströme.
         Ein stark belasteter Strom senkt die Mischstreamkapazität der gesamten Gruppe.
         Deshalb ist wichtig, nur Ströme zusammenzufassen die wirklich hinter derselben Haltlinie warten.
       </div>
@@ -142,7 +142,7 @@ export function MixedLaneHint({ index, arm, opposingHSSeparateLane }: {
 
 // ── ArmCard ────────────────────────────────────────────────────────────────────
 
-export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, onChange, footer, geometryLocked, hideMixedLane, live }: {
+export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, onChange, footer, geometryLocked, hideMixedLane, hideIsland, live }: {
   arm: ArmConfiguration; index: number; isHS: boolean; armCount: number
   opposingHSSeparateLane: boolean
   onChange: (a: ArmConfiguration) => void
@@ -152,6 +152,8 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
   // Mischstreifen-Kombination (F21) ausblenden — z. B. im Simulations-Rechner,
   // der die NS-Ströme ohnehin immer an einer gemeinsamen Haltlinie simuliert.
   hideMixedLane?: boolean
+  // Dreiecksinsel ausblenden — die Simulation kennt nur eine Haltelinie je Arm
+  hideIsland?: boolean
   // Zahlenfelder live aktualisieren (jeder Tastendruck) statt erst bei Blur —
   // im Simulations-Rechner aktiviert, damit Karten-Total, f und PW% live mitlaufen.
   live?: boolean
@@ -161,7 +163,6 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
   const bg   = isHS ? '#eff6ff' : '#fff7ed'
   const bd   = isHS ? '#bfdbfe' : '#fed7aa'
   const f    = armFactor(arm)
-  const tot  = totalVolume(arm)
   const mix  = arm.vehicleMix
 
   const upd = <K extends keyof ArmConfiguration>(k: K, v: ArmConfiguration[K]) =>
@@ -170,9 +171,11 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
     mix && onChange({ ...arm, vehicleMix: { ...mix, [k]: v } })
 
   const pw = mix ? pctPW(mix) : null
-  const pwOk = pw === null || pw >= 0
+  const pwOk = !mix || mix.pctLW + mix.pctLZ + mix.pctMR + mix.pctFR <= 100
 
   const movements = getMovements(index, armCount)
+  // Nur Bewegungen dieses Arms zählen; am T-Knoten gibt es nicht alle drei
+  const tot = movements.reduce((s, m) => s + (arm[m.key] as number), 0)
   const isNS4arm  = !isHS && armCount === 4
 
   // Welche Geometrie-Fussnoten sind überhaupt wirksam?
@@ -184,7 +187,7 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
   // HS-Linksabbieger (Strom 1/7) → separater Linksabbiegestreifen (Ziffer 14 / F22):
   // T-Knoten nur Arm C (index 1, Strom 7); Kreuzung beide HS-Arme (Strom 1 und 7).
   const showLeftLane = isHS && (armCount === 4 || index === 1)
-  const showNSGeom = !isHS && armCount === 4
+  const showNSGeom = !isHS && armCount === 4 && !(hideIsland && hideMixedLane)
   const showGeom   = showHSGeom || showLeftLane || showNSGeom
 
   return (
@@ -243,8 +246,10 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
           </ToggleBtn>
         </div>
         <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 5 }}>
-          Fall 1: f pauschal nach Tab. 1 (F9). · Fall 2: f je Fahrzeugkategorie nach Tab. 2 (F10).
+          Fall 1: f pauschal nach Tab. 1. · Fall 2: f je Fahrzeugkategorie nach Tab. 2 (beide Ziff. 8, S. 4).
           In beiden Fällen ist die Neigung massgebend.
+          {mix && <> <strong style={{ color: '#6b7280' }}>Annahme:</strong> Die Anteile gelten für
+          alle Ströme dieses Arms; die Norm rechnet je Strom.</>}
         </div>
       </div>
       <Row label="Neigung der Zufahrt"
@@ -290,10 +295,10 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
 
       {/* Massgebende Hauptstrombelastung (Ziffer 7) — Fussnoten je Knotentyp */}
       {showGeom && (<>
-      <SectionLabel title="Massgebende Hauptstrombelastung (Ziffer 7)" />
+      <SectionLabel title="Massgebende Hauptstrombelastung (Ziff. 7, S. 3)" />
       <div style={{ padding: '7px 14px', fontSize: 11, color: '#9ca3af', lineHeight: 1.5,
                     borderBottom: '1px solid #f3f4f6' }}>
-        Bauliche Merkmale (Fussnoten 1–4) bestimmen, welche Hauptströme in die massgebende
+        Bauliche Merkmale (Fussnoten 1–4, S. 3) bestimmen, welche Hauptströme in die massgebende
         Konfliktbelastung qpi eingehen — jede aktivierte Option senkt qpi und erhöht damit die
         Leistungsfähigkeit.
       </div>
@@ -301,15 +306,17 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
         <>
           {showHSGeom && (<>
           <Row label="Rechtsabbieger auf separatem Streifen"
-               sub="F1: q3 resp. q9 entfällt aus NS-Konfliktformeln F3–F8">
+               sub="Der halbe Rechtsabbiegeverkehr zählt für die Nebenstrasse nicht mehr (Fussnote 1, S. 3)">
             <Ckbx checked={arm.hasSeparateTurnLane} onChange={v => upd('hasSeparateTurnLane', v)} />
           </Row>
-          <Row label="Dreiecksinsel für HS-Rechtsabbieger"
-               sub="F3: zusätzlich entfällt q3 / q9 aus F1, F2, F5, F6">
-            <Ckbx checked={arm.hasRightTurnTriangleIsland} onChange={v => upd('hasRightTurnTriangleIsland', v)} />
-          </Row>
+          {!hideIsland && (
+            <Row label="Dreiecksinsel für HS-Rechtsabbieger"
+                 sub="Nur mit «Kein Vortritt» oder «Stop» an der Insel: Rechtsabbieger zählen für Linksabbieger und kreuzende Ströme nicht mehr (Fussnote 3, S. 3). Der halbe Wert für die Nebenstrasse entfällt erst mit dem separaten Streifen oben">
+              <Ckbx checked={arm.hasRightTurnTriangleIsland} onChange={v => upd('hasRightTurnTriangleIsland', v)} />
+            </Row>
+          )}
           <Row label="Hauptstrasse mehrstreifig"
-               sub="F2: bei >1 Fahrstreifen zählt für q2 bzw. q8 nur die Belastung des rechten Fahrstreifens (F3/F4)">
+               sub="Für Rechtseinbieger zählt nur die Belastung des rechten Fahrstreifens (Fussnote 2, S. 3)">
             {/* Startwert = ganzer Geradeausverkehr: keine Entlastung, bis der Wert des
                 rechten Fahrstreifens eingetragen ist */}
             <Ckbx checked={arm.rightLaneVolume !== undefined}
@@ -325,23 +332,25 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
           </>)}
           {showLeftLane && (
             <Row label="Separater Linksabbiegestreifen (HS-Linksabbieger)"
-                 sub="Ohne eigenen Streifen blockiert der HS-Linksabbieger (Strom 1/7) den durchgehenden Verkehr → p₀* (Ziffer 14 / F22), senkt die NS-Kapazität">
+                 sub="Ohne eigenen Streifen staut der HS-Linksabbieger den durchgehenden Verkehr zurück; das senkt die Leistungsfähigkeit der Nebenströme (Ziff. 14, S. 7–8)">
               <Ckbx checked={arm.hasLeftTurnLane ?? true} onChange={v => upd('hasLeftTurnLane', v)} />
             </Row>
           )}
         </>
       ) : (
         <>
-          <Row label="Dreiecksinsel für NS-Rechtsabbieger"
-               sub="F4: q6 / q12 entfällt aus Linkseinbieger-Konfliktformel F7/F8">
-            <Ckbx checked={arm.hasRightTurnTriangleIsland} onChange={v => upd('hasRightTurnTriangleIsland', v)} />
-          </Row>
+          {!hideIsland && (
+            <Row label="Dreiecksinsel für NS-Rechtsabbieger"
+                 sub="Nur mit «Kein Vortritt» oder «Stop» an der Insel: Rechtseinbieger zählen für den gegenüberliegenden Linkseinbieger nicht mehr (Fussnote 4, S. 3)">
+              <Ckbx checked={arm.hasRightTurnTriangleIsland} onChange={v => upd('hasRightTurnTriangleIsland', v)} />
+            </Row>
+          )}
           {isNS4arm && !hideMixedLane && (
             <>
               <div style={{ padding: '7px 14px 4px', borderBottom: '1px solid #f3f4f6' }}>
                 <div style={{ fontSize: 13, color: '#374151' }}>Mischstreifen-Kombination</div>
                 <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>
-                  Welche NS-Ströme teilen dieselbe Wartelinie [F21]
+                  Welche NS-Ströme teilen dieselbe Wartelinie (Ziff. 13, S. 7)
                 </div>
               </div>
               {MIXED_OPTIONS.map(o => (

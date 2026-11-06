@@ -283,14 +283,15 @@ describe('calculateVSS308 — Cross-Fg NS (Kap. 5)', () => {
   })
 
   test('B→C nicht betroffen von FgA (liegt nicht auf B→C Pfad)', () => {
-    const s_no  = r_without.streams.find(s => s.id === 'B→C')!
+    // B→C: from=B(fg=200), to=C(fg=0) — FgA steht nicht als eigener Faktor in β.
+    // Mittelbar wirkt FgA über y_HS: Ströme über den Streifen A haben S = 1650.
     const s_yes = r_with.streams.find(s => s.id === 'B→C')!
-    // B→C: from=B(fg=200), to=C(fg=0) — FgA nicht auf diesem Pfad
-    expect(s_yes.beta).toBeCloseTo(s_no.beta, 8)
+    const yHS = (600 + 400 + 100) / 1650 + 100 / 1750  // nur C→D ohne Fg
+    expect(s_yes.beta).toBeCloseTo((1 - yHS) ** 3 * (1 - 200 / 900) ** 3, 8)
   })
 
   test('B→A β korrekt: (1−y_HS)³ × (1−y_FgB)³ × (1−y_FgA)³', () => {
-    const yHS  = (600 + 600) / 1750
+    const yHS  = (600 + 400 + 100) / 1650 + 100 / 1750
     const yFgB = 200 / 900
     const yFgA = 150 / 900
     const expected = ((1 - yHS) ** 3) * ((1 - yFgB) ** 3) * ((1 - yFgA) ** 3)
@@ -325,8 +326,9 @@ describe('calculateVSS308 — Gleicher Rang', () => {
 // Ein Fussgängerstreifen auf einem HS-Arm, den der NS-Strom nicht selbst
 // überfährt, blockiert während seiner Belegung den senkrechten HS-Konflikt-
 // verkehr → Kapazitätsvorteil (Berichtsbeispiel Kap. 5.2: L_Fz1 = S·y_Fg2 +
-// S·(1−y_Fg2)·β). HS-Ströme bleiben Szenario I (nichts blockiert Fussgänger;
-// vgl. Berichtsbeispiel L_Fz2 = S·β).
+// S·(1−y_Fg2)·β). HS-Geradeaus und -Rechts bleiben Szenario I (nichts blockiert
+// Fussgänger; vgl. Berichtsbeispiel L_Fz2 = S·β). Der HS-Linksabbieger hat Gegenverkehr
+// als senkrechten Strom und folgt dem NS-Strom (eigener Test weiter unten).
 
 describe('calculateVSS308 — Szenario II (parallele Fg)', () => {
   const armsBase = [
@@ -487,5 +489,123 @@ describe('Trottoirüberfahrt — gleiche Rechnung wie Fussgängerstreifen', () =
     // Rechnung unverändert gegenüber der Datei ohne das Feld
     expect(calculateVSS308({ type: '4arm', arms: geladen }))
       .toEqual(calculateVSS308({ type: '4arm', arms: datei as ArmInput[] }))
+  })
+})
+
+// ── Tab. 26 (S. 68): Berichtsbeispiel Universitäts-/Vogelsangstrasse ──────────
+// Fz2 gewährt Fg2 Vortritt und ist damit nachrangig (S = 1650, C = 1); Fz1 (S. 64–67)
+// wartet auf Fg1 und Fz2 und hat Fg2 als parallelen Strom (Szenario II). Ohne Tram.
+describe('Tab. 26 — Fahrzeuge, die Fussgänger*innen Vortritt gewähren', () => {
+  const r = calculateVSS308({
+    type: '3arm',
+    arms: [
+      { name: 'A', roadType: 'HS', right: 0, straight: 480, left: 0, fg: 94 },
+      { name: 'C', roadType: 'HS', right: 0, straight: 0,   left: 0, fg: 0 },
+      { name: 'B', roadType: 'NS', right: 370, straight: 0, left: 0, fg: 58 },
+    ],
+  })
+  const fz2 = r.streams.find(s => s.id === 'A→C')!
+  const fz1 = r.streams.find(s => s.id === 'B→C')!
+
+  test('Fz2: S = 1650, L = 1185, w = 4.1 s', () => {
+    expect(fz2.saturation).toBe(1650)
+    approx(fz2.capacity, 1185, 1)
+    approx(fz2.delay, 4.1, 0.05)
+  })
+  test('Fz1: L = 603, w = 18.2 s (y_Fz2 mit S = 1650)', () => {
+    expect(fz1.scenario).toBe('II')
+    approx(fz1.capacity, 603, 1.5)
+    approx(fz1.delay, 18.2, 0.2)
+  })
+  test('Arm A folgt dem Strom: S = 1650, Wartezeit wie Fz2', () => {
+    expect(r.arms[0].saturation).toBe(1650)
+    approx(r.arms[0].delay, fz2.delay, 1e-9)
+  })
+  test('ohne Fussgänger*innen bleibt Rang 1: S = 1750, C = 0.5', () => {
+    const o = calculateVSS308({
+      type: '3arm',
+      arms: [
+        { name: 'A', roadType: 'HS', right: 0, straight: 480, left: 0, fg: 0 },
+        { name: 'C', roadType: 'HS', right: 0, straight: 0,   left: 0, fg: 0 },
+        { name: 'B', roadType: 'NS', right: 370, straight: 0, left: 0, fg: 0 },
+      ],
+    })
+    const s = o.streams.find(x => x.id === 'A→C')!
+    expect(s.saturation).toBe(1750)
+    approx(s.delay, computeDelay(480, 1750, 0.5), 1e-9)
+    expect(o.arms[0].saturation).toBe(1750)
+    approx(o.arms[0].delay, s.delay, 1e-9)
+    // y_HS mit 1750: Fz1 ohne Fg
+    approx(o.streams.find(x => x.id === 'B→C')!.beta, (1 - 480 / 1750) ** 3, 1e-9)
+  })
+  test('Fg nur auf der Ausfahrt genügt: Strom hat C = 1, der Nachbarstrom nicht', () => {
+    const o = calculateVSS308({
+      type: '4arm',
+      arms: [
+        { name: 'A', roadType: 'HS', right: 100, straight: 400, left: 0, fg: 0 },
+        { name: 'C', roadType: 'HS', right: 0,   straight: 0,   left: 0, fg: 200 },
+        { name: 'B', roadType: 'NS', right: 0, straight: 0, left: 0, fg: 0 },
+        { name: 'D', roadType: 'NS', right: 0, straight: 0, left: 0, fg: 0 },
+      ],
+    })
+    expect(o.streams.find(x => x.id === 'A→C')!.saturation).toBe(1650)
+    expect(o.streams.find(x => x.id === 'A→B')!.saturation).toBe(1750)
+  })
+})
+
+// ── HS-Linksabbieger: Szenario II (Abb. 22, S. 60; Gl. 6, S. 61) ──────────────
+describe('HS-Linksabbieger mit parallelem Fussgängerstreifen', () => {
+  const arms = (fgC: number): ArmInput[] => [
+    { name: 'A', roadType: 'HS', right: 0,   straight: 500, left: 100, fg: 0 },
+    { name: 'C', roadType: 'HS', right: 100, straight: 500, left: 0,   fg: fgC },
+    { name: 'B', roadType: 'NS', right: 0, straight: 0, left: 0, fg: 0 },
+    { name: 'D', roadType: 'NS', right: 0, straight: 0, left: 0, fg: 0 },
+  ]
+  const left = (fgC: number) =>
+    calculateVSS308({ type: '4arm', arms: arms(fgC) }).streams.find(s => s.id === 'A→D')!
+
+  test('ohne Fg: Szenario I, y_gegen mit S = 1750', () => {
+    const s = left(0)
+    expect(s.scenario).toBe('I')
+    approx(s.capacity, 1650 * (1 - 600 / 1750) ** 3, 1e-6)
+  })
+  test('Fg auf dem Gegenarm: Szenario II; Gegenverkehr hat dort S = 1650', () => {
+    const s = left(300)
+    const y = 300 / 900
+    const beta = (1 - 600 / 1650) ** 3
+    expect(s.scenario).toBe('II')
+    approx(s.yParallel, y, 1e-9)
+    approx(s.beta, beta, 1e-9)
+    approx(s.capacity, 1650 * (y + (1 - y) * beta), 1e-6)
+  })
+  test('Der Streifen nützt dem Linksabbieger trotz kleinerem β', () => {
+    expect(left(300).beta).toBeLessThan(left(0).beta)
+    expect(left(300).capacity).toBeGreaterThan(left(0).capacity)
+  })
+  test('Eigener Streifen (Einfahrt) bleibt senkrecht: kein Szenario II', () => {
+    const a = arms(0).map((x, i) => i === 0 ? { ...x, fg: 300 } : x)
+    expect(calculateVSS308({ type: '4arm', arms: a }).streams.find(s => s.id === 'A→D')!.scenario).toBe('I')
+  })
+  test('ohne Gegenverkehr nichts zu blockieren: Szenario I', () => {
+    const a = arms(300).map((x, i) => i === 1 ? { ...x, right: 0, straight: 0 } : x)
+    expect(calculateVSS308({ type: '4arm', arms: a }).streams.find(s => s.id === 'A→D')!.scenario).toBe('I')
+  })
+})
+
+// ── Strom ohne Verkehr ────────────────────────────────────────────────────────
+describe('Strom ohne Verkehr bei L = 0', () => {
+  test('keine Überlastung, keine Wartezeit', () => {
+    const r = calculateVSS308({
+      type: '3arm',
+      arms: [
+        { name: 'A', roadType: 'HS', right: 0, straight: 1000, left: 0, fg: 0 },
+        { name: 'C', roadType: 'HS', right: 0, straight: 900,  left: 0, fg: 0 },
+        { name: 'B', roadType: 'NS', right: 0, straight: 0,    left: 0, fg: 0 },
+      ],
+    })
+    const s = r.streams.find(x => x.id === 'B→A')!
+    expect(s.capacity).toBe(0)
+    expect(s.delay).toBe(0)
+    expect(s.levelOfService).toBe('A')
   })
 })

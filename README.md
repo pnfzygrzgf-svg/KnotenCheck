@@ -58,7 +58,7 @@ Das Verfahren gilt für Einmündungen (drei Arme) und Kreuzungen (vier Arme).
 
 **Was die Norm nicht berücksichtigt:** Die SN 640 022 berechnet ausschliesslich die Leistungsfähigkeit für **motorisierten Individualverkehr (MIV)**. Fussgänger*innen kommen im Berechnungsverfahren nicht vor. Wer die Qualität eines Knotens für den Fussverkehr beurteilen will, braucht andere Methoden — z. B. den Rechner [Ungesteuerter Knoten mit Fussgänger*innen](#ungesteuerter-knoten-mit-fussgängerinnen-vss-2011308).
 
-Der Rechner folgt dem **generellen Vorgehen nach Ziffer 5** der SN 640 022 (sechs Schritte):
+Der Rechner folgt dem **generellen Vorgehen nach Ziffer 5** der SN 640 022 (S. 2). Die Norm nennt acht Schritte; die angestrebte Qualitätsstufe und der Vergleich damit bleiben bei den Anwendenden, die übrigen sechs folgen hier:
 
 ### Schritt 1: Regime und Rangfolge festlegen
 
@@ -79,6 +79,8 @@ Für jeden Strom wird die **massgebende Belastung** bestimmt: Wer kommt woher un
 
 Weil ein Lastwagen mehr Platz und Zeit beansprucht als ein Personenwagen, wird die **eigene Belastung jedes Stroms** in **Personenwagen-Einheiten pro Stunde (PWE/h)** umgerechnet (Ziffer 8). Dabei spielt auch die Strassenneigung eine Rolle — ein Lastwagen an einem Hang entspricht mehr PWE/h als in der Ebene. Diese PWE-Belastung Q ist später die eigene Nachfrage in Auslastungsgrad und Reserve (Schritt 6).
 
+*Annahme:* Bei bekannten Fahrzeugkategorien (Fall 2) gelten die eingegebenen Anteile für alle Ströme eines Arms. Die Norm rechnet je Strom (F10, Ziff. 8, S. 4).
+
 ### Schritt 3: Massgebende Hauptstrombelastungen qpi ermitteln
 
 Für jeden Strom ab Rang 2 wird das **massgebende Hauptstromvolumen qpi** berechnet — die Summe aller vortrittsberechtigten Ströme, denen er ausweichen muss (Formeln F1–F8 je nach Fahrbeziehung). qpi ist die x-Achse von Abbildung 2.
@@ -87,7 +89,7 @@ qpi wird in echten **Fahrzeugen pro Stunde (Fz/h)** gezählt — nicht in PWE/h:
 
 Die Geometrie verändert qpi:
 - **Mehrere Fahrstreifen / separater Abbiegestreifen auf der Hauptstrasse:** Wer von der Nebenstrasse einbiegt, muss hauptsächlich eine Lücke im nächstgelegenen Fahrstreifen abwarten — das reduziert das wirksame Konfliktvolumen.
-- **Dreiecksinsel für Rechtsabbieger:** Eine Dreiecksinsel trennt den Rechtsabbiegestreifen baulich ab; Rechtsabbieger zählen dann nicht mehr zum Konfliktvolumen der anderen Nebenstrassen-Ströme.
+- **Dreiecksinsel für Rechtsabbieger:** Ist die Insel mit «Kein Vortritt» oder «Stop» belastet, zählen die Rechtsabbieger für Linksabbieger und kreuzende Ströme nicht mehr (Fussnote 3, S. 3). Der halbe Wert 0,5·q3 bzw. 0,5·q9 in den übrigen Formeln entfällt erst mit dem separaten Rechtsabbiegestreifen (Fussnote 1, S. 3); beide Optionen sind getrennt anzukreuzen.
 
 ### Schritt 4: Grundleistungsfähigkeit Gi ermitteln
 
@@ -100,6 +102,8 @@ Je dichter der Hauptstrom (je grösser qpi), desto seltener gibt es eine freie L
 - **Rang 2:** L = G (kein vorgelagerter Konflikt).
 - **Rang 3 und 4:** Diese Ströme können nur abfliessen, wenn die höherrangigen Ströme keinen Rückstau haben. L ist deshalb kleiner als G: G wird mit der **Wahrscheinlichkeit des staufreien Zustandes p₀,ᵢ** der übergeordneten Ströme multipliziert (bei Rang 4 zusätzlich um die statistische Abhängigkeit korrigiert, Abbildung 3).
 - **Mischstreifen Lm:** Benutzen mehrere Nebenstrom-Ströme dieselbe Spur (kein separater Abbiegestreifen), berechnet die Norm eine kombinierte Leistungsfähigkeit Lm nach Formel F21 (nachfragegewichteter harmonischer Mittelwert). Je stärker die einzelnen Ströme ausgelastet sind, desto tiefer fällt Lm aus.
+
+  *Annahme:* Am T-Knoten teilen sich Strom 4 und 6 immer einen Fahrstreifen, an der Kreuzung mindestens zwei Ströme je Arm. Die Norm kennt Mischstreifen nur, wenn Fahrstreifen im Knotenbereich von mehreren Strömen benutzt werden (Ziff. 12, S. 7). Bei getrennten Streifen ist die Gesamtstufe zu streng; massgebend sind dann die Einzelströme.
 
 ### Schritt 6: Belastungsreserve Ri und mittlere Wartezeit wi
 
@@ -115,6 +119,8 @@ Je dichter der Hauptstrom (je grösser qpi), desto seltener gibt es eine freie L
 | D | 25–45 s | Ausreichend — Auslastung nahe der zulässigen Belastung |
 | E | > 45 s | Kritisch — instabiler Verkehrszustand, stark streuende Wartezeiten |
 | F | — | Überlastung — Zufluss grösser als Leistungsfähigkeit, wachsende Kolonnen |
+
+Für die Gesamtstufe ist die grösste Wartezeit massgebend (Ziff. 17, S. 9). Ströme und Mischstreifen ohne Verkehr zählen nicht; ohne Verkehr gibt es keine Gesamtstufe.
 
 ### Technische Details
 
@@ -164,6 +170,8 @@ mit T = 1.0 h (Spitzenstunde — die Norm bemisst auf die Spitzenstunde, vgl. Be
 L_m = Σq_i / Σ(q_i/L_i)
 ```
 
+**Normbeispiel Ziffer 22:** Die Tabelle auf S. 14 rechnet L4 = pz,5·p0,12·G4 = 200 und L10 = pz,11·p0,6·G10 = 174, entgegen F19/F20 (S. 6). KnotenCheck folgt den Formeln und ergibt L4 ≈ 194 und L10 ≈ 181.
+
 ---
 
 ## Kreisverkehr (SN 640 024a)
@@ -175,7 +183,7 @@ An einem Kreisverkehr hat der umlaufende Verkehr auf der Kreiselfahrbahn Vortrit
 Das Verfahren nach SN 640 024a gilt für Kleinkreisel mit einstreifiger Kreiselfahrbahn und einstreifiger (1/1) oder zweistreifiger Einfahrt auf überbreiter Kreiselfahrbahn (2/1+). Für zweistreifige Kreisel mit zweistreifiger Einfahrt **und** zweistreifiger Kreisfahrbahn (Typ 2/2) wird zusätzlich der VSS-Forschungsbericht 2005/301 *Leistungsfähigkeit zweistreifiger Kreisel* verwendet, der eine empirisch hergeleitete Exponentialformel für die Einfahrtsleistungsfähigkeit liefert.
 
 **Funktionen des Rechners:**
-- Kreiseltypen 1/1, 2/1+ und 2/2
+- Kreiseltypen 1/1, 2/1+ und 2/2, je Einfahrt wählbar (Ziffer 11, S. 12), mit Schnellwahl für alle Arme; ältere Speicherdateien mit einem Typ je Knoten bleiben ladbar
 - Abbiegeströme je Zufahrt als Eingabe
 - PWE-Umrechnung (Tab. 2): Verkehrsmischung pauschal (Motorfahrzeuge) oder detailliert (Fahrzeugkategorien) + Längsneigung
 - Kapazität, Auslastungsgrad, Wartezeit und Qualitätsstufe je Zufahrt
@@ -199,14 +207,15 @@ Die Kreiselfahrbahn Q_K verwendet immer die Werte bei Längsneigung ±0 % (Norm 
 
 Bevor die Einfahrten beurteilt werden, prüft die Norm (Ziffer 10), ob der Verkehr den Kreisel überhaupt **verlassen** kann: An jeder Ausfahrt muss das Ausfahrtsvolumen Q_A(i) unter der Ausfahrtsleistungsfähigkeit L_A(i) liegen.
 
-- **Q_A(i)** — Summe aller Bewegungen, die an Arm i den Kreisel verlassen (aus den Abbiegeströmen, mit f der Herkunftsarme gewichtet) [PWE/h]
+- **Q_A(i)** — Summe aller Bewegungen, die an Arm i den Kreisel verlassen [PWE/h]. **Annahme:** Die Abbiegeströme sind mit f der Herkunftsarme gewichtet, also auch mit der Neigung ihrer Einfahrt; die Norm nennt für Ausfahrten keinen Faktor (Ziffer 9.2, S. 8–9).
 - **L_A(i)** — Ausfahrtsleistungsfähigkeit: maximal 1400 PWE/h ohne Fussgänger*innen, reduziert durch querenden Fussgängerverkehr je nach Ausfahrtsbreite B (3,5 m / 4,5 m), Abbildung 5, Seite 11.
+- **Typ 2/2:** Richtwerte aus VSS 2005/301 Ziffer 5.2.3, S. 64: 1700 Fz/h (einstreifige Ausfahrt) und 1850 Fz/h (zweistreifige Ausfahrt), beide ohne Fussgänger*innen. Es gilt der Typ des Arms, die Fahrstreifenzahl der Ausfahrt ist wählbar. Die Quelle nennt keinen Abzug für Fussgänger*innen («einzeln abklären», Ziffer 4.2, S. 58), und SN 640 024a schliesst zweistreifige Ausfahrten mit Fussgängerstreifen aus (Ziffer 1, S. 3). **Annahmen:** Der Abzug folgt anteilig Abbildung 5 (zweistreifig: 4,5-m-Kurve), und die Richtwerte in Fz/h werden direkt mit Q_A in PWE/h verglichen.
 
-Ist **Q_A > L_A** an einer Ausfahrt, blockiert stockender Abfluss die Kreiselfahrbahn — gemäss Norm sind dann andere Knotenformen zu prüfen. KnotenCheck weist diesen Fall aus.
+Ist **Q_A > L_A** an einer Ausfahrt, blockiert stockender Abfluss die Kreiselfahrbahn — gemäss Norm sind dann andere Knotenformen zu suchen. KnotenCheck weist diesen Fall auch in der Gesamtbeurteilung und auf dem Bewertungsblatt aus.
 
 ### Schritt 3: Einfahrtsleistungsfähigkeit berechnen
 
-Die Grundleistungsfähigkeit L_E(i) hängt linear von der Kreiselfahrbahnbelastung Q_K(i) ab (Abbildung 6, Seite 12):
+Die Grundleistungsfähigkeit L_E(i) hängt je nach Typ der Einfahrt von der Kreiselfahrbahnbelastung Q_K(i) ab (Abbildung 6, Seite 12). Der Typ gilt je Einfahrt, wie im Normbeispiel mit zweistreifigen Einfahrten an den Armen 1 und 4 (Tab. 8, S. 22; Tab. 9, S. 23). Typ 2/2 setzt eine zweistreifige Kreiselfahrbahn voraus; zusammen mit 1/1 oder 2/1+ erscheint ein Hinweis.
 
 ```
 1/1:   L_E = 1141 − 0.578 · Q_K         (SN 640 024a, linear, gültig 0 ≤ Q_K ≤ 1400)
@@ -251,9 +260,9 @@ Wie beim Rechner [Einmündung & Kreuzung](#einmündung-und-kreuzung-sn-640-022):
 | Abbildung | Inhalt | Im Rechner |
 |---|---|---|
 | **Abb. 6** | L_E Einfahrtsleistungsfähigkeit | **Formel** (Regressionskurven der Norm) |
-| **Abb. 3** | f_F, einstreifige Einfahrt | **abgelesen** (Stützpunkte, bilinear interpoliert) |
-| **Abb. 4** | f_F, zweistreifige Einfahrt | **abgelesen** (Stützpunkte, bilinear interpoliert) |
-| **Abb. 5** | L_A Ausfahrtsleistungsfähigkeit | **abgelesen** (Stützpunkte, linear interpoliert) |
+| **Abb. 3** | f_F, einstreifige Einfahrt | **Vektorkurven** (Stützpunkte, bilinear interpoliert) |
+| **Abb. 4** | f_F, zweistreifige Einfahrt | **Vektorkurven** (Stützpunkte, bilinear interpoliert) |
+| **Abb. 5** | L_A Ausfahrtsleistungsfähigkeit | **Vektorkurven** (Stützpunkte, linear interpoliert) |
 | **Abb. 7** | w mittlere Wartezeit | **Formel** (zeitabhängig, wie SN 640 022) |
 | **Abb. 8** | 95-%-Rückstaulänge | **nicht implementiert** |
 
@@ -265,32 +274,32 @@ Wie beim Rechner [Einmündung & Kreuzung](#einmündung-und-kreuzung-sn-640-022):
 2/2:   L_E = 1639,9·e^(−0,0006·Q_K)   (VSS 2005/301, Abb. 4.25)
 ```
 
-**Korrekturfaktor f_F — Abbildungen 3 und 4 (abgelesen):** f_F ist als Kurvenschar (Parameter FG = 100, 200, 300, 400 FG/h) über Q_K dargestellt. KnotenCheck liest die Kurven als Stützpunkttabellen ab und interpoliert bilinear (in FG und in Q_K); FG = 0 ergibt f_F = 1,0, zwischen 0 und 100 FG/h wird linear zur 100er-Kurve interpoliert. Über 400 FG/h (Ende der Diagramme, auch Abb. 5) wird mit der 400er-Kurve gerechnet und ein Hinweis angezeigt: Die Leistungsfähigkeit ist dann eher überschätzt. f_F ist am kleinsten bei Q_K = 0 und steigt mit Q_K gegen 1,0. Startwerte (Q_K = 0):
+**Korrekturfaktor f_F — Abbildungen 3 und 4:** f_F ist als Kurvenschar (Parameter FG = 100, 200, 300, 400 FG/h) über Q_K dargestellt. Die Kurven liegen im Norm-PDF als Vektorpfade vor; KnotenCheck hat sie im Abstand von 100 PWE/h ausgelesen und interpoliert bilinear (in FG und in Q_K); FG = 0 ergibt f_F = 1,0, zwischen 0 und 100 FG/h wird linear zur 100er-Kurve interpoliert. Über 400 FG/h (Ende der Diagramme, auch Abb. 5) wird mit der 400er-Kurve gerechnet und ein Hinweis angezeigt: Die Leistungsfähigkeit ist dann eher überschätzt. f_F ist am kleinsten bei Q_K = 0 und steigt mit Q_K gegen 1,0. Startwerte (Q_K = 0):
 
 | FG [FG/h] | Abb. 3 (1-streifig) | Abb. 4 (2-streifig) |
 |---:|---:|---:|
 | 100 | 0,99 | 0,89 |
-| 200 | 0,93 | 0,86 |
-| 300 | 0,87 | 0,83 |
-| 400 | 0,81 | 0,80 |
+| 200 | 0,932 | 0,86 |
+| 300 | 0,871 | 0,83 |
+| 400 | 0,809 | 0,80 |
 
 Für Typ 2/2 liefert VSS 2005/301 kein f_F (zu wenig Fussgänger*innen an den Messstandorten) — KnotenCheck verwendet die Abb.-4-Kurven (2/1+) analog.
 
-**Ausfahrtsleistungsfähigkeit L_A — Abbildung 5 (abgelesen):** L_A hängt von der querenden Fussgängerzahl FG und der Ausfahrtsbreite B ab (maximal 1400 PWE/h ohne Fussgänger*innen). Stückweise lineare Interpolation der abgelesenen Stützpunkte:
+**Ausfahrtsleistungsfähigkeit L_A — Abbildung 5:** L_A hängt von der querenden Fussgängerzahl FG und der Ausfahrtsbreite B ab (maximal 1400 PWE/h ohne Fussgänger*innen). Stückweise lineare Interpolation der aus den Vektorpfaden ausgelesenen Stützpunkte:
 
 | FG [FG/h] | B = 3,5 m | B = 4,5 m |
 |---:|---:|---:|
 | 0 | 1400 | 1400 |
-| 50 | 1355 | 1340 |
-| 100 | 1310 | 1280 |
-| 150 | 1270 | 1240 |
-| 200 | 1230 | 1190 |
-| 250 | 1195 | 1140 |
-| 300 | 1160 | 1100 |
-| 350 | 1130 | 1055 |
-| 400 | 1095 | 1020 |
+| 50 | 1353 | 1340 |
+| 100 | 1309 | 1284 |
+| 150 | 1268 | 1233 |
+| 200 | 1229 | 1184 |
+| 250 | 1193 | 1139 |
+| 300 | 1159 | 1097 |
+| 350 | 1126 | 1057 |
+| 400 | 1095 | 1017 |
 
-Die 3,5-m-Stützpunkte decken sich mit Tabelle 5 des Anwendungsbeispiels (FG 100 → 1310, 300 → 1160, 0 → 1400); bei FG 250 ergibt die Kurvenablesung 1195 gegenüber gedruckt 1190 — innerhalb der Ablesetoleranz.
+Tabelle 5 des Anwendungsbeispiels (S. 19) ist gerundet aus dem Diagramm abgelesen: FG 100 → 1310, 250 → 1190, 300 → 1160 gegenüber 1309, 1193 und 1159 auf der Kurve.
 
 **Wartezeit w — Abbildung 7 (Formel):**
 
@@ -328,8 +337,8 @@ Das Entscheidungsdiagramm des Berichts (Kap. 5.1.1 bzw. Kap. 8, Schritt 3.1) unt
 
 KnotenCheck implementiert beide Szenarien:
 
-- **Szenario I** (Gl. 5: `L = S·β`) für **HS-Ströme** (ihre senkrechten Vortrittsströme sind Fussgänger*innen, die von keinem parallelen Modus blockiert werden — analog Berichtsbeispiel `L_Fz2 = S·β`) und für NS-Ströme ohne parallele Fg-Ströme.
-- **Szenario II** (Gl. 6: `L = S·y_par + S·(1−y_par)·β`) für **NS-Ströme**, wenn Fussgängerstreifen auf HS-Armen existieren, die der Strom **nicht selbst überfährt**: Solange dort gequert wird (Zeitanteil `y_par = Σ Q_Fg/S_Fg`, auf 1 begrenzt), ist der senkrechte HS-Konfliktverkehr blockiert — der NS-Strom kann einbiegen. Voraussetzung ist vorhandener HS-Verkehr (sonst gibt es nichts zu blockieren). Solche Ströme sind im Ergebnis mit «Sz II» markiert.
+- **Szenario I** (Gl. 5: `L = S·β`) für **HS-Geradeaus und -Rechts** (ihre senkrechten Vortrittsströme sind Fussgänger*innen, die von keinem parallelen Modus blockiert werden — analog Berichtsbeispiel `L_Fz2 = S·β`, S. 65) und für alle übrigen Ströme ohne parallele Fg-Ströme.
+- **Szenario II** (Gl. 6, S. 61: `L = S·y_par + S·(1−y_par)·β`) für **NS-Ströme und HS-Linksabbieger**, wenn Fussgängerstreifen auf HS-Armen existieren, die der Strom **nicht selbst überfährt**: Solange dort gequert wird (Zeitanteil `y_par = Σ Q_Fg/S_Fg`, auf 1 begrenzt), ist der senkrechte HS-Konfliktverkehr blockiert — der Strom kann fahren. Beim HS-Linksabbieger ist das der Streifen auf dem Gegenarm: Sein senkrechter Strom ist der Gegenverkehr, und den halten die Fussgänger*innen dort an (Abb. 22, S. 60). Voraussetzung ist vorhandener Konfliktverkehr (sonst gibt es nichts zu blockieren). Solche Ströme sind im Ergebnis mit «Sz II» markiert.
 
 Der [Simulationsrechner](#simulation) bildet denselben Effekt mikroskopisch nach («positiver Kapazitätseffekt»: Fussgänger-Sperrzeiten im Hauptstrom erzwingen Lücken).
 
@@ -346,14 +355,16 @@ Die Berechnung erfolgt **pro Bewegungsrichtung** (A→C, B→A, etc.):
 
 | Strom | β |
 |---|---|
-| HS Geradeaus / Rechts (Rang 1) | `(1 − y_FgEinfahrt)³ × (1 − y_FgAusfahrt)³` |
-| HS Linksabbieger (Rang 2 gegenüber dem Gegenverkehr) | `(1 − y_gegen)³ × (1 − y_FgEinfahrt)³ × (1 − y_FgAusfahrt)³` mit `y_gegen = (Geradeaus + Rechts des gegenüberliegenden HS-Arms) / S_m1`; S = S_m2, C = 1 |
-| NS (Rang 2) | `(1 − y_HS)³ × (1 − y_FgEinfahrt)³ × (1 − y_FgAusfahrt)³` mit `y_HS = gesamte HS-Belastung (beide HS-Arme, alle Richtungen) / S_m1` |
+| HS Geradeaus / Rechts | `(1 − y_FgEinfahrt)³ × (1 − y_FgAusfahrt)³` |
+| HS Linksabbieger (nachrangig gegenüber dem Gegenverkehr) | `(1 − y_gegen)³ × (1 − y_FgEinfahrt)³ × (1 − y_FgAusfahrt)³` mit `y_gegen = Summe Q/S von Geradeaus + Rechts des gegenüberliegenden HS-Arms` |
+| NS | `(1 − y_HS)³ × (1 − y_FgEinfahrt)³ × (1 − y_FgAusfahrt)³` mit `y_HS = Summe Q/S der gesamten HS-Belastung (beide HS-Arme, alle Richtungen)`; S = 1650 Fz/h für Ströme, die Fussgänger*innen Vortritt gewähren, sonst 1750 Fz/h |
 | Gleicher Rang | `y_this / (y_this + y_partner)` |
 
 Ein HS-Fahrzeug, das von A nach C fährt, passiert den Fussgängerstreifen bei Arm A (Einfahrt) **und** den Fussgängerstreifen bei Arm C (Ausfahrt). Beide gehen in das β des Stroms A→C ein.
 
-Der Linksabbieger von der Hauptstrasse muss dem Gegenverkehr Vortritt gewähren (wie Strom 1/7 in der SN 640 022): Er ist gegenüber dem gegenüberliegenden Geradeaus- und Rechtsabbiegeverkehr ein abbiegendes Fahrzeug im Sinn von Tab. 25 des Berichts und erhält β_i = (1 − y)³, den Sättigungsfluss des Rangs 2 und C = 1.
+Der Linksabbieger von der Hauptstrasse muss dem Gegenverkehr Vortritt gewähren (wie Strom 1/7 in der SN 640 022): Er ist gegenüber dem gegenüberliegenden Geradeaus- und Rechtsabbiegeverkehr ein abbiegendes Fahrzeug im Sinn von Tab. 25 des Berichts (S. 58) und erhält β_i = (1 − y)³.
+
+**Rang der HS-Ströme:** Rang 1 mit S = 1750 Fz/h und C = 0.5 haben nur HS-Ströme, die niemandem Vortritt gewähren müssen. Wer Fussgänger*innen auf Einfahrt oder Ausfahrt Vortritt gewährt, ist nachrangig: S = 1650 Fz/h, C = 1, wie Fz2 im Berichtsbeispiel (Tab. 26, S. 68: L = 1185, w = 4.1 s). Dasselbe gilt für den HS-Linksabbieger. In y_HS und y_gegen zählt jeder Strom mit seinem eigenen S; so ergibt auch Fz1 die Werte der Tabelle (L = 603, w = 18.2 s).
 
 Für NS-Ströme setzt KnotenCheck vereinfachend die gesamte HS-Belastung als konfligierend an, auch für Rechtseinbieger (die nach SN 640 022 nur den Verkehr von links abwarten müssten) — das ist konservativ.
 
@@ -368,7 +379,7 @@ Szenario I:   L = S_Modus × β
 Szenario II:  L = S_Modus × y_par + S_Modus × (1 − y_par) × β
 ```
 
-Sättigungsflüsse (Tab. 8 / Tab. 13, VSS 2011/308): S_m1 = 1750 Fz/h (Rang 1), S_m2 = 1650 Fz/h (Rang 2), S_Fg = 900·ρ Fg/h
+Sättigungsflüsse (Tab. 8, S. 34; Tab. 13, S. 39): S_m1 = 1750 Fz/h (Rang 1), S_m2 = 1650 Fz/h (nachrangig), S_Fg = 900·ρ Fg/h
 
 **Fussgänger-Sättigungsfluss S_Fg und Gruppengrösse ρ (Tab. 9, Gl. 4)**
 
@@ -378,7 +389,9 @@ Fussgänger*innen, die gemeinsam queren, blockieren ein Fahrzeug gleich lang wie
 S_Fg = 900 · ρ [Fg/h]
 ```
 
-| ρ | S_Fg | Typische Situation |
+Die Lagen in der letzten Spalte sind eine Annahme als Startwert; Tab. 9 (S. 37) nennt nur Anzahl, ρ und S.
+
+| ρ | S_Fg | Typische Situation (Annahme) |
 |---|---|---|
 | 1 | 900 Fg/h | Einzelne Fg, Wohngebiet |
 | 2 | 1800 Fg/h | Paarweise, mässig belebte Strasse |
@@ -397,7 +410,7 @@ S_Fg = 900 · ρ [Fg/h]
 ```
 w = 900 × [(x−1) − 4C·(x/Q) + √((x−1)² + 8C·(x + 1 + 2C·(x/Q)) / (Q/x))]
 ```
-mit `x = Q/L`, `C = 0.5` (Rang 1) oder `1.0` (Rang 2 / gleicher Rang)
+mit `x = Q/L`, `C = 0.5` (Rang 1) oder `1.0` (alle anderen Ränge, S. 62)
 
 ```
 k = w [s] × L / 3600
@@ -420,7 +433,8 @@ An einem Knoten mit Lichtsignalanlage (LSA) regelt die Signalisierung, wer wann 
 
 **Funktionen des Rechners:**
 - 3-armiger (T-Knoten) und 4-armiger Knoten
-- Fahrzeugkategorien und zulässige Geschwindigkeit
+- Fahrzeugkategorien
+- Zwischenzeit: Norm-Pauschale 5 s je Phase als Vorgabe, Staffelung nach zulässiger Geschwindigkeit als gekennzeichnete Annahme
 - Freier Fahrstreifenplan: Ströme je Arm auf bis zu zwei Fahrstreifen aufteilbar
 - Freier Phasenplan: Fahrstreifen beliebig auf 2–5 Phasen verteilen
 - Fussgängerstreifen je Phase: Querungslänge als Eingabe
@@ -448,7 +462,7 @@ Für jeden Arm werden die Abbiegeströme (links, geradeaus, rechts) in Fahrzeuge
 
 ### Schritt 2: Fahrstreifenplan festlegen
 
-Jeder Arm erhält einen oder zwei Fahrstreifen (FS1, FS2). Jeder Strom wird einem Fahrstreifen zugewiesen. Die **kritische Verkehrsstärke Q_krit eines Fahrstreifens** ist die grösste Verkehrsstärke der zugeordneten Ströme:
+Jeder Arm erhält einen oder zwei Fahrstreifen (FS1, FS2). Jeder Strom wird einem Fahrstreifen zugewiesen. Die **kritische Verkehrsstärke Q_krit eines Fahrstreifens** ist die Summe der zugeordneten Ströme:
 
 ```
 Q_krit(FS) = Σ Q_i aller Ströme auf diesem FS
@@ -470,19 +484,21 @@ Q_krit(Phase) = max(Q_krit(FS)) über alle exklusiven FS der Phase
 
 Falls alle Fahrstreifen einer Phase auch in anderen Phasen vorkommen (reine Überlappungsphase), werden alle Fahrstreifen der Phase als Kandidaten verwendet.
 
-**Überlappungsphasen:** Ein Fahrstreifen kann in mehreren Phasen grün sein (z. B. Rechtsabbieger überlappt mit Phase 1 und Phase 2). Solche Fahrstreifen erhalten einen effektiven Grünzeitanteil λ_effektiv = Σ λ aller Phasen, in denen sie grün sind.
+**Überlappungsphasen:** Ein Fahrstreifen kann in mehreren Phasen grün sein (z. B. Rechtsabbieger überlappt mit Phase 1 und Phase 2). Solche Fahrstreifen erhalten einen effektiven Grünzeitanteil λ_effektiv = Σ λ aller Phasen, in denen sie grün sind, zuzüglich der Zwischenzeit zwischen diesen Phasen (Tab. 6, S. 19).
+
+Ein überlappender Fahrstreifen zählt nicht zu ΣQ_krit (Ziff. 10.4.2, S. 9), und sein Grün folgt den Phasen (Ziff. 11.3, S. 10). Er kann darum trotz Reserve überlastet sein. KnotenCheck warnt in diesem Fall und zeigt keine Reserve: bei X ≥ 1 oder wenn der kritische Pfad überschritten ist, also die Summe aus dem Fahrstreifen und den Q_krit der Phasen ohne ihn über (Z − Zwischenzeiten dieses Pfads)/Z · 1800 PWE/h liegt. Die Grünzeitverteilung bleibt bei der Norm.
 
 ### Schritt 4: Umlaufzeit Z und Zwischenzeit T_Z bestimmen
 
-Die **Zwischenzeit T_Z** (Verlustzeit zwischen zwei Grünphasen) setzt die VSS 40 023a pauschal mit **5 s pro Phase** an (Ziff. 11.2, Grundlage der Tab. 2). Die Norm lässt abweichend ermittelte Zwischenzeiten ausdrücklich zu («In diesem Fall sind ΣtGr und Σλkrit entsprechend anzupassen»). KnotenCheck bietet dafür eine geschwindigkeitsabhängige Staffelung an — eine **eigene Annahme**, angelehnt an die Gelbzeiten der VSS 40 837 (Tab. 1: 2/3/4/5 s bei ≤30 / 40–50 / 60 / ≥70 km/h) zuzüglich rund einer Sekunde:
+Die **Zwischenzeit T_Z** (Verlustzeit zwischen zwei Grünphasen) setzt die VSS 40 023a pauschal mit **5 s pro Phase** an (Ziff. 11.2, S. 10, Grundlage der Tab. 2). Das ist die Vorgabe des Rechners. Die Norm lässt nach VSS 40 834 ermittelte Zwischenzeiten zu («In diesem Fall sind ΣtGr und Σλkrit entsprechend anzupassen»). Wählbar ist zusätzlich eine geschwindigkeitsabhängige Staffelung — eine **Annahme**, keine Normvorgabe, angelehnt an die Gelbzeiten der VSS 40 837 (Tab. 1: 2/3/4/5 s bei ≤30 / 40–50 / 60 / ≥70 km/h) zuzüglich rund einer Sekunde:
 
-| v_zul | T_Z (KnotenCheck) |
+| v_zul | T_Z (Annahme) |
 |---|---|
 | ≤ 30 km/h | 3 s |
 | 40–50 km/h | 4 s |
 | ≥ 60 km/h | 5 s (= Norm-Pauschale) |
 
-Als knoteneinheitliches T_Z wird das Maximum über alle Arme verwendet (konservativste Annahme). T_Z bestimmt die verfügbare Gesamtgrünzeit:
+Bei der Staffelung gilt als knoteneinheitliches T_Z das Maximum über alle Arme. Speicherdateien ohne Angabe wurden mit der Staffelung gerechnet: Sie bleiben dabei, wenn das Resultat sonst ändern würde, und ein Hinweis nennt die Norm-Pauschale. T_Z bestimmt die verfügbare Gesamtgrünzeit:
 
 > **Hinweis:** T_Z ist ein *Verlustzeitparameter* für die Leistungsfähigkeitsberechnung — kein physischer Signalanzeigewert. Die tatsächliche Signalübergangszeit (Gelb + Sperrzeit ≥ 2 s + Rot/Gelb) ist deutlich länger (typisch 5–8 s je nach Geschwindigkeit). T_Z bündelt Anlauf- und Räumverlust zu einem Netto-Schätzwert. Die Mindestsperrzeit nach VSS 40 837 Ziff. 19 (≥ 2 s) gilt für die signaltechnische Ausarbeitung (SN 640 838) und ist im Kapazitätsrechner nicht relevant.
 
@@ -506,7 +522,9 @@ qKritMax(Z, n, T_Z) = ((Z - n · T_Z) / Z) · 1800 PWE/h
 
 Bei Z = 120 s, 2 Phasen und T_Z = 5 s ergibt sich qKritMax = (110/120) · 1800 = 1650 PWE/h (entspricht Tab. 2 der Norm). Mit T_Z = 3 s wären es (114/120) · 1800 = 1710 PWE/h — die Anlage kann mehr Verkehr aufnehmen.
 
-Überlastet ist der Knoten, wenn ΣQ_krit ≥ qKritMax (keine Reserve) — für die automatische wie für eine manuell gesetzte Umlaufzeit. Eine manuelle Umlaufzeit unter n · T_Z + Σ t_Gr_min wird auf dieses Minimum angehoben; über 120 s erscheint ein Hinweis (Ziff. 10.4.3: nicht zu verwenden).
+Überlastet ist der Knoten, wenn ΣQ_krit ≥ qKritMax (keine Reserve) — für die automatische wie für eine manuell gesetzte Umlaufzeit. Eine manuelle Umlaufzeit unter n · T_Z + Σ t_Gr_min wird auf dieses Minimum angehoben; über 120 s erscheint ein Hinweis (Ziff. 10.4.3, S. 9: nicht zu verwenden).
+
+Die kleinste passende Umlaufzeit lässt oft wenig Reserve. Verfehlt sie die Ziel-VQS, nennt KnotenCheck die kleinste Umlaufzeit aus Tab. 2 im Rahmen 60–90 s (Ziff. 10.4.3, S. 9), die das Ziel erreicht, falls es eine gibt. Im Normbeispiel ergibt Auto-Z 50 s mit VQS E; die Norm wählt 80 s und erreicht D (S. 18 und 22).
 
 ### Schritt 5: Grünzeiten verteilen
 
@@ -534,7 +552,7 @@ Für jeden Fahrstreifen wird der Auslastungsgrad X und die mittlere Wartezeit w_
 ```
 X    = Q / L        mit L = λ · S
                     Kfz: S = 1800 PWE/h (Ziff. 11.3)
-                    FGS: S = 8000 Fg/h  (VSS 40 834, Ziff. 5)
+                    FGS: S = 8000 Fg/h  (VSS 40 834, Ziff. 4, S. 3)
 w₁   = Z · (1−λ)² / (2 · (1−λ·X))
 w₀   = 900 · [(X−1) − 2C·(X/Q) + √((X−1)² + 4C·(X+1+C·X/Q) / (Q/X))]   C = 0,5
 w_m  = w₁ + w₀
@@ -549,7 +567,11 @@ ST_RE95        = 1.691 · √(PWE_mr + PWE_GE) + (PWE_mr + PWE_GE)
 Rückstau [m]   = ST_RE95 × 6 m/PWE
 ```
 
-mit PWE_mr = Q · (Z − t_Gr) / 3600 (Ankünfte während Rotphase) und PWE_GE = w₀ · Q/3600 · X (bestehender Rückstau).
+mit PWE_mr = Q · (Z − t_Gr) / 3600 (Ankünfte während Rotphase) und PWE_GE = w₀ · Q / (3600 · X) (bestehender Rückstau).
+
+**Abweichung vom Druck:** Ziffer 11.5, Seite 13 druckt PWE_GE = w₀ · Q · 3600⁻¹ · X. Tab. 7 (S. 20), Tab. 10 (S. 22) und die Diagramme (Abb. 15, S. 28) sind jedoch mit X⁻¹ gerechnet: Nur damit treffen alle zwölf Tabellenwerte auf ±1 m (Fahrstreifen 3: 95 m statt 89 m). KnotenCheck folgt den Tabellen und Diagrammen.
+
+Für Fussgängerstreifen rechnet KnotenCheck Wartezeit und VQS mit denselben Formeln. Das ist eine **Annahme**: Tab. 4 (S. 14) gilt für den Individualverkehr, Fussgänger*innen sind separat zu berücksichtigen (Ziffer 12, S. 13). FGS gehen nicht in Q_krit ein, obwohl VSS 40 834 Q_krit auch für FGS führt (Ziffer 4, S. 3; Ziffer 7, S. 8). Bei X ≥ 1 eines FGS erscheint darum eine Warnung, auch in der Gesamtaussage.
 
 ### Schritt 7: Verkehrsqualitätsstufe ablesen
 
@@ -564,7 +586,7 @@ mit PWE_mr = Q · (Z − t_Gr) / 3600 (Ankünfte während Rotphase) und PWE_GE =
 
 ### Geometrische Konfliktprüfung
 
-Der Rechner prüft, ob geometrisch unverträgliche Ströme innerhalb derselben Phase zusammen grün sind. Unverträglich sind Ströme aus verschiedenen Armen, deren Fahrwege sich kreuzen oder die in dieselbe Ausfahrt führen (Rechtsverkehr; gegenüberliegende Linksabbieger gelten als verträglich). Fussgängerstreifen sind unverträglich mit allen Strömen, die in ihren Arm ein- oder aus ihm ausfahren.
+Der Rechner prüft, ob geometrisch unverträgliche Ströme mit Verkehr (Q > 0) innerhalb derselben Phase zusammen grün sind; dasselbe gilt für den «Minimalen Phasenplan». Unverträglich sind Ströme aus verschiedenen Armen, deren Fahrwege sich kreuzen oder die in dieselbe Ausfahrt führen (Rechtsverkehr; gegenüberliegende Linksabbieger gelten als verträglich). Fussgängerstreifen sind unverträglich mit allen Strömen, die in ihren Arm ein- oder aus ihm ausfahren.
 
 Beispiele für unverträgliche Paare (4-Arm):
 - q2 (A→C) mit q5 (B→D): Geradenströme senkrechter Arme kreuzen sich
@@ -596,7 +618,7 @@ tGrSum   = Z - n · T_Z
 qKritMax = (tGrSum / Z) · 1800 PWE/h
 ```
 
-Die Spalten p2/p3/p4 der Norm (tGrSum, lambdaSum, qKritMax) entsprechen dem Normfall T_Z = 5 s (Ziff. 11.2: «pauschal 5 s pro Phase»). Durch die Eingabe von v_zul je Arm wird T_Z nach der obigen Staffelung (eigene Annahme, angelehnt an die Gelbzeiten der VSS 40 837) bestimmt und knoteneinheitlich als Maximum verwendet, sodass qKritMax konsistent für das gewählte T_Z berechnet wird.
+Die Spalten p2/p3/p4 der Norm (tGrSum, lambdaSum, qKritMax) entsprechen dem Normfall T_Z = 5 s (Ziff. 11.2, S. 10: «pauschal 5 s pro Phase»), der Vorgabe des Rechners. Ist die Staffelung gewählt, bestimmt v_zul je Arm das T_Z (Annahme, angelehnt an die Gelbzeiten der VSS 40 837); es gilt knoteneinheitlich das Maximum, und qKritMax wird für dieses T_Z berechnet.
 
 **Beispiel qKritMax bei 2 Phasen:**
 
@@ -637,11 +659,11 @@ Die Simulation ergänzt den analytischen Rechner um vier Aspekte:
 |---|---|
 | **Knotentyp** (3/4 Arme) | Bestimmt welche Ströme existieren und welche qpi-Formeln gelten |
 | **Volumen je Arm/Richtung** | Bestimmt qpi (Konfliktvolumen) und Ankunftsrate der NS-Fahrzeuge |
-| **Geometrie-Flags** | Modifizieren qpi (z. B. separater Abbiegestreifen reduziert wirksames Konfliktvolumen) |
-| **Fussgänger fg, ρ, Fahrbahnbreite, Mittelinsel** | Je Arm konfigurierbar. HS-Streifen fügen Sperrzeiten in den Konfliktstrom ein → erzwungene Lücken für NS-Einbieger. Zusätzlich sperrt jeder Streifen die Ströme direkt, die ihn am Abfahrts- oder Ankunftsarm überfahren. **ρ** steuert die Häufigkeit (fg/ρ), **Fahrbahnbreite** (Standard 8 m) die Dauer (Breite/0.80 m/s), **Mittelinsel** halbiert die Dauer |
+| **Geometrie-Flags** | Separater Rechtsabbiegestreifen und mehrstreifige Hauptstrasse verändern qpi, ein fehlender Linksabbiegestreifen senkt die Lücken der Nebenströme (p₀*, Ziff. 14, S. 7–8). Dreiecksinseln sind ausgeblendet: Die Simulation kennt nur eine Haltelinie je Arm; ältere Dateien mit Insel laden weiter, die Insel wirkt aber nicht |
+| **Fussgänger fg, ρ, Fahrbahnbreite, Mittelinsel** | Je Arm konfigurierbar. Ein HS-Streifen hält die Fahrtrichtung an, die ihn vor dem Knoten überfährt → Lücken für die Ströme, zu denen er parallel liegt. Zusätzlich sperrt jeder Streifen die Ströme direkt, die ihn am Abfahrts- oder Ankunftsarm überfahren. **ρ** steuert die Häufigkeit (fg/ρ), **Fahrbahnbreite** (Standard 8 m) die Dauer (Breite/0.80 m/s), **Mittelinsel** halbiert die Dauer |
 | **Mehrere Zeitintervalle** | Fahrzeuge, die am Ende eines Intervalls noch warten, werden als Rückstau ins nächste übertragen |
 | **Anzahl Läufe** | Mehr Läufe = stabilere Statistik, längere Rechenzeit |
-| **Cowan M3 / Exponential** | Kolonnenbildung im HS ein-/ausschalten; Cowan ist bei qpi > 600 Fz/h deutlich realistischer |
+| **Cowan M3 / Exponential** | Kolonnenbildung im HS ein-/ausschalten; Cowan gilt je Fahrstreifen und ist bei starkem Hauptstrom realistischer |
 | **Streuung t_c** | Standardabweichung der Grenzzeitlücke zwischen Fahrer*innen: keine (alle gleich, wie im analytischen Verfahren), σ = 0.5 s (Standard) oder σ = 1.0 s |
 | **Stauraum** | Begrenzt wartende Fahrzeuge; Überschuss wird verworfen (modelliert kurze Aufstellfläche) |
 | **t_c / t_f-Override** | Eigene Grenz-/Folgezeitlücken je Manövertyp, z. B. für Kalibrierung auf Feldmessungen |
@@ -652,7 +674,7 @@ Die Simulation ergänzt den analytischen Rechner um vier Aspekte:
 
 **Schritt 1 — Strom-Topologie und qpi (aus SN 640 022)**
 
-Die Ränge und Konfliktvolumen qpi werden nach den SN-640-022-Formeln F1–F8 berechnet: welcher Strom muss welchem anderen Vortritt lassen, und wie gross ist das massgebende Hauptstromvolumen je Nebenstrom. qpi kodiert bereits alle Rangabhängigkeiten.
+Die Ränge und Konfliktvolumen qpi folgen den SN-640-022-Formeln F1–F8: welcher Strom muss welchem anderen Vortritt lassen, und wie gross ist das massgebende Hauptstromvolumen je Nebenstrom. qpi sagt nur, wie viel Verkehr abzuwarten ist; der Rückstau höherrangiger Ströme folgt in Schritt 5b.
 
 *Verkehrlich:* qpi ist die Menge an Hauptstromverkehr, der ein bestimmter Nebenstrom Vortritt gewähren muss. Je grösser qpi, desto dichter der Hauptstrom — und desto seltener entsteht eine Lücke, die zum Einbiegen reicht. Ein separater Abbiegestreifen oder eine Dreiecksinsel nimmt einzelne Ströme aus diesem Konfliktvolumen heraus und erleichtert so das Einbiegen.
 
@@ -660,11 +682,13 @@ Die Ränge und Konfliktvolumen qpi werden nach den SN-640-022-Formeln F1–F8 be
 
 **Schritt 2 — Hauptstrom-Zeitlücken generieren (Cowan M3)**
 
-Statt zufälliger Ankünfte (Exponentialverteilung) verwendet der Rechner standardmässig das Cowan-M3-Modell: Es unterscheidet *freie* Fahrzeuge (ausreichend Abstand) von *gebundenen* Fahrzeugen in Kolonnen (Mindestabstand t_m = 1.8 s). Bei qpi > 600 Fz/h bilden sich realistische Kolonnen mit grösseren freien Lücken dazwischen. *(Cowan 1975; Troutbeck & Brilon, FHWA 1997, Kap. 8, Gl. 8.21–8.23)*
+Statt zufälliger Ankünfte (Exponentialverteilung) verwendet der Rechner standardmässig das Cowan-M3-Modell: Es unterscheidet *freie* Fahrzeuge (ausreichend Abstand) von *gebundenen* Fahrzeugen in Kolonnen (Mindestabstand t_m = 1.8 s). Bei starkem Verkehr bilden sich realistische Kolonnen mit grösseren freien Lücken dazwischen. *(Cowan 1975; Troutbeck & Brilon, FHWA 1997, Kap. 8, Gl. 8.21–8.23, S. 8-8)*
+
+M3 beschreibt einen einzelnen Fahrstreifen. Der Hauptstrom wird deshalb je Richtung und Fahrstreifen erzeugt und überlagert (Kap. 8.5.1, S. 8-31), mit q = Stärke des Fahrstreifens. Jeder Lauf hat einen Hauptstrom, den alle Nebenströme gemeinsam sehen; welche Fahrzeuge für welchen Strom zählen, sagen F1–F8. Die Nebenströme in qpi (q1, q7, q5, q6, q11, q12) kommen als eigene, unabhängige Fahrstreifen dazu. Ab 2000 Fz/h auf einem Fahrstreifen (3600/t_m) gibt es dort keine Lücken mehr; mehr Verkehr geht nur mit der Option «Hauptstrasse mehrstreifig».
 
 ```
-alpha  = e^(−A · qpi/3600)              [Anteil freier Fahrzeuge; A = 7.0]
-lambda = alpha · qpi/3600 / (1 − tm · qpi/3600)
+alpha  = e^(−A · q/3600)                [Anteil freier Fahrzeuge; A = 7.0]
+lambda = alpha · q/3600 / (1 − tm · q/3600)
 
 Gebunden (1−alpha): h = tm = 1.8 s
 Frei     (alpha):   h = tm + Exp(lambda)
@@ -676,7 +700,7 @@ Frei     (alpha):   h = tm + Exp(lambda)
 
 **Schritt 2b — Fussgänger*innen-Blocking-Events (optional)**
 
-Sind Fussgänger*innen an einem HS-Fussgängerstreifen konfiguriert, werden Sperrzeiten in den Konfliktstrom eingefügt. Fussgänger*innen-**Gruppen** kommen Poisson-verteilt; jede Gruppe blockiert den HS für die Querungsdauer:
+Jede Querung wird je Lauf einmal gewürfelt und gilt für alle Ströme. Fussgänger*innen-**Gruppen** kommen Poisson-verteilt; jede Gruppe sperrt den Streifen für die Querungsdauer:
 
 ```
 Häufigkeit:  λ = (fg / ρ) / 3600                              [Gruppen/s]
@@ -684,11 +708,11 @@ Dauer:       t_block = Fahrbahnbreite / 0.80 m/s × (Mittelinsel ? 0.5 : 1)   [s
              Standard: 8 m → 10 s   (mit Mittelinsel 5 s)
 ```
 
-*Verkehrlich:* Quert eine Fussgängergruppe den Hauptstrassen-Streifen, muss der Hauptstrom anhalten. Für den wartenden Nebenstrom ist das ein **Geschenk**: Während der Hauptstrom steht, entsteht eine erzwungene Lücke zum Einbiegen (sofern t_block ≥ t_c). Zwei Grössen bestimmen den Effekt getrennt: **Die Dauer** einer Sperre ist die Zeit, die Fussgänger*innen zum Queren brauchen — Fahrbahnbreite geteilt durch die Gehgeschwindigkeit 0.80 m/s (VSS 40 240, bewusst langsam für ältere Menschen und Menschen mit Behinderung). Die **Gruppengrösse ρ** verlängert die Sperre *nicht* (eine Gruppe quert gemeinsam), sondern macht Sperrungen *seltener*: Bei fg = 100 Fg/h und ρ = 1 gibt es 100 Sperrungen pro Stunde, bei ρ = 2 nur noch 50. Eine **Mittelinsel** halbiert die Sperrdauer, weil nur noch die halbe Fahrbahn am Stück gequert wird (Art. 47 Abs. 3 VRV). Standardmässig wird mit 8 m Fahrbahnbreite gerechnet (→ 10 s); alternativ lässt sich eine eigene Breite eingeben (ab 8.5 m weist die Norm VSS 40 241 eine Mittelinsel an).
+*Verkehrlich:* Quert eine Fussgängergruppe den Hauptstrassen-Streifen, muss die Fahrtrichtung davor anhalten. Für Ströme, die nur diese Richtung abwarten, ist das ein **Geschenk**: Während sie steht, entsteht eine erzwungene Lücke (sofern t_block ≥ t_c). Wer auch die Gegenrichtung abwartet, gewinnt nur einen Teil; wer den Streifen selbst überfährt, wird von derselben Sperrung angehalten und gewinnt nichts. Zwei Grössen bestimmen den Effekt getrennt: **Die Dauer** einer Sperre ist die Zeit, die Fussgänger*innen zum Queren brauchen — Fahrbahnbreite geteilt durch die Gehgeschwindigkeit 0.80 m/s (VSS 40 240, bewusst langsam für ältere Menschen und Menschen mit Behinderung). Die **Gruppengrösse ρ** verlängert die Sperre *nicht* (eine Gruppe quert gemeinsam), sondern macht Sperrungen *seltener*: Bei fg = 100 Fg/h und ρ = 1 gibt es 100 Sperrungen pro Stunde, bei ρ = 2 nur noch 50. Eine **Mittelinsel** halbiert die Sperrdauer, weil nur noch die halbe Fahrbahn am Stück gequert wird (Art. 47 Abs. 3 VRV). Standardmässig wird mit 8 m Fahrbahnbreite gerechnet (→ 10 s); alternativ lässt sich eine eigene Breite eingeben (ab 8.5 m weist die Norm VSS 40 241 eine Mittelinsel an).
 
-Während t_block ist der HS gesperrt — eine erzwungene Lücke für wartende NS-Fahrzeuge. Überlappende Sperrzeiten werden zu einer Sperrung zusammengefasst. HS-Fahrzeuge, die in dieser Zeit ankämen, stauen sich danach als Cluster (Mindestabstand t_m). Der NS-Einbieger kann die Sperrzeit nutzen, wenn t_block ≥ t_c. Dieser **positive Kapazitätseffekt** tritt bei stark belasteten HS-Strassen auf und ist der Grund, weshalb Fussgängerstreifen auf der Hauptstrasse bei hohem HS-Volumen die Einbiege-Qualität verbessern können.
+Während t_block steht die Fahrtrichtung vor dem Streifen. Überlappende Sperrzeiten werden zu einer Sperrung zusammengefasst. Fahrzeuge, die in dieser Zeit ankämen, rücken danach im Mindestabstand t_m nach; der Gegenverkehr fährt weiter. Dieser **positive Kapazitätseffekt** tritt bei stark belasteten HS-Strassen für parallel liegende Ströme auf: Strom 6 profitiert von Querung A, Strom 12 von C, Strom 7 von A, Strom 1 von C, Strom 4 von C, Strom 10 von A, die Ströme 5 und 11 von beiden je für ihre Richtung.
 
-Zusätzlich wirkt jeder Fussgängerstreifen als **Direktsperre**: Jeder Fahrzeugstrom wird an seinem Abfahrts- **und** Ankunftsarm durch den dortigen Streifen blockiert — fällt die Abfahrt in eine Sperrzeit, wird sie ans Ende der Sperre verschoben. Das gilt auch für Streifen an den Nebenstrassen-Armen B und D.
+Zusätzlich wirkt jeder Fussgängerstreifen als **Direktsperre**: Jeder Fahrzeugstrom wird an seinem Abfahrts- **und** Ankunftsarm durch den dortigen Streifen blockiert. Fällt die Abfahrt in eine Sperrzeit, beginnt die Lückensuche an deren Ende neu; es gilt wieder t_c. Das gilt auch für Streifen an den Nebenstrassen-Armen B und D.
 
 **Trottoirüberfahrt:** An den Nebenstrassen-Armen B und D lässt sich als Querung auch eine Trottoirüberfahrt wählen (an den Hauptstrassen-Armen A und C nur der Fussgängerstreifen). Fussgänger*innen haben dort gegenüber den ein- und ausfahrenden Fahrzeugen Vortritt (VRV Art. 41 Abs. 2); die Simulation rechnet sie wie einen Fussgängerstreifen über die Nebenstrasse — Direktsperre mit der Sperrzeit Breite der Einmündung / 0.80 m/s, Häufigkeit fg/ρ. Eine Mittelinsel gibt es bei der Trottoirüberfahrt nicht. Das ist eine eigene Annahme; VSS 2011/308 kennt die Trottoirüberfahrt nicht.
 
@@ -720,9 +744,17 @@ Hauptstrom und Fussgänger*innen laufen über das Periodenende T hinaus weiter (
 
 **Schritt 5 — Gemeinsame Haltlinie (NS-Arme simultan)**
 
-Die NS-Ströme eines Arms (z. B. Arm B: Ströme 4, 5, 6) teilen eine gemeinsame Haltlinie und werden **simultan** simuliert: Ein kombinierter Poisson-Prozess erzeugt Fahrzeuge mit der Gesamtrate aller Ströme; jedes Fahrzeug wird proportional zu den Einzelvolumen einem Strom zugewiesen. Wenn Strom 4 (Linkseinbieger, hoher qpi) die Haltlinie blockiert, wartet auch der nachfolgende Strom-6-Rechtseinbieger — auch wenn dieser selbst eine freie Lücke hätte.
+Die NS-Ströme eines Arms (z. B. Arm B: Ströme 4, 5, 6) teilen eine gemeinsame Haltlinie und werden **simultan** simuliert: Ein kombinierter Poisson-Prozess erzeugt Fahrzeuge mit der Gesamtrate aller Ströme; jedes Fahrzeug wird proportional zu den Einzelvolumen einem Strom zugewiesen. Wenn Strom 4 (Linkseinbieger, hoher qpi) die Haltlinie blockiert, wartet auch der nachfolgende Strom-6-Rechtseinbieger — auch wenn dieser selbst eine freie Lücke hätte. Die HS-Linksabbieger haben je eine eigene Haltelinie.
 
-*Verkehrlich:* An einer gemeinsamen Haltlinie steht nur ein Fahrzeug vorne — wer dahinter steht, kommt erst dran, wenn der Vordermann weg ist. Ein Linkseinbieger, der lange auf seine Lücke wartet, hält damit auch den Rechtseinbieger hinter sich auf, obwohl dieser längst hätte fahren können. In der Realität lösen getrennte Abbiegestreifen dieses Problem — **die Simulation modelliert jedoch immer eine einzige gemeinsame Haltlinie je Nebenstrassen-Arm**, unabhängig von der Spuraufteilung. Die Geometrie-Flags (separater Abbiegestreifen, Dreiecksinsel) wirken in der Simulation nur über das Konfliktvolumen qpi, nicht über die Haltlinien-Gruppierung. Wer getrennte Spuren abbilden will, beurteilt die betroffenen Ströme im analytischen SN-640-022-Rechner (Mischstreifen-Kombination).
+*Verkehrlich:* An einer gemeinsamen Haltlinie steht nur ein Fahrzeug vorne — wer dahinter steht, kommt erst dran, wenn der Vordermann weg ist. Ein Linkseinbieger, der lange auf seine Lücke wartet, hält damit auch den Rechtseinbieger hinter sich auf, obwohl dieser längst hätte fahren können. In der Realität lösen getrennte Abbiegestreifen dieses Problem — **die Simulation modelliert jedoch immer eine einzige gemeinsame Haltlinie je Nebenstrassen-Arm**, unabhängig von der Spuraufteilung. Ein separater Abbiegestreifen wirkt in der Simulation nur über das Konfliktvolumen qpi, nicht über die Haltlinien-Gruppierung. Wer getrennte Spuren abbilden will, beurteilt die betroffenen Ströme im analytischen SN-640-022-Rechner (Mischstreifen-Kombination).
+
+**Schritt 5b — Rückstau höherrangiger Ströme (analog F13–F20, Ziff. 11, S. 6)**
+
+Nebenströme ab Rang 3 können nur abfliessen, wenn die höherrangigen Ströme keinen Rückstau haben. Die Simulation misst zuerst die Grundleistungsfähigkeit jedes Stroms (Abfahrten bei dauernd besetzter Haltelinie, mit den gewählten t_c/t_f, Lücken und Fussgänger*innen). Damit rechnet sie p₀, p_x und p_z genau wie der analytische Rechner (F12–F20, mit p₀* bei fehlendem Linksabbiegestreifen). Das Ergebnis ist die Wahrscheinlichkeit, dass eine Lücke für den Strom frei ist; jede Lücke wird entsprechend als frei oder belegt gezogen.
+
+Das ist keine mikroskopische Wechselwirkung, sondern die Normrechnung in der Simulation. Eine Kopplung über die simulierten Warteschlangen wurde geprüft und verworfen: Rang-2-Fahrzeuge warten meist dann, wenn der Hauptstrom ohnehin keine Lücke bietet, und fahren gebündelt ab. L4 lag so mit steigender Belastung von Strom 7 immer weiter über der Norm, bis zum 3,6-Fachen.
+
+**Vergleich mit der Norm:** Ohne Fussgänger*innen, mit exponentiellen Lücken, festem t_c und dem Preset «SN 640 022 (mit +90)» trifft die Simulation die Leistungsfähigkeit der Ränge 2 bis 4 auf rund ±6 % (Unit-Test ±12 bzw. ±15 %), auch bei Überlast (a4 = 1.37 → x ≈ 1.36, QS F). Die Wartezeit liegt in der gleichen Grössenordnung (0,4× bis 2×); w der Norm enthält immer die Bedienzeit 3600/L, die Simulation misst Abfahrt minus Ankunft.
 
 **Schritt 6 — Stauraum (optional)**
 
@@ -736,22 +768,24 @@ Die Schritte 2–6 werden für die konfigurierte Anzahl Läufe wiederholt (Stand
 
 **Schritt 8 — Carry-over (mehrere Zeitintervalle)**
 
-Fahrzeuge, die am Intervallende noch warten, werden als Anfangsrückstau ins nächste Intervall übertragen. So wirkt sich eine überlastete Spitzenstunde auf die Folgestunde aus.
+Fahrzeuge, die am Intervallende noch warten, werden je Haltelinie (HS-Linksabbieger und NS-Arme) als Anfangsrückstau ins nächste Intervall übertragen. So wirkt sich eine überlastete Spitzenstunde auf die Folgestunde aus.
 
 *Verkehrlich:* Stau verschwindet nicht pünktlich mit dem Stundenende. Wer um 17:59 noch in der Schlange steht, steht um 18:00 immer noch da — und verlängert die Wartezeiten der Folgestunde. Eine Betrachtung von genau einer Stunde (wie die Analytik) übersieht das; mehrere aneinandergereihte Intervalle geben den Rückstau realistisch weiter.
 
 **Was die Simulation nicht macht:**
 - Keine t_c/t_f-Schätzung aus Felddaten — Werte (HBS 2015) sind vorgegeben, überschreibbar
 - Kein Fahrzeugfolgemodell — Fahrzeuge sind Punkte ohne Länge
+- Keine mikroskopische Kopplung der Nebenströme — der Rückstau höherrangiger Ströme wirkt über die Wahrscheinlichkeit freier Lücken (Schritt 5b), und die Nebenströme in qpi zählen als eigener Konfliktverkehr
+- Keine Dreiecksinseln, keine Behinderung des Geradeausverkehrs durch wartende Linksabbieger
 - Keine LSA-Koordination — benachbarte Ampeln erzeugen keine Platoons
-- G_i und L_i aus SN 640 022 werden nicht verwendet — nur qpi
+- Die Kurven G_i aus SN 640 022 werden nicht verwendet — G_i misst die Simulation selbst
 - Keine getrennte Haltlinie je Spur — alle NS-Ströme eines Arms teilen immer eine gemeinsame Haltlinie (die Mischstreifen-Kombination F21 wird in der Simulation nicht abgebildet und ist daher ausgeblendet)
 
 ### Mehrere Zeitintervalle und Carry-over
 
 Statt einer einzigen Stunde können bis zu 6 aufeinanderfolgende Zeitintervalle mit je eigener Verkehrsbelastung simuliert werden (15 / 30 / 45 / 60 Minuten je Intervall). Die Geometrie (Neigung, Abbiegestreifen, Inseln, Fahrzeugmix) stammt dabei einheitlich aus der Basis-Konfiguration — je Intervall variieren nur die Verkehrsmengen.
 
-**Carry-over-Mechanismus:** Am Ende jedes Intervalls zählt die Simulation, wie viele Fahrzeuge noch auf eine Abfahrtslücke warten. Diese werden als Warteschlange an den Beginn des nächsten Intervalls übergeben. Damit wirkt sich Überlast in der Spitzenstunde auf die Wartezeiten in der Folgestunde aus — ein Effekt, den die einstündige Analytik vollständig ignoriert.
+**Carry-over-Mechanismus:** Am Ende jedes Intervalls zählt die Simulation je Haltelinie, wie viele Fahrzeuge noch auf eine Abfahrtslücke warten. Diese werden als Warteschlange an den Beginn des nächsten Intervalls übergeben. Damit wirkt sich Überlast in der Spitzenstunde auf die Wartezeiten in der Folgestunde aus — ein Effekt, den die einstündige Analytik vollständig ignoriert.
 
 Die Ausgabe zeigt pro Intervall Mittelwert, P85 und QS in einer Ganglinie-Tabelle sowie die Anzahl der Carry-over-Fahrzeuge.
 
@@ -778,6 +812,15 @@ Quelle: Brilon, W. (2016): [HBS 2015 — L5 & S5: Knotenpunkte ohne Lichtsignala
 | Linkseinbiegen NS | 7.2 | 3.9 |
 
 Die t_f entsprechen der Verfahrensgeneration der Norm-Quellen ([6] FGSV-Merkblatt, [7] BMV Heft 669 — nahe HBS 2001). Zu beachten: Gap-Acceptance mit diesen Lücken bildet die Abb.-2-Kurven **ohne** die CH-Erhöhung von +90 PWE/h ab (Abschnitt 9 der Norm) — die Simulation rechnet mit diesem Preset entsprechend konservativ.
+
+**Voreinstellung «SN 640 022 (mit +90)»:** Rechengrössen für den Vergleich mit der Norm, keine gemessenen Zeitlücken. Mit exponentiellen Lücken und festem t_c trifft die Kapazität nach Harders die Abb.-2-Kurven samt CH-Erhöhung über qpi = 100 … 1800 Fz/h im Mittel auf 3–6 % (höchstens 7–14 %, vor allem bei kleinem qpi):
+
+| Manöver | t_c [s] | t_f [s] |
+|---|---:|---:|
+| Linksabbiegen HS | 4.85 | 2.55 |
+| Rechtseinbiegen NS | 5.2 | 3.2 |
+| Kreuzen NS | 5.05 | 4.05 |
+| Linkseinbiegen NS | 5.45 | 4.1 |
 
 **Benutzerdefinierte Werte:** In den erweiterten Einstellungen können t_c und t_f je Manövertyp überschrieben werden. Das ermöglicht die Kalibrierung auf eigene Feldmessungen.
 
@@ -829,7 +872,7 @@ Konfigurierbar per `StochasticConfig`:
 | `storageB` | ∞ | Arm-B-Stauraum [Fz] |
 | `storageD` | ∞ | Arm-D-Stauraum [Fz] |
 | `gapOverrides` | `{}` | t_c / t_f je Manövertyp überschreiben |
-| `pedestrians` | — | Fussgänger*innen-Blocking-Events je Arm A/B/C/D: fg [Fg/h], ρ (Häufigkeit fg/ρ), fahrbahnbreite [m] (Dauer Breite/0.80 m/s; default 8 m), mittelinsel (halbiert) |
+| `pedestrians` | — | Fussgänger*innen-Sperrzeiten je Arm A/B/C/D: fg [Fg/h], ρ (Häufigkeit fg/ρ), fahrbahnbreite [m] (Dauer Breite/0.80 m/s; default 8 m), mittelinsel (halbiert) |
 
 Multi-Intervall-API: `runStochasticSN640022Multi(intervals, flags, config)` — nimmt ein Array von `SimInterval`-Objekten (`label`, `volumes`, `T`) und gibt `StochasticMultiResult` zurück (pro Intervall: Ergebnis + Carry-over-Zähler).
 

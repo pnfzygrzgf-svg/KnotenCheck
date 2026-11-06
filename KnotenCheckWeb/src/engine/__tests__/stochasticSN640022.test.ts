@@ -1,11 +1,12 @@
 // Verifikation Stochastik-Simulation SN 640 022
-// Stufen 1A (Erlang t_c), 1B (Cowan M3), 2C (simultane Ströme), 2D (Stauraum)
+// Stufen 1A (lognormales t_c), 1B (Cowan M3), 2C (simultane Ströme), 2D (Stauraum),
+// 3 (Rückstau analog F13–F20), Vergleich mit der Normrechnung
 
 import { describe, test, expect, afterAll } from 'vitest'
 import {
   runStochasticSN640022, runStochasticSN640022Multi,
-  sampleLogNormal, sampleCowanM3, seededRandom, GAP_PARAMS, GAP_PARAMS_SN640022, pedBlockingTime,
-  normalizePedestrianLeg,
+  sampleLogNormal, sampleCowanM3, seededRandom, GAP_PARAMS, GAP_PARAMS_SN640022,
+  GAP_PARAMS_SN640022_CH, pedBlockingTime, normalizePedestrianLeg, findDeparture,
 } from '../stochasticSN640022'
 import { conform } from '../conform'
 import type { PedestrianConfig, PedestrianLegConfig } from '../stochasticSN640022'
@@ -599,5 +600,260 @@ describe('Trottoirüberfahrt — gleiche Rechnung wie Fussgängerstreifen', () =
     // gespeicherte Trottoirüberfahrt bleibt erhalten
     expect(laden({ enabled: true, querung: 'trottoirueberfahrt', fg: 50, rho: 1, mittelinsel: false }, true).querung)
       .toBe('trottoirueberfahrt')
+  })
+})
+
+// ── Lückensuche ───────────────────────────────────────────────────────────────
+describe('findDeparture', () => {
+  const conflicts = Float64Array.from([100, 107, 120])
+
+  test('nach einer Sperrzeit gilt die Grenzzeitlücke neu', () => {
+    // Lücke 100–107 reicht für t_c = 5.9, aber die Sperrzeit endet erst bei 106:
+    // Bis zum Fahrzeug bei 107 bleibt nur 1 s, also erst die Lücke ab 107
+    expect(findDeparture(100, conflicts, 5.9, [[95, 106]])).toBe(107)
+  })
+  test('Ende der Sperrzeit reicht, wenn die Restlücke genügt', () => {
+    expect(findDeparture(100, conflicts, 5.9, [[95, 101]])).toBe(101)
+  })
+  test('Abfahrt vor der Sperrzeit bleibt', () => {
+    expect(findDeparture(100, conflicts, 5.9, [[103, 110]])).toBe(100)
+  })
+  test('nicht freie Lücke wird übergangen', () => {
+    const c = Float64Array.from([10, 30, 50])
+    expect(findDeparture(12, c, 5, [], Uint8Array.from([1, 0, 1]))).toBe(30)
+    expect(findDeparture(12, c, 5, [], Uint8Array.from([1, 1, 1]))).toBe(12)
+  })
+})
+
+// ── Zusammensetzung von qpi (F1–F8 mit Fussnoten, Ziff. 7, S. 3) ──────────────
+// Exponentielle Lücken: Stimmt die Zusammensetzung, ist die Kapazität jedes Stroms
+// Harders(qpi); der Hauptstrom wird je Richtung und Fahrzeugart erzeugt.
+describe('Hauptstrom je Richtung ergibt qpi', () => {
+  const harders = (qpi: number, tc: number, tf: number) => {
+    const q = qpi / 3600
+    return 3600 * q * Math.exp(-q * tc) / (1 - Math.exp(-q * tf))
+  }
+  const opts = { runs: 60, useCowan: false, tcSigma: 0, seed: 21 }
+  const capacity = (v: number[][], flags: SN640022LaneFlags, sn: number, q: number, key: keyof typeof GAP_PARAMS) => {
+    const r = runStochasticSN640022(v, flags, v, opts)!
+    const s = r.streams.find(x => x.streamNumber === sn)!
+    const { tc, tf } = GAP_PARAMS[key]
+    return { sim: q / s.utilization, exact: harders(s.qpi, tc, tf), qpi: s.qpi }
+  }
+  // Einmündung: A gerade 600 / rechts 200, Strom 6 übersättigt
+  const v6 = [[0, 600, 200], [0, 0, 0], [0, 900, 0]]
+
+  test('Strom 6: q2 + 0,5·q3 (F3)', () => {
+    const c = capacity(v6, noFlags, 6, 900, 'sideRight')
+    expect(c.qpi).toBe(700)
+    acc(c.sim, c.exact, c.exact * 0.05)
+  })
+  test('Strom 6 mit separatem Streifen: nur q2 (Fussnote 1)', () => {
+    const c = capacity(v6, { ...noFlags, armASeparateLane: true }, 6, 900, 'sideRight')
+    expect(c.qpi).toBe(600)
+    acc(c.sim, c.exact, c.exact * 0.05)
+  })
+  test('Strom 6 mehrstreifig: nur rechter Fahrstreifen (Fussnote 2)', () => {
+    const c = capacity(v6, { ...noFlags, armAQ2Override: 250 }, 6, 900, 'sideRight')
+    expect(c.qpi).toBe(350)
+    acc(c.sim, c.exact, c.exact * 0.05)
+  })
+  test('Strom 7 mit Dreiecksinsel: q3 entfällt (Fussnote 3)', () => {
+    const c = capacity([[0, 600, 200], [0, 0, 900], [0, 0, 0]], { ...noFlags, armATriangleIsland: true }, 7, 900, 'mainLeft')
+    expect(c.qpi).toBe(600)
+    acc(c.sim, c.exact, c.exact * 0.05)
+  })
+  test('Strom 5: beide Richtungen und Linksabbieger (F5)', () => {
+    const v = [[0, 400, 100, 0], [300, 0, 0, 100], [0, 0, 0, 600], [0, 0, 0, 0]]
+    const c = capacity(v, noFlags, 5, 600, 'sideCross')
+    expect(c.qpi).toBe(850)
+    acc(c.sim, c.exact, c.exact * 0.05)
+  })
+})
+
+// ── Fussgänger*innen: Wirkung je Strom und Fahrtrichtung ──────────────────────
+describe('Querungen wirken je Strom', () => {
+  const off: PedestrianLegConfig = { enabled: false, fg: 0, rho: 1, mittelinsel: false }
+  const on = (fg: number): PedestrianLegConfig => ({ enabled: true, fg, rho: 1, mittelinsel: false })
+  const opts = { runs: 150, tcSigma: 0, seed: 31 }
+  const mean = (v: number[][], sn: number, pedestrians: PedestrianConfig) =>
+    runStochasticSN640022(v, noFlags, v, { ...opts, pedestrians })!
+      .streams.find(s => s.streamNumber === sn)!.stats!.mean
+
+  // Strom 5 kreuzt beide Richtungen; eine Querung hält nur ihre Richtung an
+  const kreuzung = (q2: number, q8: number) => [[0, q2, 0, 0], [q8, 0, 0, 0], [0, 0, 0, 100], [0, 0, 0, 0]]
+  test('Strom 5: nur die Querung der stark belasteten Richtung schafft Lücken', () => {
+    const v = kreuzung(100, 900)
+    const ohne = mean(v, 5, { armA: off, armC: off })
+    expect(mean(v, 5, { armA: off, armC: on(300) })).toBeLessThan(ohne * 0.85)
+    acc(mean(v, 5, { armA: on(300), armC: off }), ohne, ohne * 0.1)
+  })
+  test('Strom 5 gespiegelt: Wirkung wechselt die Richtung', () => {
+    const v = kreuzung(900, 100)
+    const ohne = mean(v, 5, { armA: off, armC: off })
+    expect(mean(v, 5, { armA: on(300), armC: off })).toBeLessThan(ohne * 0.85)
+    acc(mean(v, 5, { armA: off, armC: on(300) }), ohne, ohne * 0.1)
+  })
+
+  // Strom 4 (B→A) überfährt die Querung A selbst: Dieselben Sperrzeiten halten ihn an
+  // und nützen ihm nichts. Parallel liegt die Querung C.
+  const t4 = [[0, 500, 0], [500, 0, 0], [100, 0, 0]]
+  test('Strom 4: eigene Querung verlängert die Wartezeit', () => {
+    const ohne = mean(t4, 4, { armA: off, armC: off })
+    const m200 = mean(t4, 4, { armA: on(200), armC: off })
+    const m300 = mean(t4, 4, { armA: on(300), armC: off })
+    expect(m200).toBeGreaterThan(ohne * 1.5)
+    expect(m300).toBeGreaterThan(m200)
+  })
+  test('Strom 4: parallele Querung verkürzt die Wartezeit leicht', () => {
+    expect(mean(t4, 4, { armA: off, armC: on(300) }))
+      .toBeLessThan(mean(t4, 4, { armA: off, armC: off }))
+  })
+  test('Strom 6: Querung A schafft Lücken, Querung B und C sperren ihn', () => {
+    const v = [[0, 800, 0], [0, 0, 0], [0, 200, 0]]
+    const ohne = mean(v, 6, { armA: off, armC: off })
+    expect(mean(v, 6, { armA: on(300), armC: off })).toBeLessThan(ohne)
+    expect(mean(v, 6, { armA: off, armC: on(300) })).toBeGreaterThan(ohne * 2)
+    expect(mean(v, 6, { armA: off, armC: off, armB: on(300) })).toBeGreaterThan(ohne * 2)
+  })
+})
+
+// ── Hauptstrom aus zwei Richtungen: kein Abriss bei qpi um 2000 Fz/h ──────────
+describe('Cowan M3 je Fahrstreifen', () => {
+  const opts = { runs: 60, seed: 41, tcSigma: 0 }
+  test('zwei Richtungen mit je 1000 Fz/h lassen Lücken (qpi = 2030)', () => {
+    const v = [[0, 1000, 0], [1000, 0, 30], [20, 20, 0]]
+    const r = runStochasticSN640022(v, noFlags, v, opts)!
+    const s4 = r.streams.find(s => s.streamNumber === 4)!
+    expect(s4.qpi).toBe(2030)
+    expect(s4.utilization).toBeLessThan(0.6)
+    expect(s4.stats!.mean).toBeLessThan(120)
+  })
+  test.each([1800, 2000, 2200])('Kapazität fällt mit qpi = %i stetig, nicht abrupt', qpi => {
+    const v = [[0, qpi / 2, 0], [qpi / 2, 0, 0], [30, 0, 0]]
+    const s4 = runStochasticSN640022(v, noFlags, v, opts)!.streams.find(s => s.streamNumber === 4)!
+    expect(s4.utilization).toBeLessThan(0.5)
+  })
+})
+
+// ── Vergleich mit der Normrechnung (ohne Fussgänger*innen) ────────────────────
+// Modell der Norm: exponentielle Lücken, festes t_c, Zeitlücken des Presets «mit +90».
+// Kapazität aus der Sättigung: Bei Überlast ist L = Nachfrage / Auslastung x.
+describe('Simulation trifft SN 640 022', () => {
+  const opts = { runs: 80, useCowan: false, tcSigma: 0, seed: 51, gapOverrides: GAP_PARAMS_SN640022_CH }
+  const sim = (v: number[][], runs = opts.runs) => runStochasticSN640022(v, noFlags, v, { ...opts, runs })!
+  const norm = (v: number[][]) => analyzeSN640022(v, noFlags, v)!
+
+  // Kapazität von Strom sn: Nachfrage 1,3·L, die übrigen Ströme des Arms leer
+  const capacity = (build: (demand: number) => number[][], sn: number) => {
+    const L = norm(build(100)).streams.find(s => s.streamNumber === sn)!.capacity
+    const demand = Math.max(30, Math.round(1.3 * L))
+    const s = sim(build(demand)).streams.find(x => x.streamNumber === sn)!
+    return { L, sim: demand / s.utilization }
+  }
+
+  test.each([300, 600, 900, 1200])('Rang 2, qpi = %i: Strom 7 und 6 auf ±12 %', qpi => {
+    const c7 = capacity(d => [[0, qpi, 0], [0, 0, d], [0, 0, 0]], 7)
+    const c6 = capacity(d => [[0, qpi, 0], [0, 0, 0], [0, d, 0]], 6)
+    acc(c7.sim, c7.L, c7.L * 0.12)
+    acc(c6.sim, c6.L, c6.L * 0.12)
+  })
+
+  // F13: L4 = p0,7·G4; die Rückstaukopplung senkt L4 wie die Norm
+  test.each([
+    [600, 300, 0], [600, 300, 100], [600, 300, 300], [600, 300, 500], [800, 400, 200], [400, 800, 150],
+  ])('Rang 3 Einmündung q2 = %i, q8 = %i, q7 = %i: L4 auf ±15 %', (q2, q8, q7) => {
+    const c = capacity(d => [[0, q2, 0], [q8, 0, q7], [d, 0, 0]], 4)
+    acc(c.sim, c.L, c.L * 0.15)
+  })
+
+  // F15/F16 und F19/F20 (mit F18)
+  const k = (q5: number, q4: number, q11: number, q10: number) =>
+    [[0, 500, 50, 80], [500, 0, 80, 50], [q4, 60, 0, q5], [60, q10, q11, 0]]
+  test('Rang 3 Kreuzung: L5 und L11 auf ±15 %', () => {
+    const c5  = capacity(d => k(d, 0, 30, 30), 5)
+    const c11 = capacity(d => k(30, 30, d, 0), 11)
+    acc(c5.sim, c5.L, c5.L * 0.15)
+    acc(c11.sim, c11.L, c11.L * 0.15)
+  })
+  test('Rang 4 Kreuzung: L4 und L10 auf ±15 %', () => {
+    const c4  = capacity(d => k(0, d, 40, 30), 4)
+    const c10 = capacity(d => k(40, 30, 0, d), 10)
+    acc(c4.sim, c4.L, c4.L * 0.15)
+    acc(c10.sim, c10.L, c10.L * 0.15)
+  })
+
+  test('Rang 3 mit Überlast: Norm und Simulation ergeben F', () => {
+    // a7 = 0.65, L4 = 73, a4 = 1.37
+    const v = [[0, 600, 0], [300, 0, 500], [100, 0, 0]]
+    const a = norm(v).streams.find(s => s.streamNumber === 4)!
+    expect(a.levelOfService).toBe('F')
+    const s = sim(v).streams.find(x => x.streamNumber === 4)!
+    expect(s.utilization).toBeGreaterThanOrEqual(1)
+    acc(s.utilization, a.utilizationDegree, 0.2)
+  })
+  test('Rang 4 mit Überlast: Norm und Simulation ergeben F', () => {
+    const v = [[0, 700, 50, 160], [700, 0, 160, 50], [120, 0, 0, 0], [60, 0, 40, 0]]
+    const a = norm(v).streams.find(s => s.streamNumber === 4)!
+    expect(a.utilizationDegree).toBeGreaterThan(1)
+    expect(sim(v).streams.find(x => x.streamNumber === 4)!.utilization).toBeGreaterThanOrEqual(1)
+  })
+  test('höherrangiger Strom überlastet: Strom 4 hat keine Lücken mehr', () => {
+    const v = [[0, 800, 0], [200, 0, 900], [30, 0, 0]]
+    expect(norm(v).streams.find(s => s.streamNumber === 7)!.utilizationDegree).toBeGreaterThan(1)
+    expect(sim(v, 20).streams.find(x => x.streamNumber === 4)!.utilization).toBeGreaterThanOrEqual(1)
+  })
+
+  // Wartezeit: Grössenordnung. w der Norm enthält immer die Bedienzeit 3600/L, die
+  // Simulation misst Abfahrt − Ankunft; bei kleiner Auslastung liegt sie deshalb tiefer.
+  test.each([
+    ['Einmündung', [[0, 500, 50], [400, 0, 100], [60, 80, 0]], [4, 6, 7]],
+    ['Kreuzung',   [[0, 400, 50, 60], [400, 0, 70, 50], [40, 50, 0, 20], [30, 40, 30, 0]], [1, 5, 11]],
+  ])('%s: Wartezeit zwischen 0,4× und 2× der Norm', (_name, v, streams) => {
+    const a = norm(v as number[][]), r = sim(v as number[][], 200)
+    for (const sn of streams as number[]) {
+      const ratio = r.streams.find(x => x.streamNumber === sn)!.stats!.mean
+        / a.streams.find(x => x.streamNumber === sn)!.delay
+      expect(ratio).toBeGreaterThan(0.4)
+      expect(ratio).toBeLessThan(2)
+    }
+  })
+
+  test('gemeinsame Haltelinie: Auslastung x ≈ Σa des Mischstreifens (F21)', () => {
+    const v = [[0, 700, 50, 120], [700, 0, 120, 50], [60, 30, 0, 20], [30, 30, 20, 0]]
+    const a = norm(v).mixedLanes[0]
+    expect(a.utilizationDegree).toBeGreaterThan(0.6)
+    acc(sim(v, 200).streams.find(x => x.streamNumber === 4)!.utilization, a.utilizationDegree, 0.15)
+  })
+})
+
+// ── Fehlender Linksabbiegestreifen (Ziff. 14, S. 7–8) ─────────────────────────
+describe('Rückstau ohne Linksabbiegestreifen', () => {
+  test('p0* senkt die Kapazität der Nebenströme auch in der Simulation', () => {
+    const v = [[0, 500, 0, 100], [500, 0, 100, 0], [0, 0, 0, 60], [0, 0, 60, 0]]
+    const run = (flags: SN640022LaneFlags) => runStochasticSN640022(v, flags, v,
+      { runs: 120, seed: 61, tcSigma: 0 })!.streams.find(s => s.streamNumber === 5)!.stats!.mean
+    expect(run({ ...noFlags, armALeftLane: false, armCLeftLane: false })).toBeGreaterThan(run(noFlags))
+  })
+})
+
+// ── Übertrag für alle Ströme ──────────────────────────────────────────────────
+describe('Carry-over auch für HS-Linksabbieger', () => {
+  const heavy = [[0, 700, 0], [100, 0, 900], [10, 10, 0]]
+  const light = [[0, 100, 0], [100, 0, 50], [10, 10, 0]]
+  const iv = (volumes: number[][], label: string): SimInterval => ({ label, volumes, rawVolumes: volumes, T: 3600 })
+  const r = runStochasticSN640022Multi([iv(heavy, 'Spitze'), iv(light, 'danach')], noFlags,
+    { runs: 40, seed: 71, tcSigma: 0 })!
+  const stream7 = (i: number) => r.intervals[i].result.streams.find(s => s.streamNumber === 7)!
+
+  test('Überlast auf Strom 7 wird als Rückstau ausgewiesen', () => {
+    expect(stream7(0).utilization).toBeGreaterThanOrEqual(1)
+    expect(r.intervals[0].carryOver).toBeGreaterThan(100)
+  })
+  test('Rückstau belegt das nächste Intervall', () => {
+    const allein = runStochasticSN640022(light, noFlags, light, { runs: 40, seed: 72, tcSigma: 0 })!
+      .streams.find(s => s.streamNumber === 7)!
+    expect(stream7(1).utilization).toBeGreaterThan(allein.utilization + 0.1)
+    expect(stream7(1).stats!.mean).toBeGreaterThan(allein.stats!.mean * 5)
   })
 })

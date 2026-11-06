@@ -52,8 +52,8 @@ export interface VSS308Input {
 
 // ── Strom-Topologie ───────────────────────────────────────────────────────────
 // 4-Arm-Geometrie: A=West, C=Ost, B=Süd, D=Nord
-// Von A (westwärts fahrend, Blick Ost): rechts=B, gerade=C, links=D
-// Von C (ostwärts fahrend, Blick West): rechts=D, gerade=A, links=B
+// Von A (ostwärts fahrend): rechts=B, gerade=C, links=D
+// Von C (westwärts fahrend): rechts=D, gerade=A, links=B
 // Von B (nordwärts fahrend, Blick Nord): rechts=C, gerade=D, links=A
 // Von D (südwärts fahrend, Blick Süd):  rechts=A, gerade=B, links=C
 // toArmIndex=-1: kein Zielarm (Abbiegemanöver ohne Gegenarm im 3-Arm)
@@ -107,6 +107,14 @@ function betaCubic(y: number): number {
   return Math.max(0, (1 - y) ** 3)
 }
 
+// Sättigungsgrad der Fussgänger*innen an einem Fussgängerstreifen.
+// Art. 47 Abs. 3 VRV: bei Mittelinsel gilt jede Hälfte als selbständiger Streifen →
+// Fahrzeuge müssen nur Fg auf der fahrzeugnahen Hälfte Vortritt gewähren → Q_Fg / 2
+function yFg(arm: ArmInput): number {
+  const fgEff = arm.fg * (arm.mittelinsel ? 0.5 : 1)
+  return fgEff > 0 ? fgEff / (S_FG * (arm.rho ?? 1)) : 0
+}
+
 // ── Ergebnis-Typen ────────────────────────────────────────────────────────────
 
 export interface StreamResult {
@@ -154,10 +162,10 @@ export interface VSS308Result {
 // w(x,Q) = 900 × [(x−1) − 4C·(x/Q) + √((x−1)² + 8C·(x+1+2C·(x/Q)) / (Q/x))]
 // C = 0.5 für Rang 1, C = 1.0 für Rang 2 und gleicher Rang
 export function computeDelay(Q: number, L: number, C: number): number {
+  if (Q <= 0) return 0        // ohne Verkehr keine Wartezeit, auch wenn L = 0 ist
   if (L <= 0) return Infinity
   const x = Q / L
   if (x >= 1) return Infinity
-  if (Q <= 0) return 0
   const xDivQ  = x / Q
   const QDivX  = Q / x
   const inner  = (x - 1) ** 2 + 8 * C * (x + 1 + 2 * C * xDivQ) / QDivX
@@ -179,9 +187,28 @@ export function calculateVSS308(input: VSS308Input): VSS308Result {
     .filter(d => d.fromArmIndex === i && d.toArmIndex >= 0)
     .reduce((s, d) => s + getFlow(arms[i], d.movement), 0)
 
-  // Gesamtes HS-Volumen für NS-β (konfligierende Ströme aus Rang-1-Armen)
-  const qHSTotal = arms.reduce((s, a, i) => a.roadType === 'HS' ? s + armFlow(i) : s, 0)
-  const yHS = qHSTotal / S_M1
+  const oppositeHS = (i: number) => {
+    const j = i === 0 ? 1 : i === 1 ? 0 : -1
+    return j >= 0 && arms[j]?.roadType === 'HS' ? j : -1
+  }
+
+  // Rang eines HS-Stroms: Rang 1 (S = 1750, C = 0.5) hat nur, wer niemandem Vortritt
+  // gewähren muss (Tab. 25, S. 58; C: S. 62). Wer Fussgänger*innen Vortritt gewährt, ist
+  // nachrangig: Im Berichtsbeispiel hat Fz2 S = 1650 und C = 1 (Tab. 26, S. 68). Das gilt
+  // auch für den HS-Linksabbieger gegenüber dem Gegenverkehr.
+  const yieldsToFg = (d: StreamDef) => yFg(arms[d.fromArmIndex]) > 0
+    || (d.toArmIndex >= 0 && yFg(arms[d.toArmIndex]) > 0)
+  const hsIsRank1 = (d: StreamDef) => {
+    const turnsAcross = d.movement === 'left' && d.toArmIndex >= 0 && oppositeHS(d.fromArmIndex) >= 0
+    return !yieldsToFg(d) && !turnsAcross
+  }
+  // Sättigungsgrad von HS-Strömen als Konfliktverkehr: S = 1650 für Ströme, die Fussgänger*innen
+  // Vortritt gewähren (Tab. 26, S. 68), sonst S = 1750. Ohne Fg bleibt y = Q_HS / 1750.
+  const ySum = (ds: StreamDef[]) =>
+    ds.reduce((s, d) => s + getFlow(arms[d.fromArmIndex], d.movement) / (yieldsToFg(d) ? S_M2 : S_M1), 0)
+
+  // Gesamte HS-Belastung für NS-β (konfligierende Ströme aus den HS-Armen)
+  const yHS = ySum(defs.filter(d => d.toArmIndex >= 0 && arms[d.fromArmIndex].roadType === 'HS'))
 
   // ── Per-Strom-Berechnung (Kap. 5, Szenario I: L = S × β) ─────────────────
   // Szenario I gilt für reine Fz/Fg-Knoten: kein paralleler höherrangiger Strom
@@ -194,12 +221,21 @@ export function calculateVSS308(input: VSS308Input): VSS308Result {
 
     // Senkrechte Fg-Ströme: Einfahrt (fromArm) + Ausfahrt (toArm)
     // Fg hat Vortritt über Fz → β_Fg = (1−y_Fg)³  (Abb. 23, Gl. 8)
-    // Art. 47 Abs. 3 VRV: bei Mittelinsel gilt jede Hälfte als selbständiger Streifen →
-    // Fahrzeuge müssen nur Fg auf der fahrzeugnahen Hälfte Vortritt gewähren → Q_Fg / 2
-    const fgEffEntry = fromArm.fg * (fromArm.mittelinsel ? 0.5 : 1)
-    const fgEffExit  = (toArm?.fg ?? 0) * (toArm?.mittelinsel ? 0.5 : 1)
-    const y_FgEntry  = fgEffEntry > 0 ? fgEffEntry / (S_FG * (fromArm.rho ?? 1)) : 0
-    const y_FgExit   = fgEffExit  > 0 ? fgEffExit  / (S_FG * (toArm!.rho  ?? 1)) : 0
+    const y_FgEntry = yFg(fromArm)
+    const y_FgExit  = toArm ? yFg(toArm) : 0
+
+    // Szenario II (Abb. 22/35, Gl. 6): Fussgängerstreifen auf HS-Armen, die dieser Strom
+    // nicht selbst überfährt, sind parallele höherrangige Ströme. Während sie belegt sind
+    // (Zeitanteil y), blockieren sie den senkrechten HS-Konfliktverkehr und verschaffen
+    // dem Strom Zeitfenster: L = S·y_par + S·(1−y_par)·β (vgl. L_Fz1, S. 64)
+    const parallelFg = () => {
+      let y = 0
+      for (let h = 0; h < arms.length; h++) {
+        if (arms[h].roadType !== 'HS' || h === def.fromArmIndex || h === def.toArmIndex) continue
+        y += yFg(arms[h])
+      }
+      return Math.min(1, y)
+    }
 
     let beta: number
     let saturation: number
@@ -208,46 +244,36 @@ export function calculateVSS308(input: VSS308Input): VSS308Result {
     let yParallel = 0
 
     if (roadType === 'HS') {
-      // Rang 1: senkrechte höherrangige Ströme = Fg-Entry + Fg-Exit
+      // Senkrechte höherrangige Ströme = Fg-Entry + Fg-Exit
       // β = (1−y_FgEntry)³ × (1−y_FgExit)³   (Gl. 12, Abb. 23 Typ 8)
       // Szenario I: Die senkrechten Vortrittsströme sind Fussgänger — kein
-      // paralleler Modus blockiert Fussgänger (vgl. Berichtsbeispiel L_Fz2 = S·β).
+      // paralleler Modus blockiert Fussgänger (vgl. Berichtsbeispiel L_Fz2 = S·β, S. 65).
       beta = betaCubic(y_FgEntry) * betaCubic(y_FgExit)
-      saturation = S_M1
-      C = 0.5
+      const rank1 = hsIsRank1(def)
+      saturation = rank1 ? S_M1 : S_M2
+      C = rank1 ? 0.5 : 1.0
       // Linksabbieger von der HS: muss dem Gegenverkehr (Geradeaus + Rechts des
       // gegenüberliegenden HS-Arms, vgl. SN 640 022 F1/F2) Vortritt gewähren →
-      // abbiegendes Fahrzeug gegenüber Rang 1 (Tab. 25): β_i = (1−y_gegen)³,
-      // S = S_m2 (Rang 2), C = 1
-      const oppIdx = def.fromArmIndex === 0 ? 1 : def.fromArmIndex === 1 ? 0 : -1
-      const opp = oppIdx >= 0 ? arms[oppIdx] : undefined
-      if (def.movement === 'left' && toArm && opp?.roadType === 'HS') {
-        const qOpp = defs
-          .filter(d => d.fromArmIndex === oppIdx && d.toArmIndex >= 0 && d.movement !== 'left')
-          .reduce((s, d) => s + getFlow(opp, d.movement), 0)
-        beta *= betaCubic(qOpp / S_M1)
-        saturation = S_M2
-        C = 1.0
+      // abbiegendes Fahrzeug (Tab. 25, S. 58): β_i = (1−y_gegen)³. Dieser Konfliktverkehr
+      // wird von Fg auf dem Gegenarm angehalten, die der Linksabbieger selbst nicht
+      // überfährt → paralleler höherrangiger Strom, Szenario II wie bei den NS-Strömen.
+      const oppIdx = oppositeHS(def.fromArmIndex)
+      if (def.movement === 'left' && toArm && oppIdx >= 0) {
+        const yOpp = ySum(defs.filter(d =>
+          d.fromArmIndex === oppIdx && d.toArmIndex >= 0 && d.movement !== 'left'))
+        beta *= betaCubic(yOpp)
+        if (yOpp > 0) {
+          yParallel = parallelFg()
+          if (yParallel > 0) scenario = 'II'
+        }
       }
     } else if (roadType === 'NS') {
       // Rang 2: senkrechte höherrangige Ströme = HS-Fz (gesamt) + Fg-Entry + Fg-Exit
       beta = betaCubic(yHS) * betaCubic(y_FgEntry) * betaCubic(y_FgExit)
       saturation = S_M2
       C = 1.0
-      // Szenario II (Abb. 22/35, Gl. 6): Fussgängerstreifen auf HS-Armen, die
-      // dieser Strom nicht selbst überfährt, sind parallele höherrangige Ströme.
-      // Während sie belegt sind (Zeitanteil y), blockieren sie den senkrechten
-      // HS-Konfliktverkehr und verschaffen dem NS-Strom Zeitfenster:
-      // L = S·y_par + S·(1−y_par)·β   (vgl. Berichtsbeispiel L_Fz1, Kap. 5.2)
       if (yHS > 0) {
-        for (let h = 0; h < arms.length; h++) {
-          const a = arms[h]
-          if (a.roadType !== 'HS') continue
-          if (h === def.fromArmIndex || h === def.toArmIndex) continue
-          const fgEffPar = a.fg * (a.mittelinsel ? 0.5 : 1)
-          if (fgEffPar > 0) yParallel += fgEffPar / (S_FG * (a.rho ?? 1))
-        }
-        yParallel = Math.min(1, yParallel)
+        yParallel = parallelFg()
         if (yParallel > 0) scenario = 'II'
       }
     } else {
@@ -299,10 +325,11 @@ export function calculateVSS308(input: VSS308Input): VSS308Result {
     const validStreams = armStreams.filter(s => s.toArmIndex >= 0)
     const qFz         = validStreams.reduce((sum, s) => sum + s.Q, 0)
     const loaded      = validStreams.filter(s => s.Q > 0)
-    // Arm-Anzeige: HS-Arm als Rang 1 (Geradeaus dominiert); der HS-Linksabbieger
-    // trägt seine Rang-2-Kapazität über L_i in x_Arm bei
-    const saturation = arm.roadType === 'NS' ? S_M2 : S_M1
-    const C          = arm.roadType === 'HS' ? 0.5 : 1.0
+    // Arm-Anzeige: HS-Arm als Rang 1, solange Geradeaus und Rechts keinen Fussgänger*innen
+    // Vortritt gewähren; der HS-Linksabbieger trägt seine Kapazität über L_i in x_Arm bei
+    const hsRank1 = validStreams.every(s => s.movement === 'left' || s.saturation === S_M1)
+    const saturation = arm.roadType === 'NS' || (arm.roadType === 'HS' && !hsRank1) ? S_M2 : S_M1
+    const C          = arm.roadType === 'HS' && hsRank1 ? 0.5 : 1.0
 
     if (loaded.length === 0) {
       // Keine Belastung: Display-β und -L vom ersten Strom

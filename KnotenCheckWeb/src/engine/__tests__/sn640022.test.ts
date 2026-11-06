@@ -3,6 +3,7 @@
 
 import { describe, test, expect } from 'vitest'
 import { analyzeSN640022, w, basicCapacityG } from '../sn640022Calculator'
+import { classifyLOS } from '../levelOfService'
 import type { ManeuverType } from '../sn640022Calculator'
 import type { SN640022LaneFlags } from '../types'
 import { defaultIntersection, toSNLaneFlags } from '../armConfiguration'
@@ -114,7 +115,7 @@ describe('Kreuzung (Punkt 22)', () => {
   const r = analyzeSN640022(v, flags)!
   const s = (n: number) => r.streams.find(s => s.streamNumber === n)!
 
-  // Rang 2 — Grundleistungsfähigkeit (Toleranz ±12: Interpolationsfehler auf konkaver Kurve)
+  // Rang 2 — Grundleistungsfähigkeit (die Kurven treffen die Ablesungen der Norm auf ±3, siehe unten)
   test('S1: qp1=550 → G1≈810', () => { acc(s(1).basicCapacity, 810, 12) })
   test('S7: qp7=720 → G7≈670', () => { acc(s(7).basicCapacity, 670, 8) })
   test('S6: qp6=500 → G6≈675 (Fn1 aktiv)', () => { acc(s(6).basicCapacity, 675, 8) })
@@ -125,13 +126,22 @@ describe('Kreuzung (Punkt 22)', () => {
   test('S7: L7=G7', () => { acc(s(7).capacity, s(7).basicCapacity, 1) })
 
   // Rang 3
-  // Rang 3 (Toleranz ±18: Interpolation auf konkaver Kreuzen-Kurve)
+  // Rang 3 (Ablesungen und p-Werte der Norm sind gerundet)
   test('S5: L5≈245', () => { acc(s(5).capacity, 245, 18) })
   test('S11: L11≈204', () => { acc(s(11).capacity, 204, 18) })
 
-  // Rang 4
+  // Rang 4 — die Toleranzen decken einen Widerspruch der Norm ab: Das Beispiel S. 14 rechnet
+  // L4 = pz,5·p0,12·G4 = 200 und L10 = pz,11·p0,6·G10 = 174, entgegen F19/F20 (S. 6).
+  // Der Rechner folgt den Formeln und ergibt L4 ≈ 194, L10 ≈ 181.
   test('S4: L4≈200', () => { acc(s(4).capacity, 200, 12) })
   test('S10: L10≈174', () => { acc(s(10).capacity, 174, 18) })
+  test('S4/S10 folgen F19/F20, nicht den Tabellenwerten S. 14', () => {
+    // Belastungen der Normtabelle S. 13: Fz/h für qpi, PWE/h für die Auslastung
+    const pwe = [[0, 550, 242, 33], [605, 0, 99, 0], [187, 66, 0, 11], [22, 6, 17, 0]]
+    const norm = analyzeSN640022(pwe, flags, v)!
+    acc(norm.streams.find(x => x.streamNumber === 4)!.capacity, 194, 2)
+    acc(norm.streams.find(x => x.streamNumber === 10)!.capacity, 181, 2)
+  })
 
   // Qualitätsstufen
   test('Rang-2-Ströme alle QS A', () => {
@@ -468,4 +478,72 @@ describe('Unbelasteter Strom (q = 0) erhält keine Überlastung', () => {
     expect(s(1).levelOfService).toBe('A')
   })
   test('überlasteter Strom 7 bleibt QS F', () => { expect(s(7).levelOfService).toBe('F') })
+})
+
+// ── Gesamt-QS: nur Ströme mit Fahrzeugen zählen (Ziff. 17, S. 9) ─────────────────
+describe('Gesamt-QS ohne unbelastete Ströme', () => {
+  // A und C je links 150 / gerade 900, B und D je rechts 50; alle übrigen Ströme leer.
+  // Die leeren Ströme 4, 5, 10, 11 hätten als Bedienzeit 3600/L über 45 s (QS E).
+  const v = [
+    [0, 900, 0, 150],
+    [900, 0, 150, 0],
+    [0, 50, 0, 0],
+    [50, 0, 0, 0],
+  ]
+  const r = analyzeSN640022(v)!
+
+  test('Gesamt-QS kommt aus den belasteten Strömen: A', () => {
+    expect(r.streams.find(s => s.streamNumber === 5)!.delay).toBeGreaterThan(45)
+    expect(r.overallLevelOfService).toBe('A')
+  })
+  test('leerer Mischstreifen zählt nicht', () => {
+    const t = analyzeSN640022([[0, 900, 0], [800, 0, 500], [0, 0, 0]])!
+    expect(t.mixedLanes[0].volumeFzh).toBe(0)
+    expect(t.overallLevelOfService).toBe(t.streams.find(s => s.streamNumber === 7)!.levelOfService)
+  })
+  test('ein belasteter überlasteter Strom bleibt massgebend', () => {
+    expect(analyzeSN640022([[0, 900, 0], [800, 0, 900], [0, 0, 0]])!.overallLevelOfService).toBe('F')
+  })
+  test('ohne Verkehr gibt es keine Gesamt-QS', () => {
+    expect(analyzeSN640022([[0, 0, 0], [0, 0, 0], [0, 0, 0]])!.overallLevelOfService).toBeNull()
+    expect(analyzeSN640022([[0, 500, 100, 0], [400, 0, 0, 100], [0, 0, 0, 0], [0, 0, 0, 0]])!
+      .overallLevelOfService).toBeNull()
+  })
+})
+
+// ── Staufreiheit ohne Verkehr ─────────────────────────────────────────────────
+describe('p0 eines Stroms ohne Verkehr', () => {
+  test('q = 0 ist staufrei, auch wenn L = 0 ist', () => {
+    // Strom 7 ohne Verkehr und ohne Leistungsfähigkeit darf Strom 4 nicht sperren
+    const r = analyzeSN640022([[0, 500, 0], [300, 0, 0], [50, 0, 0]], undefined, undefined,
+      sn => sn === 7 ? 0 : 400)!
+    expect(r.streams.find(s => s.streamNumber === 4)!.capacity).toBe(400)
+  })
+})
+
+// ── p0* wird ausgewiesen, wenn der Linksabbiegestreifen fehlt ─────────────────
+describe('p0* im Resultat (Ziff. 14, S. 7–8)', () => {
+  const v = [[0, 500, 0], [300, 0, 100], [50, 50, 0]]
+  const flags = { mixedB: 'all', mixedD: 'all', armASeparateLane: false, armCSeparateLane: false,
+                  armATriangleIsland: false, armCTriangleIsland: false,
+                  armBRightIsland: false, armDRightIsland: false } as const
+  test('mit Streifen kein p0*', () => {
+    expect(analyzeSN640022(v, flags)!.streams.find(s => s.streamNumber === 7)!.p0Star).toBeUndefined()
+  })
+  test('ohne Streifen p0* = 1 − a·1800/(1800 − q8 − q9); L4 = p0*·G4', () => {
+    const r = analyzeSN640022(v, { ...flags, armCLeftLane: false })!
+    const s7 = r.streams.find(s => s.streamNumber === 7)!
+    const s4 = r.streams.find(s => s.streamNumber === 4)!
+    const expected = 1 - (100 / s7.capacity) * (1800 / (1800 - 300))
+    expect(s7.p0Star).toBeCloseTo(expected, 9)
+    expect(s4.capacity).toBeCloseTo(expected * s4.basicCapacity, 6)
+  })
+})
+
+// ── Qualitätsstufe an der Grenze 45 s (Tab. 3, S. 10) ─────────────────────────
+describe('classifyLOS an der Grenze', () => {
+  test('w = 45 s ist D, E erst darüber', () => {
+    expect(classifyLOS(45, 0.5)).toBe('D')
+    expect(classifyLOS(45.01, 0.5)).toBe('E')
+  })
 })

@@ -4,8 +4,8 @@ import type { LevelOfService } from './types'
 
 export type { LevelOfService }
 
-const S = 1800  // Fahrstreifensättigung [PWE/h] (Ziffer 11.3)
-const C = 0.5   // Konstante für isolierte LSA (Ziffer 12)
+const S = 1800  // Fahrstreifensättigung [PWE/h] (Ziffer 11.3, S. 10)
+const C = 0.5   // Konstante für isolierte LSA (Ziffer 12, S. 14)
 
 // ── Tabelle 2 ─────────────────────────────────────────────────────────────────
 export interface Tab2Entry { tGrSum: number; lambdaSum: number; qKritMax: number }
@@ -102,7 +102,7 @@ function toStreamVolumes(input: LSAInput): Record<string, number> {
   }
 }
 
-// ── Wartezeit (VSS 40 023a, Ziffer 12; nach Kimber & Hollis 1979, TRRL LR 909) ─
+// ── Wartezeit (VSS 40 023a, Ziffer 12, S. 13; nach Kimber & Hollis 1979, TRRL LR 909) ─
 // w_m = w_1 + w_0
 // w_1 = Z·(1−λ)² / (2·(1−λ·X))
 // w_0 = 900·[(X−1) − 2C·X/Q + √((X−1)² + 4C·(X+1+C·X/Q) / (Q/X))]
@@ -124,7 +124,7 @@ export function streamDelay(
   return { w1, w0: Math.max(0, w0), wm: w1 + Math.max(0, w0), X }
 }
 
-// ── LOS-Klassierung (Tab. 4) ──────────────────────────────────────────────────
+// ── LOS-Klassierung (Tab. 4, S. 14) ──────────────────────────────────────────────────
 export function losFromDelay(wm: number): LevelOfService {
   if (!isFinite(wm)) return 'F'
   if (wm <=  20) return 'A'
@@ -187,7 +187,7 @@ export function calculateLSA(input: LSAInput): LSAResult {
   })
   const sumQKrit = qKritPP.reduce((a, b) => a + b, 0)
 
-  // Z-Auswahl (Tab. 2): kleinste Z mit qKritMax > ΣQ_krit (Ziffer 11.2)
+  // Z-Auswahl (Tab. 2): kleinste Z mit qKritMax > ΣQ_krit (Ziffer 11.2, S. 10)
   let selectedRow = TAB2[TAB2.length - 1]
   let overloaded  = true
   for (const row of TAB2) {

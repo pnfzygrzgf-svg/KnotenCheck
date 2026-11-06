@@ -83,10 +83,6 @@ export function armFactor(arm: ArmConfiguration): number {
   return GRADIENT_F_FZ[arm.gradient]
 }
 
-export function totalVolume(arm: ArmConfiguration): number {
-  return arm.leftVolume + arm.straightVolume + arm.rightVolume
-}
-
 // ── Kreuzungskonfiguration ────────────────────────────────────────────────────
 
 export interface IntersectionConfiguration {

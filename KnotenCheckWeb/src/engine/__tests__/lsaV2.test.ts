@@ -4,8 +4,9 @@
 import { describe, test, expect } from 'vitest'
 import {
   armMovements, armStreamIds, STREAM_LABELS, streamsConflict, suggestPhasePlan,
-  calculateLSAV2, defaultLanesAndPhases,
+  calculateLSAV2, defaultLanesAndPhases, queue95, tzFor, tzModeFromFile,
 } from '../lsaCalculatorV2'
+import { streamDelay } from '../lsaCalculator'
 import type { Lane, LSAInputV2 } from '../lsaCalculatorV2'
 
 // Lage der Arme [°], mathematisch: 0 = Ost, gegen den Uhrzeigersinn
@@ -220,5 +221,175 @@ describe('LSA V2: Mischfahrstreifen zählt die Summe seiner Ströme', () => {
       expect(s.wm).toBe(lane.wm)
       expect(s.los).toBe(lane.los)
     }
+  })
+})
+
+// ── Minimaler Phasenplan: nur Ströme mit Verkehr ──────────────────────────────
+describe('LSA V2: Minimaler Phasenplan beachtet nur Ströme mit Q > 0', () => {
+  const { lanes } = defaultLanesAndPhases(4)
+  const volumes = { q2: 600, q8: 600, q5: 300, q11: 300 }
+
+  test('Mischfahrstreifen ohne Abbieger: 2 Phasen, Z 45, VQS B, kein Konflikt', () => {
+    const phases = suggestPhasePlan(lanes, volumes, 4)
+    expect(phases.length).toBe(2)
+    const r = calculateLSAV2({ armCount: 4, volumes, lanes, phases, targetLos: 'D', tZ: 5 })
+    expect(r.Z).toBe(45)
+    expect(r.sumQKrit).toBe(900)
+    expect(r.overallLos).toBe('B')
+    expect(r.conflicts).toEqual([])
+  })
+  test('mit Linksabbiegern bleibt die Trennung', () => {
+    const phases = suggestPhasePlan(lanes, { ...volumes, q1: 50, q7: 50 }, 4)
+    const r = calculateLSAV2({ armCount: 4, volumes: { ...volumes, q1: 50, q7: 50 }, lanes, phases, targetLos: 'D', tZ: 5 })
+    expect(r.conflicts).toEqual([])
+    expect(phases.length).toBeGreaterThan(2)
+  })
+})
+
+// ── Normbeispiel Ziffer 16 (S. 16–20) ─────────────────────────────────────────
+describe('LSA V2: Normbeispiel Ziffer 16 mit Z = 80 s', () => {
+  const lane = (id: string, armIndex: number, stream: string): Lane =>
+    ({ id, armIndex, label: `FS ${id}`, streamIds: [stream] })
+  const lanes = [lane('1', 0, 'q3'), lane('2', 0, 'q2'), lane('3', 1, 'q8'),
+                 lane('4', 1, 'q7'), lane('5', 2, 'q6'), lane('6', 2, 'q4')]
+  const phases = [{ id: 1, laneIds: ['1', '2', '3'] }, { id: 2, laneIds: ['4', '5'] }, { id: 3, laneIds: ['5', '6'] }]
+  const volumes = { q2: 500, q3: 175, q8: 600, q7: 275, q4: 325, q6: 100 }
+  const calc = (extra: Partial<LSAInputV2> = {}) =>
+    calculateLSAV2({ armCount: 3, volumes, lanes, phases, targetLos: 'D', ...extra })
+
+  test('Vorgabe ohne T_Z: Pauschale 5 s, ΣQ_krit 1200, Maximum 1463, VQS D', () => {
+    const r = calc({ manualZ: 80 })
+    expect(r.Z).toBe(80)
+    expect(r.tZ).toBe(5)
+    expect(r.sumQKrit).toBe(1200)
+    expect(Math.round(r.maxQKrit)).toBe(1463)
+    expect(r.overallLos).toBe('D')
+    expect(r.overlapIssues).toEqual([])
+  })
+  test('Fahrstreifen 5 erhält die Zwischenzeit zwischen seinen Phasen (Tab. 6, S. 19)', () => {
+    expect(calc({ manualZ: 80 }).lanes.find(l => l.laneId === '5')!.tGr).toBeCloseTo(14.9 + 17.6 + 5, 0)
+  })
+
+  // Auto-Z nimmt 50 s (Tab. 2, S. 10) und verfehlt D; die Norm wählt darum eine höhere Z (S. 18)
+  test('Auto-Z verfehlt Ziel D und nennt die Umlaufzeit, die es erreicht', () => {
+    const r = calc()
+    expect(r.Z).toBe(50)
+    expect(r.overallLos).toBe('E')
+    expect(r.zForTarget).not.toBeNull()
+    expect(r.zForTarget!.Z).toBeGreaterThanOrEqual(60)
+    expect(r.zForTarget!.Z).toBeLessThanOrEqual(90)
+    const check = calc({ manualZ: r.zForTarget!.Z })
+    expect(check.meetsTargetLos).toBe(true)
+    expect(check.overallLos).toBe(r.zForTarget!.los)
+  })
+  test('kein Hinweis, wenn das Ziel erreicht ist oder Z von Hand gesetzt wurde', () => {
+    expect(calc({ targetLos: 'E' }).zForTarget).toBeNull()
+    expect(calc({ manualZ: 50 }).zForTarget).toBeNull()
+  })
+  test('kein Vorschlag, wenn 60–90 s das Ziel nicht erreichen', () => {
+    expect(calc({ targetLos: 'A' }).zForTarget).toBeNull()
+  })
+})
+
+// ── 95%-Rückstau: Tab. 7 (S. 20) und Tab. 10 (S. 22), Abb. 15 (S. 28) ─────────
+describe('ST_RE95 trifft die Tabellen der Norm (Z = 80 s, t_Gr gerundet wie in der Norm)', () => {
+  const metres = (Q: number, tGr: number) => {
+    const { w0, X } = streamDelay(Q, tGr / 80, 80)
+    return queue95(Q, 80 - tGr, w0, X) * 6
+  }
+  test.each([
+    [175, 32, 31], [500, 32, 75], [600, 32, 95], [275, 15, 69], [100, 38, 19], [325, 18, 73],
+  ])('Tab. 7: Q %i, t_Gr %i → %i m', (Q, tGr, expected) => {
+    expect(Math.abs(metres(Q, tGr) - expected)).toBeLessThanOrEqual(1)
+  })
+  test.each([
+    [175, 31, 32], [500, 31, 77], [600, 31, 100], [275, 14, 77], [100, 36, 19], [325, 17, 79],
+  ])('Tab. 10: Q %i, t_Gr %i → %i m', (Q, tGr, expected) => {
+    expect(Math.abs(metres(Q, tGr) - expected)).toBeLessThanOrEqual(1)
+  })
+  test('Abb. 15: λ 0,2, Q 324 → 14,6 PWE', () => {
+    const { w0, X } = streamDelay(324, 0.2, 80)
+    expect(queue95(324, 64, w0, X)).toBeCloseTo(14.6, 1)
+  })
+})
+
+// ── Zwischenzeit: Pauschale als Vorgabe, Staffelung als Annahme ───────────────
+describe('Zwischenzeit T_Z', () => {
+  test('Vorgabe: 5 s unabhängig vom Tempo', () => expect(tzFor('norm', [30, 30, 30])).toBe(5))
+  test('Annahme: Staffelung, grösster Wert aller Arme', () => {
+    expect(tzFor('staffel', [30, 30])).toBe(3)
+    expect(tzFor('staffel', [30, 50, undefined])).toBe(4)
+    expect(tzFor('staffel', [30, 60])).toBe(5)
+  })
+  test('neuere Datei: gespeicherte Wahl gilt', () => {
+    expect(tzModeFromFile('norm', [50, 50])).toBe('norm')
+    expect(tzModeFromFile('staffel', [60, 60])).toBe('staffel')
+  })
+  test('ältere Datei: bleibt gestaffelt, wenn das T_Z von der Pauschale abweicht', () => {
+    expect(tzModeFromFile(undefined, [50, 50, 50])).toBe('staffel')
+    expect(tzModeFromFile(undefined, [50, 60, 50])).toBe('norm')
+  })
+})
+
+// ── Überlappender Fahrstreifen ────────────────────────────────────────────────
+describe('Überlappender Fahrstreifen zählt nicht zu ΣQ_krit, wird aber gemeldet', () => {
+  const lane = (id: string, armIndex: number, stream: string): Lane =>
+    ({ id, armIndex, label: `FS ${id}`, streamIds: [stream] })
+  const lanes = [lane('1', 0, 'q3'), lane('2', 0, 'q2'), lane('3', 1, 'q8'),
+                 lane('4', 1, 'q7'), lane('5', 2, 'q6'), lane('6', 2, 'q4')]
+  const phases = [{ id: 1, laneIds: ['1', '2', '3'] }, { id: 2, laneIds: ['4', '5'] }, { id: 3, laneIds: ['5', '6'] }]
+  const volumes = { q2: 500, q3: 175, q8: 600, q7: 100, q4: 100, q6: 900 }
+  const calc = (manualZ?: number) =>
+    calculateLSAV2({ armCount: 3, volumes, lanes, phases, targetLos: 'D', tZ: 5, manualZ })
+
+  test('Auto-Z: X ≥ 1 und Pfad 1500 über dem Maximum 1400', () => {
+    const r = calc()
+    expect(r.overloaded).toBe(false)
+    expect(r.overlapIssues.length).toBe(1)
+    const i = r.overlapIssues[0]
+    expect(i.laneId).toBe('5')
+    expect(i.X).toBeGreaterThanOrEqual(1)
+    expect(i.pathSum).toBe(1500)
+    expect(i.pathMax).toBeCloseTo(35 / 45 * 1800, 8)
+    expect(i.pathExceeded).toBe(true)
+  })
+  test('Z = 120: Pfad reicht, X bleibt ≥ 1 (Grün folgt den Phasen) und wird gemeldet', () => {
+    const i = calc(120).overlapIssues[0]
+    expect(i.pathExceeded).toBe(false)
+    expect(i.X).toBeGreaterThanOrEqual(1)
+  })
+  test('Grünzeitverteilung bleibt bei der Norm', () => {
+    const r = calc(80)
+    expect(r.sumQKrit).toBe(600 + 100 + 100)
+    expect(r.phases[0].tGr).toBeCloseTo(65 * 600 / 800, 8)
+  })
+})
+
+// ── Fussgängerstreifen überlastet ─────────────────────────────────────────────
+describe('FGS mit X ≥ 1 wird gemeldet, das Grün bleibt beim Motorfahrzeugverkehr', () => {
+  const lanes: Lane[] = [
+    { id: 'a', armIndex: 0, label: 'a', streamIds: ['q2'] },
+    { id: 'b', armIndex: 2, label: 'b', streamIds: ['q5'] },
+    { id: 'fgs-A', armIndex: 0, label: 'FGS A', streamIds: ['fgs-A'], isFGS: true, fgLength: 9 },
+  ]
+  const phases = [{ id: 1, laneIds: ['a'] }, { id: 2, laneIds: ['b'] }, { id: 3, laneIds: ['fgs-A'] }]
+  const calc = (fg: number) => calculateLSAV2({
+    armCount: 4, volumes: { q2: 400, q5: 300, 'fgs-A': fg }, lanes, phases, targetLos: 'D', tZ: 5, manualZ: 60,
+  })
+  test('2000 Fg/h: gemeldet, Gesamt-VQS bleibt beim Motorfahrzeugverkehr', () => {
+    const r = calc(2000)
+    expect(r.fgsOverloaded).toEqual(['fgs-A'])
+    expect(r.overallLos).toBe('B')
+  })
+  test('500 Fg/h: keine Meldung', () => expect(calc(500).fgsOverloaded).toEqual([]))
+})
+
+describe('LSA ohne Verkehr', () => {
+  const { lanes, phases } = defaultLanesAndPhases(4)
+  test('ohne Eingaben: kein Motorfahrzeugverkehr gemeldet', () => {
+    expect(calculateLSAV2({ armCount: 4, volumes: {}, lanes, phases, targetLos: 'D' }).hasVehicleTraffic).toBe(false)
+  })
+  test('mit Verkehr: gemeldet', () => {
+    expect(calculateLSAV2({ armCount: 4, volumes: { q2: 100 }, lanes, phases, targetLos: 'D' }).hasVehicleTraffic).toBe(true)
   })
 })

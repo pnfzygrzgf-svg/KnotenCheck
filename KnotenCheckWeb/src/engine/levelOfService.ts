@@ -8,7 +8,7 @@ export function classifyLOS(delay: number, utilizationDegree: number): LevelOfSe
   if (delay < 10)  return 'A'
   if (delay < 15)  return 'B'
   if (delay < 25)  return 'C'
-  if (delay < 45)  return 'D'
+  if (delay <= 45) return 'D'   // Tab. 3, S. 10: E erst über 45 s
   return 'E'
 }
 

@@ -3,7 +3,7 @@
 
 import { classifyLOS, worstLOS } from './levelOfService'
 import type {
-  SN640022Result, SN640022StreamResult, SN640022MixedResult,
+  LevelOfService, SN640022Result, SN640022StreamResult, SN640022MixedResult,
   SN640022LaneFlags
 } from './types'
 
@@ -84,6 +84,7 @@ export function basicCapacityG(type: ManeuverType, qpi: number): number {
 
 // ── p₀ Wahrscheinlichkeit staufreier Zustand [F12] ───────────────────────────
 function p0(q: number, L: number): number {
+  if (q <= 0) return 1   // ohne Verkehr kein Rückstau
   if (L <= 0) return 0
   return Math.max(0, 1 - q / L)
 }
@@ -91,6 +92,7 @@ function p0(q: number, L: number): number {
 // ── p₀* Korrektur bei fehlendem Linksabbiegestreifen auf HS [F22] ─────────────
 // qj = Geradeausfahrer [PWE/h], qk = Rechtsabbieger [PWE/h] auf gleicher Zufahrt
 function p0Star(q: number, L: number, qj: number, qk: number): number {
+  if (q <= 0) return 1
   if (L <= 0) return 0
   const denom = 1800 - qj - qk
   if (denom <= 0) return 0
@@ -159,12 +161,28 @@ function mixed(
            delay: wm, levelOfService: los }
 }
 
+// ── Gesamtbeurteilung (Ziff. 17, S. 9) ────────────────────────────────────────
+// Massgebend ist die grösste Wartezeit der Fahrzeuge. Ströme und Mischstreifen ohne
+// Verkehr haben keine Fahrzeuge und zählen nicht; ohne Verkehr gibt es keine Beurteilung.
+function overallLOS(streams: SN640022StreamResult[], mixedLanes: SN640022MixedResult[]): LevelOfService | null {
+  const levels = [
+    ...streams.filter(s => s.volumePWE > 0).map(s => s.levelOfService),
+    ...mixedLanes.filter(m => m.volumeFzh > 0).map(m => m.levelOfService),
+  ]
+  return levels.length > 0 ? worstLOS(levels) : null
+}
+
+// Grundleistungsfähigkeit eines Stroms: Abb. 2 oder ein von aussen gegebener Wert
+type BasicCapacity = (streamNumber: number) => number
+const basicG = (given: BasicCapacity | undefined, sn: number, curve: (qpi: number) => number, qpi: number) =>
+  given ? given(sn) : curve(qpi)
+
 // ── Einmündung (3-armig) ──────────────────────────────────────────────────────
 // Arm 0 = SN A (HS), Arm 1 = SN C (HS), Arm 2 = SN B (NS)
 // v   = PWE/h  → für Auslastungsgrad, Reserve, Wartezeit
 // raw = Fz/h   → für qpi in G-Funktionen (Abb. 2, x-Achse = Fz/h)
 
-function einmuendung(v: number[][], raw: number[][], flags: SN640022LaneFlags): SN640022Result {
+function einmuendung(v: number[][], raw: number[][], flags: SN640022LaneFlags, given?: BasicCapacity): SN640022Result {
   // PWE/h — analysierte Ströme (Auslastungsgrad, Reserve, Wartezeit)
   const q7 = v[1][2]               // C → B [Rang 2]
   const q4 = v[2][0], q6 = v[2][1] // B → A [Rang 3], B → C [Rang 2]
@@ -177,8 +195,8 @@ function einmuendung(v: number[][], raw: number[][], flags: SN640022LaneFlags): 
   const r3g = flags.armATriangleIsland ? 0 : r3
 
   // Rang 2
-  const qp7 = r2 + r3g;           const G7 = gMainLeft(qp7);   const L7 = G7
-  const qp6 = r2r + 0.5 * r3f;   const G6 = gSideRight(qp6);  const L6 = G6
+  const qp7 = r2 + r3g;           const G7 = basicG(given, 7, gMainLeft, qp7);   const L7 = G7
+  const qp6 = r2r + 0.5 * r3f;   const G6 = basicG(given, 6, gSideRight, qp6);  const L6 = G6
   const s7 = makeStream(7, 'C → B', 2, q7, qp7, G7, L7)
   const s6 = makeStream(6, 'B → C', 2, q6, qp6, G6, L6)
 
@@ -187,16 +205,16 @@ function einmuendung(v: number[][], raw: number[][], flags: SN640022LaneFlags): 
   const p07 = (flags.armCLeftLane ?? true)
     ? p0(q7, L7)
     : p0Star(q7, L7, q8_pwe, q9_pwe)
+  if (!(flags.armCLeftLane ?? true)) s7.p0Star = p07
   const qp4 = r2 + 0.5 * r3f + r8 + r7
-  const G4  = gSideLeft(qp4)
+  const G4  = basicG(given, 4, gSideLeft, qp4)
   const L4  = p07 * G4
   const s4  = makeStream(4, 'B → A', 3, q4, qp4, G4, L4)
 
   const mixB = mixed('Arm B (4+6)', [4, 6], [{ q: q4, L: L4 }, { q: q6, L: L6 }])
 
   const streams = [s7, s6, s4]
-  const los = worstLOS([...streams.map(s => s.levelOfService), mixB.levelOfService])
-  return { streams, mixedLanes: [mixB], overallLevelOfService: los }
+  return { streams, mixedLanes: [mixB], overallLevelOfService: overallLOS(streams, [mixB]) }
 }
 
 // ── Kreuzung (4-armig) ────────────────────────────────────────────────────────
@@ -204,7 +222,7 @@ function einmuendung(v: number[][], raw: number[][], flags: SN640022LaneFlags): 
 // v   = PWE/h  → für Auslastungsgrad, Reserve, Wartezeit
 // raw = Fz/h   → für qpi in G-Funktionen (Abb. 2, x-Achse = Fz/h)
 
-function kreuzung(v: number[][], raw: number[][], flags: SN640022LaneFlags): SN640022Result {
+function kreuzung(v: number[][], raw: number[][], flags: SN640022LaneFlags, given?: BasicCapacity): SN640022Result {
   // PWE/h — analysierte Ströme (Auslastungsgrad, Reserve, Wartezeit)
   const q1  = v[0][3]
   const q7  = v[1][2]
@@ -226,10 +244,10 @@ function kreuzung(v: number[][], raw: number[][], flags: SN640022LaneFlags): SN6
   const r12g= flags.armDRightIsland    ? 0 : r12
 
   // Rang 2
-  const qp1 = r8 + r9g;              const G1  = gMainLeft(qp1);   const L1  = G1
-  const qp7 = r2 + r3g;              const G7  = gMainLeft(qp7);   const L7  = G7
-  const qp6 = r2r + 0.5 * r3f;      const G6  = gSideRight(qp6);  const L6  = G6
-  const qp12= r8r + 0.5 * r9f;      const G12 = gSideRight(qp12); const L12 = G12
+  const qp1 = r8 + r9g;              const G1  = basicG(given, 1, gMainLeft, qp1);   const L1  = G1
+  const qp7 = r2 + r3g;              const G7  = basicG(given, 7, gMainLeft, qp7);   const L7  = G7
+  const qp6 = r2r + 0.5 * r3f;      const G6  = basicG(given, 6, gSideRight, qp6);  const L6  = G6
+  const qp12= r8r + 0.5 * r9f;      const G12 = basicG(given, 12, gSideRight, qp12); const L12 = G12
   const s1  = makeStream(1,  'A → D', 2, q1,  qp1,  G1,  L1)
   const s7  = makeStream(7,  'C → B', 2, q7,  qp7,  G7,  L7)
   const s6  = makeStream(6,  'B → C', 2, q6,  qp6,  G6,  L6)
@@ -244,11 +262,13 @@ function kreuzung(v: number[][], raw: number[][], flags: SN640022LaneFlags): SN6
   const p07 = (flags.armCLeftLane ?? true)
     ? p0(q7, L7)
     : p0Star(q7, L7, q8_pwe, q9_pwe)
+  if (!(flags.armALeftLane ?? true)) s1.p0Star = p01
+  if (!(flags.armCLeftLane ?? true)) s7.p0Star = p07
   const px = p01 * p07
   const qp5 = r2 + 0.5*r3f + r8 + r9g + r1 + r7
-  const G5  = gSideCross(qp5); const L5  = px * G5
+  const G5  = basicG(given, 5, gSideCross, qp5); const L5  = px * G5
   const qp11= r8 + 0.5*r9f + r2 + r3g + r1 + r7
-  const G11 = gSideCross(qp11); const L11 = px * G11
+  const G11 = basicG(given, 11, gSideCross, qp11); const L11 = px * G11
   const s5  = makeStream(5,  'B → D', 3, q5,  qp5,  G5,  L5)
   const s11 = makeStream(11, 'D → B', 3, q11, qp11, G11, L11)
 
@@ -256,12 +276,12 @@ function kreuzung(v: number[][], raw: number[][], flags: SN640022LaneFlags): SN6
   const Py11 = px * p0(q11, L11); const pz11 = pz(Py11)
   const p012 = p0(q12, L12)
   const qp4  = r2 + 0.5*r3f + r8 + r1 + r7 + r12g + r11
-  const G4   = gSideLeft(qp4); const L4  = pz11 * p012 * G4
+  const G4   = basicG(given, 4, gSideLeft, qp4); const L4  = pz11 * p012 * G4
 
   const Py5  = px * p0(q5, L5);  const pz5 = pz(Py5)
   const p06  = p0(q6, L6)
   const qp10 = r8 + 0.5*r9f + r2 + r1 + r7 + r6g + r5
-  const G10  = gSideLeft(qp10); const L10 = pz5 * p06 * G10
+  const G10  = basicG(given, 10, gSideLeft, qp10); const L10 = pz5 * p06 * G10
 
   const s4  = makeStream(4,  'B → A', 4, q4,  qp4,  G4,  L4)
   const s10 = makeStream(10, 'D → C', 4, q10, qp10, G10, L10)
@@ -284,8 +304,7 @@ function kreuzung(v: number[][], raw: number[][], flags: SN640022LaneFlags): SN6
   const mixD = mixed(`Arm D (${mixDnums.join('+')})`, mixDnums, mixDstreams)
 
   const streams = [s1, s7, s6, s12, s5, s11, s4, s10]
-  const los = worstLOS([...streams.map(s => s.levelOfService), mixB.levelOfService, mixD.levelOfService])
-  return { streams, mixedLanes: [mixB, mixD], overallLevelOfService: los }
+  return { streams, mixedLanes: [mixB, mixD], overallLevelOfService: overallLOS(streams, [mixB, mixD]) }
 }
 
 // ── Öffentliche API ───────────────────────────────────────────────────────────
@@ -297,6 +316,8 @@ function kreuzung(v: number[][], raw: number[][], flags: SN640022LaneFlags): SN6
  * @param flags      Geometrie-Flags (Fussnoten 1–4, Mischstreifen-Kombination)
  * @param rawVolumes rawVolumes[i][j] = Verkehrsstärke [Fz/h] — für qpi in G-Funktionen (Abb. 2).
  *   Wenn nicht angegeben, wird volumes verwendet (Fallback: f=1,0, kein Unterschied).
+ * @param basicCapacity Grundleistungsfähigkeit je Strom statt Abb. 2; die Simulation rechnet
+ *   damit F11–F22 mit ihren eigenen Werten.
  */
 export function analyzeSN640022(
   volumes: number[][],
@@ -307,10 +328,11 @@ export function analyzeSN640022(
     armATriangleIsland: false, armCTriangleIsland: false,
     armBRightIsland: false, armDRightIsland: false,
   },
-  rawVolumes?: number[][]
+  rawVolumes?: number[][],
+  basicCapacity?: BasicCapacity,
 ): SN640022Result | null {
   const raw = rawVolumes ?? volumes
-  if (volumes.length === 3) return einmuendung(volumes, raw, flags)
-  if (volumes.length === 4) return kreuzung(volumes, raw, flags)
+  if (volumes.length === 3) return einmuendung(volumes, raw, flags, basicCapacity)
+  if (volumes.length === 4) return kreuzung(volumes, raw, flags, basicCapacity)
   return null
 }

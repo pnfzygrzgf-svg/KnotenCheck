@@ -23,6 +23,7 @@ import { ArmCard } from './ArmCard'
 // ── Ergebnis-Karten ───────────────────────────────────────────────────────────
 
 function MixedCard({ m }: { m: SN640022MixedResult }) {
+  const empty = m.volumeFzh <= 0   // ohne Verkehr keine Beurteilung
   const col = utilizationColor(m.utilizationDegree)
   const pct = Math.min(999, Math.round(m.utilizationDegree * 100))
   const mvs = m.streamNumbers.map(streamMovementName).join(' · ')
@@ -36,7 +37,7 @@ function MixedCard({ m }: { m: SN640022MixedResult }) {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 16, fontWeight: 700, color: col }}>{pct} %</span>
-          <LOSBadge los={m.levelOfService} />
+          {empty ? <NoTraffic /> : <LOSBadge los={m.levelOfService} />}
         </div>
       </div>
       <UtilBar value={m.utilizationDegree} />
@@ -51,24 +52,30 @@ function MixedCard({ m }: { m: SN640022MixedResult }) {
         </div>
         <div>
           <span style={{ color: '#9ca3af' }}>Wartezeit </span>
-          <strong>{delayText(m.delay)}</strong>
+          <strong>{empty ? '–' : delayText(m.delay)}</strong>
         </div>
       </div>
     </div>
   )
 }
 
+// Ströme ohne Verkehr haben keine Wartezeit und keine Qualitätsstufe (Ziff. 17, S. 9)
+function NoTraffic() {
+  return <span style={{ fontSize: 11, color: '#9ca3af' }}>kein Verkehr</span>
+}
+
 function StreamRow({ s }: { s: SN640022StreamResult }) {
+  const empty = s.volumePWE <= 0
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   padding: '8px 14px', borderBottom: '1px solid #f3f4f6' }}>
       <div style={{ flex: 1 }}>
         <div style={{ fontSize: 13, fontWeight: 500 }}>{streamMovementName(s.streamNumber)}</div>
         <div style={{ fontSize: 11, color: '#9ca3af' }}>
-          {s.name} · L = {Math.round(s.capacity)} PWE/h · {delayText(s.delay)}
+          {s.name} · L = {Math.round(s.capacity)} PWE/h{empty ? '' : ` · ${delayText(s.delay)}`}
         </div>
       </div>
-      <LOSBadge los={s.levelOfService} />
+      {empty ? <NoTraffic /> : <LOSBadge los={s.levelOfService} />}
     </div>
   )
 }
@@ -77,15 +84,15 @@ function StreamRow({ s }: { s: SN640022StreamResult }) {
 
 const LEGEND_ITEMS: LegendItem[] = [
   { abbr: 'Fz/h',      desc: 'Fahrzeuge pro Stunde — Roheingabe' },
-  { abbr: 'PWE/h',     desc: 'Personenwageneinheiten/h — umgerechnet mit PW=1, LW=2, MR=0.5, FR=0.25' },
+  { abbr: 'PWE/h',     desc: 'Personenwageneinheiten/h — umgerechnet nach Neigung und Fahrzeugart (Ziff. 8, S. 4); in der Ebene PW = 1, LW = 1.5, LZ = 2, MR = 0.5, FR = 0.25' },
   { abbr: 'S',         desc: 'Strom-Nummer nach SN 640 022 (q1–q12)' },
   { abbr: 'Bewegung',  desc: 'Bewegungsrichtung, z.B. A→C = Geradeaus von Arm A nach Arm C' },
   { abbr: 'Rg',        desc: 'Rang — 1=Hauptstrasse (Vortritt), 2=HS-Linksabbieger oder NS, 3=NS mit vorgelagertem Rang-2-Konflikt, 4=NS-Linkseinbieger mit Rang-3-Konflikt (Ziffer 6, SN 640 022)' },
   { abbr: 'qpi',  unit: 'Fz/h',  desc: 'Massgebende Hauptstrombelastung — ermittelt nach Ziffer 7 (SN 640 022, S. 3) aus den vorfahrtsberechtigten Begleitströmen je Fahrtbeziehung; x-Achse von Abb. 2' },
   { abbr: 'G',    unit: 'PWE/h', desc: 'Grundleistungsfähigkeit — abgelesen aus Abb. 2 «Grundleistungsfähigkeiten der verschiedenen Fahrbeziehungen» (SN 640 022, S. 5) bei gegebenem qpi; vier Kurven je Manöver: Linksabbiegen HS · Rechtseinbiegen NS · Kreuzen NS · Linkseinbiegen NS' },
   { abbr: 'L',    unit: 'PWE/h', desc: 'Leistungsfähigkeit — für Rang-2-Ströme L = G; für Rang-3/4-Ströme L = p₀ · G, wobei p₀ die Wahrscheinlichkeit des staufreien Zustands des übergeordneten Stroms ist' },
-  { abbr: 'p₀',        desc: 'Wahrscheinlichkeit staufreier Zustand — p₀ = 1 − a_i des übergeordneten Stroms; reduziert G bei Rang-3/4-Strömen zu L = p₀ · G [F12, F13, SN 640 022]' },
-  { abbr: 'Lm',   unit: 'PWE/h', desc: 'Leistungsfähigkeit Mischstreifen — Kapazität eines gemeinsamen Fahrstreifens für mehrere NS-Ströme auf der Nebenstrasse (Ziffer 11, SN 640 022)' },
+  { abbr: 'p₀',        desc: 'Wahrscheinlichkeit staufreier Zustand — p₀ = 1 − a_i des übergeordneten Stroms; reduziert G bei Rang-3/4-Strömen zu L = p₀ · G (Ziff. 11, S. 6, SN 640 022)' },
+  { abbr: 'Lm',   unit: 'PWE/h', desc: 'Leistungsfähigkeit Mischstreifen — Kapazität eines gemeinsamen Fahrstreifens für mehrere NS-Ströme auf der Nebenstrasse (Ziff. 13, S. 7, SN 640 022)' },
   { abbr: 'Q',    unit: 'PWE/h', desc: 'Verkehrsnachfrage (eigene Belastung) des Stroms — gewichtete Nachfrage dieses Stroms; entspricht qᵢ der SN 640 022 (nicht zu verwechseln mit qpi)' },
   { abbr: 'R',    unit: 'PWE/h', desc: 'Reserve = L − Q; negativ = Überlast' },
   { abbr: 'a',         desc: 'Auslastungsgrad = Q / L (dimensionslos)' },
@@ -101,6 +108,8 @@ function ResultsPanel({ result, onShowBerechnungsblatt }: {
 }) {
   const [showDetails, setShowDetails] = useState(false)
   const rang2 = result.streams.filter(s => s.rang === 2)
+  const overall = result.overallLevelOfService
+  const isT = result.streams.length === 3
 
   return (
     <div>
@@ -122,18 +131,20 @@ function ResultsPanel({ result, onShowBerechnungsblatt }: {
       {/* Gesamtbeurteilung */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     padding: '14px 16px', borderRadius: 10, marginBottom: 16,
-                    background: LOS_BG[result.overallLevelOfService],
-                    border: `1px solid ${LOS_COLOR[result.overallLevelOfService]}44` }}>
+                    background: overall ? LOS_BG[overall] : '#f3f4f6',
+                    border: `1px solid ${overall ? LOS_COLOR[overall] + '44' : '#e5e7eb'}` }}>
         <div>
           <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 2 }}>Gesamtbeurteilung · SN 640 022</div>
           <div style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>
-            Qualitätsstufe {result.overallLevelOfService}
+            {overall ? `Qualitätsstufe ${overall}` : 'Keine Beurteilung'}
           </div>
           <div style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>
-            (schlechtester Strom resp. Mischstreifen)
+            {overall
+              ? '(schlechtester belasteter Strom resp. Mischstreifen)'
+              : 'Ohne Verkehr gibt es nichts zu beurteilen.'}
           </div>
         </div>
-        <LOSBadge los={result.overallLevelOfService} />
+        {overall && <LOSBadge los={overall} />}
       </div>
 
       {/* Mischstreifen */}
@@ -144,6 +155,14 @@ function ResultsPanel({ result, onShowBerechnungsblatt }: {
             Mischstreifen
           </div>
           {result.mixedLanes.map(m => <MixedCard key={m.id} m={m} />)}
+          <div style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.5, marginBottom: 8 }}>
+            <strong>Annahme:</strong> {isT
+              ? 'Links- und Rechtseinbieger teilen sich einen Fahrstreifen.'
+              : 'Mindestens zwei Ströme je Nebenstrassen-Arm teilen sich einen Fahrstreifen.'}{' '}
+            Die Norm kennt Mischstreifen nur, wenn Fahrstreifen im Knotenbereich von mehreren
+            Strömen benutzt werden (Ziff. 12, S. 7). Bei getrennten Streifen sind die Einzelströme
+            massgebend, die Gesamtstufe ist dann zu streng.
+          </div>
         </>
       )}
 
@@ -153,7 +172,7 @@ function ResultsPanel({ result, onShowBerechnungsblatt }: {
           <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280',
                         textTransform: 'uppercase', letterSpacing: '0.05em',
                         marginTop: 16, marginBottom: 8 }}>
-            Linksabbieger Hauptstrasse
+            Rang 2: Linksabbieger Hauptstrasse, Rechtseinbieger Nebenstrasse
           </div>
           <div style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
             {rang2.map(s => <StreamRow key={s.id} s={s} />)}
@@ -194,10 +213,10 @@ function ResultsPanel({ result, onShowBerechnungsblatt }: {
                                color: s.reserve < 0 ? '#dc2626' : '#16a34a' }}>{Math.round(s.reserve)}</td>
                   <td style={{ padding: '5px 8px', textAlign: 'right' }}>{s.utilizationDegree.toFixed(3)}</td>
                   <td style={{ padding: '5px 8px', textAlign: 'right' }}>
-                    {isFinite(s.delay) ? Math.round(s.delay) : '∞'}
+                    {s.volumePWE <= 0 ? '–' : isFinite(s.delay) ? Math.round(s.delay) : '∞'}
                   </td>
                   <td style={{ padding: '5px 8px', textAlign: 'center' }}>
-                    <LOSBadge los={s.levelOfService} />
+                    {s.volumePWE <= 0 ? '–' : <LOSBadge los={s.levelOfService} />}
                   </td>
                 </tr>
               ))}
@@ -257,8 +276,11 @@ export default function SN022App() {
     q4: armB?.leftVolume,     q5: armB?.straightVolume, q6: armB?.rightVolume,
     q10: armD?.leftVolume,    q11: armD?.straightVolume, q12: armD?.rightVolume,
   }
-  const losNo = (n: number) =>
-    result?.streams.find(s => s.streamNumber === n)?.levelOfService
+  // Ströme ohne Verkehr bleiben im Schema ohne Qualitätsfarbe
+  const losNo = (n: number) => {
+    const s = result?.streams.find(x => x.streamNumber === n)
+    return s && s.volumePWE > 0 ? s.levelOfService : undefined
+  }
   const diagLos = losNo
   const diagLosAll = {
     q1: losNo(1), q2: losNo(2), q3: losNo(3), q4: losNo(4), q5: losNo(5), q6: losNo(6),

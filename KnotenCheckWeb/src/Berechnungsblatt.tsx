@@ -98,9 +98,9 @@ const ARM_ORDER_4 = [0, 2, 1, 3]
 function streamNote(sd: StreamDef, arm: ArmConfiguration, armIdx: number): string {
   const isHS = armIdx < 2
   const parts: string[] = []
-  // Fn 2: HS-Geradeausstrom mit separatem Linksabbiegerstreifen
+  // Fn 2 (S. 3): mehrere Streifen auf der Hauptstrasse, es zählt der rechte Fahrstreifen
   if ((sd.num === 2 || sd.num === 8) && arm.rightLaneVolume !== undefined) {
-    parts.push(`sep. Linksabb.-Str. (Fn 2) · rechter FS: ${arm.rightLaneVolume} Fz/h`)
+    parts.push(`mehrstreifig (Fn 2) · rechter FS: ${Math.min(arm.rightLaneVolume, arm.straightVolume)} Fz/h`)
   }
   if (sd.showIsland) {
     if (isHS && arm.hasSeparateTurnLane) parts.push('sep. Rechtsabb.-Str. (Fn 1)')
@@ -336,11 +336,15 @@ export function Berechnungsblatt({ cfg, result, onClose }: Props) {
                     {nr(s.reserve)}
                   </td>
                   <td style={TDR}>{nr(s.capacity)}</td>
-                  <td style={TDR}>{wStr(s.delay)}</td>
-                  <td style={{ ...TDC, background: LOS_BG[s.levelOfService], fontWeight: 700 }}>
-                    {s.levelOfService}
+                  <td style={TDR}>{s.volumePWE > 0 ? wStr(s.delay) : '–'}</td>
+                  {s.volumePWE > 0 ? (
+                    <td style={{ ...TDC, background: LOS_BG[s.levelOfService], fontWeight: 700 }}>
+                      {s.levelOfService}
+                    </td>
+                  ) : <td style={TDC}>–</td>}
+                  <td style={{ ...TD, fontSize: 10 }}>
+                    {s.volumePWE > 0 ? losVergleich(s.levelOfService, s.delay) : 'kein Verkehr'}
                   </td>
-                  <td style={{ ...TD, fontSize: 10 }}>{losVergleich(s.levelOfService, s.delay)}</td>
                 </tr>
               )
             })}
@@ -355,11 +359,15 @@ export function Berechnungsblatt({ cfg, result, onClose }: Props) {
                     {nr(m.reserve)}
                   </td>
                   <td style={TDR}>{nr(m.capacity)}</td>
-                  <td style={TDR}>{wStr(m.delay)}</td>
-                  <td style={{ ...TDC, background: LOS_BG[m.levelOfService], fontWeight: 700 }}>
-                    {m.levelOfService}
+                  <td style={TDR}>{m.volumeFzh > 0 ? wStr(m.delay) : '–'}</td>
+                  {m.volumeFzh > 0 ? (
+                    <td style={{ ...TDC, background: LOS_BG[m.levelOfService], fontWeight: 700 }}>
+                      {m.levelOfService}
+                    </td>
+                  ) : <td style={TDC}>–</td>}
+                  <td style={{ ...TD, fontSize: 10 }}>
+                    {m.volumeFzh > 0 ? losVergleich(m.levelOfService, m.delay) : 'kein Verkehr'}
                   </td>
-                  <td style={{ ...TD, fontSize: 10 }}>{losVergleich(m.levelOfService, m.delay)}</td>
                 </tr>
               )
             })}
@@ -511,6 +519,8 @@ function BelastungenFall2({ cfg, armOrder }: {
 // ── LF-Tabelle (generisch für Rang 2/3/4) ─────────────────────────────────────
 
 function LFTable({ streams }: { streams: SN640022StreamResult[] }) {
+  // p0,i* steht nur da, wenn ein Linksabbiegestreifen fehlt (Ziff. 14, S. 7–8)
+  const showStar = streams.some(s => s.p0Star !== undefined)
   return (
     <table style={T}>
       <thead>
@@ -519,6 +529,7 @@ function LFTable({ streams }: { streams: SN640022StreamResult[] }) {
           <th style={THC}>Leistungsfähigkeit L<sub>i</sub> [PWE/h]</th>
           <th style={THC}>Auslastungsgrad a<sub>i</sub></th>
           <th style={THC}>Wahrscheinlichkeit Staufreiheit p<sub>0,i</sub></th>
+          {showStar && <th style={THC}>p<sub>0,i</sub>* (Rückstau Hauptstrasse)</th>}
         </tr>
       </thead>
       <tbody>
@@ -530,6 +541,7 @@ function LFTable({ streams }: { streams: SN640022StreamResult[] }) {
               <td style={TDR}>{nr(s.capacity)}</td>
               <td style={TDR}>{n3(s.utilizationDegree)}</td>
               <td style={TDR}>{n3(p0)}</td>
+              {showStar && <td style={TDR}>{s.p0Star !== undefined ? n3(s.p0Star) : '—'}</td>}
             </tr>
           )
         })}

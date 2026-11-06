@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { calculateRoundabout, computeQKfromTurnings, computeQAfromTurnings,
-  entryFactor, ringFactor, RB_PCE_MOTOR, FG_MAX_NORM, QK_MAX_NORM } from './engine/roundaboutCalculator'
+import { calculateRoundabout, computeQKfromTurnings, computeQAfromTurnings, entryTypesFromFile,
+  entryFactor, ringFactor, RB_PCE_MOTOR, FG_MAX_NORM, QK_MAX_NORM, LA_MAX_2_2 } from './engine/roundaboutCalculator'
 import { conform, conformFixed, oneOf } from './engine/conform'
 import type { RoundaboutType, LevelOfService, EntryResult, ExitResult,
   GradientPCE, RbVehicleMix } from './engine/roundaboutCalculator'
@@ -24,21 +24,34 @@ const GRADIENT_OPTIONS: { value: GradientPCE; label: string }[] = [
   { value: '-4%', label: '-4 % (stark bergab)' },
 ]
 
+// Fahrstreifenanordnung einer Einfahrt
+const TYPE_OPTIONS: { value: RoundaboutType; label: string; desc: string }[] = [
+  { value: '1/1',  label: 'Typ 1/1 — einstreifig',
+    desc: 'Einstreifige Einfahrt, einstreifige Kreiselfahrbahn' },
+  { value: '2/1+', label: 'Typ 2/1+ — zweistreifige Einfahrt',
+    desc: 'Zweistreifige Einfahrt, einstreifige überbreite Kreiselfahrbahn' },
+  { value: '2/2',  label: 'Typ 2/2 — zweistreifig (Einfahrt + Kreis)',
+    desc: 'Zweistreifige Einfahrt, zweistreifige Kreiselfahrbahn (VSS 2005/301)' },
+]
+
 // ── Arm-Eingabe ────────────────────────────────────────────────────────────────
 
 interface ArmInput {
   name: string
+  type: RoundaboutType  // Fahrstreifenanordnung der Einfahrt (Ziffer 11, Seite 12)
   right: number      // 1. Ausfahrt (Rechtsabbieger)  [Fz/h]
   straight: number   // 2. Ausfahrt (Geradeaus)        [Fz/h] — nur 4-Arm
   left: number       // 3. Ausfahrt (Linksabbieger)    [Fz/h]
   fg: number         // Fussgängerquerungen            [FG/h]
   gradient: GradientPCE
   exitWide: boolean  // Ausfahrtsbreite 4.5 m statt 3.5 m (Abb. 5)
+  exitTwoLanes: boolean  // zweistreifige Ausfahrt (nur Typ 2/2, VSS 2005/301)
   mix?: RbVehicleMix // detaillierte Verkehrsmischung (undefined = pauschal/Motorfahrzeuge)
 }
 
 function defaultArm(): ArmInput {
-  return { name: '', right: 0, straight: 0, left: 0, fg: 0, gradient: '±0%', exitWide: false }
+  return { name: '', type: '1/1', right: 0, straight: 0, left: 0, fg: 0,
+           gradient: '±0%', exitWide: false, exitTwoLanes: false }
 }
 
 // Einfahrende Fz/h eines Arms; beim 3-Arm-Kreisel gibt es keinen Geradeaus-Strom
@@ -55,20 +68,19 @@ const MIX_ROWS: { key: keyof RbVehicleMix; label: string; onlyFlat?: boolean }[]
   { key: 'pctFR', label: 'FR – Fahrrad/Mofa', onlyFlat: true },
 ]
 
-function ArmCard({ arm, index, armCount, qkFzh, onChange }: {
+function ArmCard({ arm, index, armCount, qkFzh, qkPWE, onChange }: {
   arm: ArmInput
   index: number
   armCount: 3 | 4
   qkFzh: number
+  qkPWE: number   // aus der Berechnung: Ringströme mit dem Faktor ihres Herkunftsarms
   onChange: (a: ArmInput) => void
 }) {
   const upd = <K extends keyof ArmInput>(k: K, v: ArmInput[K]) => onChange({ ...arm, [k]: v })
   const mix    = arm.mix
   const pce    = entryFactor(arm.gradient, mix)
-  const rpce   = ringFactor(mix)
   const qeFzh  = entryFzh(arm, armCount)
   const qePWE  = Math.round(qeFzh * pce)
-  const qkPWE  = Math.round(qkFzh * rpce)
   // PW-Anteil (Rest) für die Detail-Mischung
   const pwPct  = mix ? Math.max(0, 100 - mix.pctFR - mix.pctMR - mix.pctLW - mix.pctLZ) : 100
   const pwOk   = !mix || (mix.pctFR + mix.pctMR + mix.pctLW + mix.pctLZ) <= 100
@@ -91,8 +103,17 @@ function ArmCard({ arm, index, armCount, qkFzh, onChange }: {
                    background: '#ffffffaa', color: '#374151' }} />
       </div>
 
+      {/* Fahrstreifenanordnung */}
+      <Row label="Typ der Einfahrt" sub={TYPE_OPTIONS.find(t => t.value === arm.type)?.desc}>
+        <select value={arm.type} onChange={e => upd('type', e.target.value as RoundaboutType)}
+          style={{ fontSize: 13, padding: '3px 6px', borderRadius: 4,
+                   border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>
+          {TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.value}</option>)}
+        </select>
+      </Row>
+
       {/* Abbiegeströme */}
-      <SectionLabel title={`Abbiegeströme Arm ${index + 1} (Abb. 10)`} />
+      <SectionLabel title={`Abbiegeströme Arm ${index + 1} (Abb. 10, Seite 18)`} />
       <Row label="1. Ausfahrt — rechts" sub={`→ Arm ${(index + 1) % armCount + 1}`}>
         <NumInput live value={arm.right} onChange={v => upd('right', v)} width={80} />
         <span style={{ fontSize: 11, color: '#9ca3af', width: 36 }}>Fz/h</span>
@@ -111,20 +132,34 @@ function ArmCard({ arm, index, armCount, qkFzh, onChange }: {
 
       {/* Fussgänger*innen */}
       <Row label={`Fussgängerquerungen Fg${index + 1}`}
-           sub="Einfluss via f_F (Einfahrt, Abb. 3/4) und L_A (Ausfahrt, Abb. 5). 0 = kein Einfluss">
+           sub="Einfluss via f_F (Einfahrt, Abb. 3/4, Seite 10) und L_A (Ausfahrt, Abb. 5, Seite 11). 0 = kein Einfluss">
         <NumInput live value={arm.fg} onChange={v => upd('fg', v)} width={80} />
         <span style={{ fontSize: 11, color: '#9ca3af', width: 36 }}>FG/h</span>
       </Row>
-      <Row label="Ausfahrtsbreite B"
-           sub="Länge des Fussgängerstreifens an der Ausfahrt (Abb. 5). Wirkt auf L_A">
-        <select value={arm.exitWide ? '4.5' : '3.5'}
-          onChange={e => upd('exitWide', e.target.value === '4.5')}
-          style={{ fontSize: 13, padding: '3px 6px', borderRadius: 4,
-                   border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>
-          <option value="3.5">3,5 m</option>
-          <option value="4.5">4,5 m</option>
-        </select>
-      </Row>
+      {arm.type === '2/2' && (
+        <Row label="Fahrstreifen der Ausfahrt"
+             sub={`Richtwert ohne Fussgänger*innen: ${LA_MAX_2_2.oneLane} bzw. ${LA_MAX_2_2.twoLanes} Fz/h (VSS 2005/301, Ziffer 5.2.3, Seite 64)`}>
+          <select value={arm.exitTwoLanes ? '2' : '1'}
+            onChange={e => upd('exitTwoLanes', e.target.value === '2')}
+            style={{ fontSize: 13, padding: '3px 6px', borderRadius: 4,
+                     border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>
+            <option value="1">einstreifig</option>
+            <option value="2">zweistreifig</option>
+          </select>
+        </Row>
+      )}
+      {!(arm.type === '2/2' && arm.exitTwoLanes) && (
+        <Row label="Ausfahrtsbreite B"
+             sub="Länge des Fussgängerstreifens an der Ausfahrt (Abb. 5, Seite 11). Wirkt auf L_A">
+          <select value={arm.exitWide ? '4.5' : '3.5'}
+            onChange={e => upd('exitWide', e.target.value === '4.5')}
+            style={{ fontSize: 13, padding: '3px 6px', borderRadius: 4,
+                     border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>
+            <option value="3.5">3,5 m</option>
+            <option value="4.5">4,5 m</option>
+          </select>
+        </Row>
+      )}
 
       {/* Längsneigung */}
       <SectionLabel title="Verkehrsmischung und Längsneigung" />
@@ -139,12 +174,12 @@ function ArmCard({ arm, index, armCount, qkFzh, onChange }: {
           </ToggleBtn>
         </div>
         <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 5 }}>
-          Pauschal: Spalte «Motorfahrzeuge» (Tab. 2). · Detailliert: gewichtetes f aus den
-          Fahrzeugkategorien (Tab. 2). Die Kreiselfahrbahn nutzt die Mischung bei ±0 %.
+          Pauschal: Spalte «Motorfahrzeuge» (Tab. 2, Seite 9). · Detailliert: gewichtetes f aus den
+          Fahrzeugkategorien (Tab. 2, Seite 9). Die Kreiselfahrbahn nutzt die Mischung bei ±0 %.
         </div>
       </div>
       <Row label="Neigung der Einfahrt"
-           sub={`in Fahrtrichtung · f = ${pce.toFixed(2)} (Tab. 2). Q_K immer ±0 %`}>
+           sub={`in Fahrtrichtung · f = ${pce.toFixed(2)} (Tab. 2, Seite 9). Q_K immer ±0 %`}>
         <select value={arm.gradient}
           onChange={e => {
             const g = e.target.value as GradientPCE
@@ -180,13 +215,13 @@ function ArmCard({ arm, index, armCount, qkFzh, onChange }: {
       {/* Abgeleitete Werte */}
       <SectionLabel title="Abgeleitete Werte" />
       <Row label="Einfahrtsvolumen Q_E"
-           sub={`${qeFzh} Fz/h × ${pce.toFixed(2)} (Tab. 2)`}>
+           sub={`${qeFzh} Fz/h × ${pce.toFixed(2)} (Tab. 2, Seite 9)`}>
         <span style={{ fontSize: 13, fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>
           {qePWE} PWE/h
         </span>
       </Row>
       <Row label="Kreisfahrbahnbelastung Q_K"
-           sub={`${Math.round(qkFzh)} Fz/h × ${rpce.toFixed(2)} (±0 %) — aus Abbiegeströmen`}>
+           sub={`${Math.round(qkFzh)} Fz/h aus den Abbiegeströmen, je Herkunftsarm mit dessen Faktor bei ±0 %`}>
         <span style={{ fontSize: 13, fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>
           {qkPWE} PWE/h
         </span>
@@ -197,7 +232,7 @@ function ArmCard({ arm, index, armCount, qkFzh, onChange }: {
 
 // ── Ergebnis-Karte pro Arm ────────────────────────────────────────────────────
 
-function EntryCard({ e, arm, armNumber, type }: { e: EntryResult; arm: ArmInput; armNumber: number; type: RoundaboutType }) {
+function EntryCard({ e, arm, armNumber }: { e: EntryResult; arm: ArmInput; armNumber: number }) {
   const col = utilizationColor(e.utilizationDegree)
   const pct = Math.min(999, Math.round(e.utilizationDegree * 100))
   const overflow = !isFinite(e.delay)
@@ -209,6 +244,7 @@ function EntryCard({ e, arm, armNumber, type }: { e: EntryResult; arm: ArmInput;
                     padding: '10px 14px', borderBottom: '1px solid #f3f4f6' }}>
         <div>
           <span style={{ fontWeight: 700, fontSize: 14, color: '#1e293b' }}>Arm {armNumber}</span>
+          <span style={{ fontSize: 11, color: '#6b7280', marginLeft: 8 }}>Typ {e.type}</span>
           {arm.name && <span style={{ fontSize: 12, color: '#6b7280', marginLeft: 8 }}>{arm.name}</span>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -259,14 +295,14 @@ function EntryCard({ e, arm, armNumber, type }: { e: EntryResult; arm: ArmInput;
         </div>
         {e.fgOutOfRange && (
           <div style={{ gridColumn: '1 / -1', marginTop: 4, color: '#b45309' }}>
-            FG über {FG_MAX_NORM} FG/h liegt ausserhalb der Normdiagramme (Abb. 3–5): gerechnet mit
+            FG über {FG_MAX_NORM} FG/h liegt ausserhalb der Normdiagramme (Abb. 3–5, Seiten 10–11): gerechnet mit
             der {FG_MAX_NORM}er-Kurve, die Leistungsfähigkeit ist eher überschätzt.
           </div>
         )}
         {e.qkOutOfRange && (
           <div style={{ gridColumn: '1 / -1', marginTop: 4, color: '#b45309' }}>
-            Q_K über {QK_MAX_NORM[type]} PWE/h liegt ausserhalb des Gültigkeitsbereichs der L_E-Formel
-            ({type === '2/2' ? 'VSS 2005/301: wenige Messdaten' : 'SN 640 024a, Abb. 6'}): L_E ist extrapoliert.
+            Q_K über {QK_MAX_NORM[e.type]} PWE/h liegt ausserhalb des Gültigkeitsbereichs der L_E-Formel
+            ({e.type === '2/2' ? 'VSS 2005/301, Abb. 4.25, Seite 55: wenige Messdaten' : 'SN 640 024a, Abb. 6, Seite 12'}): L_E ist extrapoliert.
           </div>
         )}
       </div>
@@ -303,16 +339,41 @@ function ExitCard({ e, arm, armNumber }: { e: ExitResult; arm: ArmInput; armNumb
         <div>
           <span style={{ color: '#9ca3af' }}>L_A </span>
           <strong>{Math.round(e.capacity)} PWE/h</strong>
-          <span style={{ color: '#9ca3af' }}> (B = {arm.exitWide ? '4,5' : '3,5'} m)</span>
+          <span style={{ color: '#9ca3af' }}> ({exitLabel(e, arm)})</span>
         </div>
         <div style={{ gridColumn: '1 / -1' }}>
           <span style={{ color: '#9ca3af' }}>X = Q_A / L_A </span>
           <strong style={{ color: col }}>{e.utilizationDegree.toFixed(2)}</strong>
           {arm.fg > 0 && <span style={{ marginLeft: 8, color: '#9ca3af' }}>(FG = {arm.fg} FG/h)</span>}
         </div>
+        {e.type === '2/2' && (
+          <div style={{ gridColumn: '1 / -1', marginTop: 4, color: '#b45309' }}>{exitNote(e)}</div>
+        )}
       </div>
     </div>
   )
+}
+
+// Gesamtaussage bei Q_A > L_A: Die Einfahrten allein beurteilen den Kreisel dann nicht
+function exitOverloadText(exits: ExitResult[]): string {
+  const arms = exits.filter(e => e.overloaded).map(e => e.armIndex + 1).join(', ')
+  return `Ausfahrt überlastet an Arm ${arms} (Q_A > L_A): Gemäss Ziffer 10, Seite 11 sind andere Knotenformen zu suchen.`
+}
+
+// Ausfahrt in Kurzform und Hinweis zum Richtwert bei Typ 2/2
+function exitLabel(e: ExitResult, arm: ArmInput): string {
+  return e.twoLanes ? 'zweistreifig' : `B = ${arm.exitWide ? '4,5' : '3,5'} m`
+}
+
+function exitNote(e: ExitResult): string {
+  const base = e.twoLanes ? LA_MAX_2_2.twoLanes : LA_MAX_2_2.oneLane
+  const unit = `Richtwert ${base} Fz/h ohne Fussgänger*innen (VSS 2005/301, Ziffer 5.2.3, Seite 64). `
+    + 'Annahme: direkt mit Q_A in PWE/h verglichen.'
+  if (!e.fgAssumed) return unit
+  const fg = ' Annahme: Abzug für Fussgänger*innen anteilig wie Abb. 5 (Seite 11), die Quelle nennt keinen.'
+  return unit + fg + (e.twoLanes
+    ? ' SN 640 024a gilt nicht für zweistreifige Ausfahrten mit Fussgängerstreifen (Ziffer 1, Seite 3).'
+    : '')
 }
 
 // ── Bewertungsblatt (Druckansicht) ────────────────────────────────────────────
@@ -326,9 +387,8 @@ const LOS_DESC: Record<LevelOfService, string> = {
   F: 'Überlastet — Stau',
 }
 
-function PrintSheet({ nodeName, type, armCount, arms, result }: {
+function PrintSheet({ nodeName, armCount, arms, result }: {
   nodeName: string
-  type: RoundaboutType
   armCount: 3 | 4
   arms: ArmInput[]
   result: NonNullable<ReturnType<typeof calculateRoundabout>>
@@ -379,9 +439,9 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
             <td style={{ ...tdL, width: '32%' }}>{nodeName || '—'}</td>
             <td style={{ ...thL, width: '16%' }}>Typ</td>
             <td style={{ ...tdL, width: '22%' }}>
-              {type === '1/1' ? '1/1 — einstreifig'
-                : type === '2/1+' ? '2/1+ — zweistreifige Einfahrt'
-                : '2/2 — zweistreifig (Einfahrt + Kreis)'}
+              {arms.every(a => a.type === arms[0].type)
+                ? TYPE_OPTIONS.find(t => t.value === arms[0].type)?.label.replace('Typ ', '')
+                : 'je Einfahrt, siehe Eingaben'}
             </td>
             <td style={{ ...thL, width: '6%' }}>Arme</td>
             <td style={{ ...tdL }}>{armCount}</td>
@@ -397,6 +457,7 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
           <tr>
             <th style={thL}>Arm</th>
             <th style={thL}>Bezeichnung</th>
+            <th style={th}>Typ</th>
             <th style={th}>Neigung</th>
             <th style={th}>f</th>
             <th style={th}>Rechts<br/>[Fz/h]</th>
@@ -415,6 +476,7 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
               <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f7f7f7' }}>
                 <td style={tdL}><strong>Arm {i + 1}</strong></td>
                 <td style={tdL}>{arm.name || '—'}</td>
+                <td style={td}>{arm.type}</td>
                 <td style={td}>{arm.gradient}{arm.mix ? ' · Det.' : ''}</td>
                 <td style={td}>{pce.toFixed(2)}</td>
                 <td style={td}>{arm.right}</td>
@@ -436,6 +498,7 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
         <thead>
           <tr>
             <th style={thL}>Arm</th>
+            <th style={th}>Typ</th>
             <th style={th}>Q_E<br/>[PWE/h]</th>
             <th style={th}>Q_K<br/>[PWE/h]</th>
             <th style={th}>L_E −FG<br/>[PWE/h]</th>
@@ -456,6 +519,7 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
                   <strong>Arm {i + 1}</strong>
                   {arms[i].name ? ` — ${arms[i].name}` : ''}
                 </td>
+                <td style={td}>{e.type}</td>
                 <td style={td}>{e.qe}</td>
                 <td style={td}>{e.qk}{e.qkOutOfRange ? '²' : ''}</td>
                 <td style={td}>{Math.round(e.leBase)}</td>
@@ -486,14 +550,20 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
 
       {/* Ausfahrten-Check (Ziffer 10, Abb. 5) */}
       <div style={{ fontWeight: 700, fontSize: 10, color: '#1e3a5f', textTransform: 'uppercase',
-                    letterSpacing: '0.06em', marginBottom: 3 }}>Ausfahrten-Check (Abb. 5)</div>
+                    letterSpacing: '0.06em', marginBottom: 3 }}>Ausfahrten-Check (Abb. 5, Seite 11)</div>
+      {result.exitOverload && (
+        <div style={{ border: '1.5px solid #b91c1c', borderRadius: 3, padding: '4px 8px', marginBottom: 4,
+                      fontSize: 10, fontWeight: 700, color: '#b91c1c' }}>
+          {exitOverloadText(result.exits)}
+        </div>
+      )}
       <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 14 }}>
         <thead>
           <tr>
             <th style={thL}>Arm</th>
             <th style={th}>Q_A<br/>[PWE/h]</th>
             <th style={th}>FG<br/>[FG/h]</th>
-            <th style={th}>B<br/>[m]</th>
+            <th style={th}>Ausfahrt</th>
             <th style={th}>L_A<br/>[PWE/h]</th>
             <th style={th}>x = Q_A/L_A<br/>[%]</th>
             <th style={{ ...th, textAlign: 'center' }}>Status</th>
@@ -507,7 +577,7 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
               </td>
               <td style={td}>{e.qa}</td>
               <td style={td}>{e.fg}</td>
-              <td style={td}>{arms[i].exitWide ? '4,5' : '3,5'}</td>
+              <td style={td}>{exitLabel(e, arms[i])}</td>
               <td style={td}>{Math.round(e.capacity)}</td>
               <td style={{ ...td, fontWeight: 600, color: e.overloaded ? '#b91c1c' : '#374151' }}>
                 {Math.round(e.utilizationDegree * 100)} %
@@ -521,9 +591,15 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
         </tbody>
       </table>
 
+      {result.exits.some(e => e.type === '2/2') && (
+        <div style={{ fontSize: 8.5, color: '#666', margin: '-10px 0 12px' }}>
+          {result.exits.map((e, i) => e.type === '2/2' ? `Arm ${i + 1}: ${exitNote(e)} ` : '')}
+        </div>
+      )}
+
       {/* Gesamtbeurteilung */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14,
-                    border: `2px solid ${LOS_COLOR[overall]}`, borderRadius: 5,
+                    border: `2px solid ${result.exitOverload ? '#b91c1c' : LOS_COLOR[overall]}`, borderRadius: 5,
                     padding: '8px 14px', marginBottom: 12,
                     background: LOS_BG[overall] }}>
         <div style={{ fontSize: 36, fontWeight: 800, color: LOS_COLOR[overall], lineHeight: 1,
@@ -532,11 +608,16 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
         </div>
         <div>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#111' }}>
-            Gesamtbeurteilung: Qualitätsstufe {overall}
+            Gesamtbeurteilung: Qualitätsstufe {overall}{result.exitOverload ? ' · Ausfahrt überlastet' : ''}
           </div>
           <div style={{ fontSize: 10, color: '#444', marginTop: 1 }}>
             {LOS_DESC[overall]}
           </div>
+          {result.exitOverload && (
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#b91c1c', marginTop: 2 }}>
+              {exitOverloadText(result.exits)}
+            </div>
+          )}
           {worstIdx >= 0 && (
             <div style={{ fontSize: 9, color: '#666', marginTop: 2 }}>
               Massgebende Einfahrt: Arm {worstIdx + 1}
@@ -548,13 +629,13 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
           )}
           {result.entries.some(e => e.fgOutOfRange) && (
             <div style={{ fontSize: 9, color: '#666', marginTop: 2 }}>
-              ¹ FG über {FG_MAX_NORM} FG/h: ausserhalb Abb. 3–5, mit der {FG_MAX_NORM}er-Kurve gerechnet
+              ¹ FG über {FG_MAX_NORM} FG/h: ausserhalb Abb. 3–5 (Seiten 10–11), mit der {FG_MAX_NORM}er-Kurve gerechnet
               (Leistungsfähigkeit eher überschätzt).
             </div>
           )}
           {result.entries.some(e => e.qkOutOfRange) && (
             <div style={{ fontSize: 9, color: '#666', marginTop: 2 }}>
-              ² Q_K über {QK_MAX_NORM[result.type]} PWE/h: ausserhalb des Gültigkeitsbereichs der L_E-Formel, extrapoliert.
+              ² Q_K über dem Gültigkeitsbereich der L_E-Formel (1/1: {QK_MAX_NORM['1/1']}, 2/1+: {QK_MAX_NORM['2/1+']}, 2/2: {QK_MAX_NORM['2/2']} PWE/h), extrapoliert.
             </div>
           )}
         </div>
@@ -565,12 +646,15 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
                     padding: '6px 10px', fontSize: 8.5, color: '#444', lineHeight: 1.6,
                     marginBottom: 10 }}>
         <strong style={{ color: '#222' }}>Methodik:</strong>
-        {' '}Q_E = Summe Abbiegeströme × f (Tab. 2, Längsneigung).
-        Q_K = Kreisfahrbahnquerschnitt aus Abbiegeströmen × 1,1 (Abb. 10).
-        L_E: 1141 − 0,578·Q_K (1/1, Q_K ≤ 1400) | 1455 − 0,537·Q_K (2/1+, Q_K ≤ 2000) (SN 640 024a, Abb. 6) | 1639,9·e^(−0,0006·Q_K) (2/2, VSS 2005/301, Q_K &gt; 1800 datenarm).
-        f_F nach Abb. 3/4 (bilinear interpoliert); Typ 2/2 verwendet Abb. 4 (mangels eigener Messwerte).
-        Ausfahrten-Check (Ziffer 10, Abb. 5): Q_A ≤ L_A; L_A ≤ 1400 PWE/h, durch FG reduziert. Wartezeit w nach Kimber &amp; Hollis, T = 1,0 h.
-        VQS nach Tab. 3: A ≤10 s · B ≤20 s · C ≤30 s · D ≤45 s · E &gt;45 s · F Überlast.
+        {' '}Typ je Einfahrt (Ziffer 11, Seite 12).
+        Q_E = Summe Abbiegeströme × f (Tab. 2, Seite 9, Längsneigung).
+        Q_K = Kreisfahrbahnquerschnitt aus Abbiegeströmen, je Herkunftsarm mit dessen Faktor bei ±0 %, pauschal 1,1 (Abb. 10, Seite 18).
+        L_E: 1141 − 0,578·Q_K (1/1, Q_K ≤ 1400) | 1455 − 0,537·Q_K (2/1+, Q_K ≤ 2000) (SN 640 024a, Abb. 6, Seite 12) | 1639,9·e^(−0,0006·Q_K) (2/2, VSS 2005/301, Abb. 4.25, Seite 55, Q_K &gt; 1800 datenarm).
+        f_F nach Abb. 3/4, Seite 10 (bilinear interpoliert); Typ 2/2 verwendet Abb. 4 (mangels eigener Messwerte).
+        Ausfahrten-Check (Ziffer 10, Abb. 5, Seite 11): Q_A ≤ L_A; L_A ≤ 1400 PWE/h, durch FG reduziert; Typ 2/2: Richtwerte {LA_MAX_2_2.oneLane}/{LA_MAX_2_2.twoLanes} Fz/h (VSS 2005/301, Ziffer 5.2.3, Seite 64).
+        Annahme: Q_A mit f der Herkunftsarme gewichtet, auch mit der Neigung ihrer Einfahrt; die Norm nennt für Ausfahrten keinen Faktor (Ziffer 9.2, Seiten 8–9).
+        Wartezeit w reproduziert Abb. 7, Seite 15 (Kimber &amp; Hollis), T = 1,0 h.
+        VQS nach Tab. 3, Seite 14: A ≤10 s · B ≤20 s · C ≤30 s · D ≤45 s · E &gt;45 s · F Überlast.
       </div>
 
       {/* Fusszeile */}
@@ -592,25 +676,24 @@ function PrintSheet({ nodeName, type, armCount, arms, result }: {
 const LEGEND_ITEMS: LegendItem[] = [
   { abbr: 'Fz/h',    desc: 'Fahrzeuge pro Stunde — Roheingabe Abbiegeströme' },
   { abbr: 'FG/h',    desc: 'Fussgänger*innen pro Stunde am Fussgängerstreifen der Einfahrt' },
-  { abbr: 'PWE/h',   desc: 'Personenwageneinheiten pro Stunde — umgerechnet mit dem PW-Äquivalentfaktor f (Tab. 2)' },
-  { abbr: 'f',       desc: 'PW-Äquivalentfaktor (Tab. 2) — pauschal: Spalte «Motorfahrzeuge» je Längsneigung; detailliert: gewichtetes Mittel der Fahrzeugkategorien (Fahrrad/Mofa, Motorrad, PW, LW, LZ). Die Kreiselfahrbahn (Q_K) verwendet immer die Werte bei ±0 % (pauschal = 1,1)' },
-  { abbr: 'Q_E', unit: 'PWE/h', desc: 'Einfahrtsvolumen — Summe aller Abbiegeströme des Arms, umgerechnet mit f (Tab. 2)' },
-  { abbr: 'Q_K', unit: 'PWE/h', desc: 'Kreisfahrbahnbelastung — Querschnittsbelastung unmittelbar vor der Einfahrt, aus den Knotenströmen gemäss Belastungsplan (Abb. 2, VSS 40 024a)' },
+  { abbr: 'PWE/h',   desc: 'Personenwageneinheiten pro Stunde — umgerechnet mit dem PW-Äquivalentfaktor f (Tab. 2, Seite 9)' },
+  { abbr: 'f',       desc: 'PW-Äquivalentfaktor (Tab. 2, Seite 9) — pauschal: Spalte «Motorfahrzeuge» je Längsneigung; detailliert: gewichtetes Mittel der Fahrzeugkategorien (Fahrrad/Mofa, Motorrad, PW, LW, LZ). Die Kreiselfahrbahn (Q_K) verwendet immer die Werte bei ±0 % (pauschal = 1,1)' },
+  { abbr: 'Q_E', unit: 'PWE/h', desc: 'Einfahrtsvolumen — Summe aller Abbiegeströme des Arms, umgerechnet mit f (Tab. 2, Seite 9)' },
+  { abbr: 'Q_K', unit: 'PWE/h', desc: 'Kreisfahrbahnbelastung — Querschnittsbelastung unmittelbar vor der Einfahrt, aus den Knotenströmen gemäss Belastungsplan (Abb. 2, Seite 8, VSS 40 024a)' },
   { abbr: 'L_E', unit: 'PWE/h', desc: 'Leistungsfähigkeit der Einfahrt — 1141 − 0,578·Q_K (1/1, SN 640 024a), 1455 − 0,537·Q_K (2/1+, SN 640 024a), 1639,9·e^(−0,0006·Q_K) (2/2, VSS 2005/301); mit Fussgänger*innen: L_E × f_F' },
-  { abbr: 'Q_A', unit: 'PWE/h', desc: 'Ausfahrtsvolumen — Summe aller Bewegungen, die an diesem Arm den Kreisel verlassen (aus den Abbiegeströmen, mit f der Herkunftsarme gewichtet)' },
-  { abbr: 'L_A', unit: 'PWE/h', desc: 'Leistungsfähigkeit der Ausfahrt — max. 1400 PWE/h ohne Fussgänger*innen, reduziert durch querenden Fussgängerverkehr je nach Ausfahrtsbreite (Abb. 5, Ziffer 10). Bedingung: Q_A ≤ L_A an allen Ausfahrten' },
-  { abbr: 'f_F',     desc: 'Fussgängerkorrekturfaktor — Reduktion der Einfahrtskapazität durch querenden Fussgängerverkehr; bilinear interpoliert aus Abb. 3 (Typ 1/1) resp. Abb. 4 (Typ 2/1+ und 2/2)' },
+  { abbr: 'Q_A', unit: 'PWE/h', desc: 'Ausfahrtsvolumen — Summe aller Bewegungen, die an diesem Arm den Kreisel verlassen. Annahme: aus den Abbiegeströmen mit f der Herkunftsarme gewichtet, auch mit der Neigung ihrer Einfahrt; die Norm nennt für Ausfahrten keinen Faktor (Ziffer 9.2, Seiten 8–9)' },
+  { abbr: 'L_A', unit: 'PWE/h', desc: 'Leistungsfähigkeit der Ausfahrt — max. 1400 PWE/h ohne Fussgänger*innen, reduziert durch querenden Fussgängerverkehr je nach Ausfahrtsbreite (Abb. 5, Ziffer 10, Seite 11). Typ 2/2: Richtwert 1700 Fz/h einstreifig, 1850 Fz/h zweistreifig ohne Fussgänger*innen (VSS 2005/301, Ziffer 5.2.3, Seite 64). Bedingung: Q_A ≤ L_A an allen Ausfahrten' },
+  { abbr: 'f_F',     desc: 'Fussgängerkorrekturfaktor — Reduktion der Einfahrtskapazität durch querenden Fussgängerverkehr; bilinear interpoliert aus Abb. 3 (Typ 1/1) resp. Abb. 4 (Typ 2/1+ und 2/2), Seite 10' },
   { abbr: 'R',  unit: 'PWE/h', desc: 'Reserve = L_E − Q_E; negativ bedeutet Überlast' },
   { abbr: 'X',        desc: 'Auslastungsgrad — Einfahrt X = Q_E / L_E, Ausfahrt X = Q_A / L_A; X ≥ 1 bedeutet Überlast' },
-  { abbr: 'w',   unit: 's', desc: 'Mittlere Wartezeit der Motorfahrzeuge — aus Abb. 7 (VSS 40 024a) in Abhängigkeit von Belastungsreserve R und Leistungsfähigkeit L_E' },
-  { abbr: 'VQS',     desc: 'Verkehrsqualitätsstufe A–F nach Tab. 3 (SN 640 024a): A ≤10s · B ≤20s · C ≤30s · D ≤45s · E >45s · F Überlast' },
+  { abbr: 'w',   unit: 's', desc: 'Mittlere Wartezeit der Motorfahrzeuge — aus Abb. 7, Seite 15 (VSS 40 024a) in Abhängigkeit von Belastungsreserve R und Leistungsfähigkeit L_E' },
+  { abbr: 'VQS',     desc: 'Verkehrsqualitätsstufe A–F nach Tab. 3, Seite 14 (SN 640 024a): A ≤10s · B ≤20s · C ≤30s · D ≤45s · E >45s · F Überlast' },
 ]
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 
 export default function RoundaboutApp() {
   const isActive = useIsActiveModule()  // Druckblatt nur im sichtbaren Modul
-  const [type, setType]         = useState<RoundaboutType>('1/1')
   const [armCount, setArmCount] = useState<3 | 4>(4)
   const [nodeName, setNodeName] = useState('')
   const [arms, setArms]         = useState<ArmInput[]>([
@@ -626,17 +709,18 @@ export default function RoundaboutApp() {
     exportTool({
       tool: 'sn024a', filePrefix: 'SN024a',
       name: nodeName, fallbackName: 'kreisel', showToast,
-      data: { nodeName, type, armCount, arms },
+      data: { nodeName, armCount, arms },
     })
 
   const handleImport = () =>
     importTool('sn024a', d => {
         setNodeName(typeof d.nodeName === 'string' ? d.nodeName : '')
-        setType(oneOf<RoundaboutType>(['1/1', '2/1+', '2/2'], d.type, '1/1'))
         setArmCount(oneOf<3 | 4>([3, 4], d.armCount, 4))
-        // Immer 4 Arme halten (3-Arm nutzt die ersten drei); Neigung und Mischung prüfen
-        setArms(conformFixed([defaultArm(), defaultArm(), defaultArm(), defaultArm()], d.arms).map(a => ({
+        // Immer 4 Arme halten (3-Arm nutzt die ersten drei); Typ, Neigung und Mischung prüfen
+        const types = entryTypesFromFile(d, 4)
+        setArms(conformFixed([defaultArm(), defaultArm(), defaultArm(), defaultArm()], d.arms).map((a, i) => ({
           ...a,
+          type: types[i],
           gradient: oneOf(Object.keys(RB_PCE_MOTOR) as GradientPCE[], a.gradient, '±0%'),
           mix: a.mix ? conform<RbVehicleMix>({ pctFR: 0, pctMR: 0, pctLW: 0, pctLZ: 0 }, a.mix) : undefined,
         })))
@@ -644,7 +728,7 @@ export default function RoundaboutApp() {
 
   function handleReset() {
     setNodeName('')
-    setArms(prev => prev.map(arm => ({ ...arm, name: '', right: 0, straight: 0, left: 0, fg: 0 })))
+    setArms([defaultArm(), defaultArm(), defaultArm(), defaultArm()])
     showToast('Zurückgesetzt')
   }
 
@@ -659,7 +743,7 @@ export default function RoundaboutApp() {
     armCount,
   ), [armCount, activeArms])
 
-  // Q_A je Ausfahrt (PWE/h) — Bewegungen mit dem f ihres Herkunftsarms gewichtet (Einfahrt)
+  // Q_A je Ausfahrt (PWE/h) — Annahme: Bewegungen mit dem f ihres Herkunftsarms gewichtet (Einfahrt)
   const qaPWE = useMemo(() => computeQAfromTurnings(
     activeArms.map(a => a.right * entryFactor(a.gradient, a.mix)),
     activeArms.map(a => a.straight * entryFactor(a.gradient, a.mix)),
@@ -682,11 +766,14 @@ export default function RoundaboutApp() {
     const qk = qkPWE
     const fg = activeArms.map(a => a.fg)
     const exitWide = activeArms.map(a => a.exitWide)
+    const exitTwoLanes = activeArms.map(a => a.exitTwoLanes)
     if (qe.every(v => v === 0)) return null
-    return calculateRoundabout({ type, qe, qk, fg, qa: qaPWE, exitWide })
-  }, [type, armCount, activeArms, qkPWE, qaPWE])
+    return calculateRoundabout({ type: activeArms.map(a => a.type), qe, qk, fg, qa: qaPWE, exitWide, exitTwoLanes })
+  }, [armCount, activeArms, qkPWE, qaPWE])
 
   const overall = result?.overallLevelOfService
+  const anyTwoTwo = activeArms.some(a => a.type === '2/2')
+  const allTwoTwo = activeArms.every(a => a.type === '2/2')
 
   return (
     <>
@@ -703,26 +790,35 @@ export default function RoundaboutApp() {
           style={{ flexBasis: '100%', padding: '5px 10px', borderRadius: 5,
                    border: '1px solid #d1d5db', fontSize: 14, fontWeight: 600, color: '#1e293b' }} />
 
-        <span style={{ fontWeight: 600, fontSize: 14, color: '#374151' }}>Typ</span>
-        {([
-          { value: '1/1',  label: 'Typ 1/1 — einstreifig' },
-          { value: '2/1+', label: 'Typ 2/1+ — zweistreifige Einfahrt' },
-          { value: '2/2',  label: 'Typ 2/2 — zweistreifig (Einfahrt + Kreis)' },
-        ] as const).map(t => (
-          <button key={t.value} onClick={() => setType(t.value)}
-            style={{ padding: '5px 18px', borderRadius: 6, fontSize: 13, cursor: 'pointer',
-                     fontWeight: type === t.value ? 700 : 400,
-                     background: type === t.value ? '#1e3a5f' : '#f3f4f6',
-                     color: type === t.value ? '#fff' : '#374151',
-                     border: type === t.value ? '1px solid #1e3a5f' : '1px solid #d1d5db' }}>
-            {t.label}
-          </button>
-        ))}
+        <span style={{ fontWeight: 600, fontSize: 14, color: '#374151' }}>Alle Arme</span>
+        {TYPE_OPTIONS.map(t => {
+          const on = activeArms.every(a => a.type === t.value)
+          return (
+            <button key={t.value} onClick={() => setArms(prev => prev.map(a => ({ ...a, type: t.value })))}
+              style={{ padding: '5px 18px', borderRadius: 6, fontSize: 13, cursor: 'pointer',
+                       fontWeight: on ? 700 : 400,
+                       background: on ? '#1e3a5f' : '#f3f4f6',
+                       color: on ? '#fff' : '#374151',
+                       border: on ? '1px solid #1e3a5f' : '1px solid #d1d5db' }}>
+              {t.label}
+            </button>
+          )
+        })}
+        <span style={{ flexBasis: '100%', fontSize: 11, color: '#6b7280', padding: '2px 0', marginTop: -4 }}>
+          Der Typ gilt je Einfahrt und lässt sich in jeder Armkarte einzeln wählen (Ziffer 11, Seite 12).
+        </span>
 
-        {type === '2/2' && (
+        {anyTwoTwo && (
           <span style={{ flexBasis: '100%', fontSize: 11, color: '#6b7280',
                          padding: '2px 0', marginTop: -4 }}>
             Grundlage Typ 2/2: VSS-Forschungsbericht 2005/301 — <em>Leistungsfähigkeit zweistreifiger Kreisel</em>, ETH Zürich / RUB Bochum / SNZ, 2009
+          </span>
+        )}
+        {anyTwoTwo && !allTwoTwo && (
+          <span style={{ flexBasis: '100%', fontSize: 11, color: '#b45309',
+                         padding: '2px 0', marginTop: -4 }}>
+            Typ 2/2 setzt eine zweistreifige Kreiselfahrbahn voraus, 1/1 und 2/1+ gelten für eine einstreifige
+            (Ziffer 11, Seite 12). Eine Kreiselfahrbahn kann nicht beides sein: Typen prüfen.
           </span>
         )}
 
@@ -764,7 +860,7 @@ export default function RoundaboutApp() {
         <div className={`arms-grid${armCount === 4 ? ' arms-grid-4' : ''}`}>
           {activeArms.map((arm, i) => (
             <ArmCard key={i} arm={arm} index={i} armCount={armCount}
-                     qkFzh={qkFzh[i]} onChange={a => setArm(i, a)} />
+                     qkFzh={qkFzh[i]} qkPWE={qkPWE[i]} onChange={a => setArm(i, a)} />
           ))}
         </div>
 
@@ -810,7 +906,7 @@ export default function RoundaboutApp() {
                             border: `1px solid ${LOS_COLOR[overall]}44` }}>
                 <div>
                   <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 2 }}>
-                    Gesamtbeurteilung · {type === '2/2' ? 'VSS 2005/301' : 'SN 640 024a'}
+                    Gesamtbeurteilung · {allTwoTwo ? 'VSS 2005/301' : anyTwoTwo ? 'SN 640 024a · VSS 2005/301' : 'SN 640 024a'}
                   </div>
                   <div style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>
                     Qualitätsstufe {overall}
@@ -818,6 +914,11 @@ export default function RoundaboutApp() {
                   <div style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>
                     (schlechteste Einfahrt)
                   </div>
+                  {result!.exitOverload && (
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#991b1b', marginTop: 4 }}>
+                      {exitOverloadText(result!.exits)}
+                    </div>
+                  )}
                 </div>
                 <LOSBadge los={overall} />
               </div>
@@ -827,21 +928,25 @@ export default function RoundaboutApp() {
                 Einfahrten
               </div>
               {result!.entries.map((e, i) => (
-                <EntryCard key={i} e={e} arm={activeArms[i]} armNumber={i + 1} type={result!.type} />
+                <EntryCard key={i} e={e} arm={activeArms[i]} armNumber={i + 1} />
               ))}
 
               {/* Ausfahrten-Check (Ziffer 10, Abb. 5) */}
               <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280',
                             textTransform: 'uppercase', letterSpacing: '0.05em',
                             margin: '18px 0 8px' }}>
-                Ausfahrten-Check (Abb. 5)
+                Ausfahrten-Check (Abb. 5, Seite 11)
+              </div>
+              <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 8 }}>
+                Annahme: Q_A ist mit dem Faktor f der Herkunftsarme gewichtet, auch mit der Neigung ihrer
+                Einfahrt. Die Norm nennt für Ausfahrten keinen Faktor (Ziffer 9.2, Seiten 8–9).
               </div>
               {result!.exitOverload && (
                 <div style={{ padding: '10px 13px', borderRadius: 8, marginBottom: 10,
                               background: '#fef2f2', border: '1px solid #fecaca',
                               fontSize: 12, color: '#991b1b', lineHeight: 1.5 }}>
                   <strong>Ausfahrt überlastet (Q_A &gt; L_A).</strong> Der Verkehr kann den
-                  Kreisel nicht abfliessen — gemäss Ziffer 10 sind andere Knotenformen zu prüfen.
+                  Kreisel nicht abfliessen — gemäss Ziffer 10, Seite 11 sind andere Knotenformen zu suchen.
                 </div>
               )}
               {result!.exits.map((e, i) => (
@@ -855,14 +960,14 @@ export default function RoundaboutApp() {
                 <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>
                   Methodik (SN 640 024a)
                 </div>
-                <div><strong>Eingabe</strong> Abbiegeströme pro Arm (Abb. 10): 1./2./3. Ausfahrt [Fz/h]</div>
-                <div><strong>Q_E</strong> = Summe Abbiegeströme × f (Tab. 2, Längsneigung)</div>
-                <div><strong>Q_K</strong> = Querschnitt vor Einfahrt, berechnet aus Abbiegeströmen × 1,1</div>
-                <div><strong>L_E</strong> 1141 − 0,578·Q_K (1/1) | 1455 − 0,537·Q_K (2/1+) | 1639,9·e^(−0,0006·Q_K) (2/2)</div>
-                <div><strong>f_F</strong> nach Abb. 3/4 — bilinear interpoliert (2/2: Abb. 4 analog)</div>
-                <div><strong>Q_A / L_A</strong> Ausfahrten-Check (Ziffer 10, Abb. 5): Q_A ≤ L_A an allen Ausfahrten; L_A ≤ 1400 PWE/h, durch FG reduziert</div>
-                <div><strong>Wartezeit</strong> nach Kimber &amp; Hollis (Ref. [10]), T = 1,0 h</div>
-                <div><strong>VQS</strong> nach Tab. 3: A ≤ 10 s · B ≤ 20 s · C ≤ 30 s · D ≤ 45 s · E &gt; 45 s · F = Überlast</div>
+                <div><strong>Eingabe</strong> Typ und Abbiegeströme je Arm (Abb. 10, Seite 18): 1./2./3. Ausfahrt [Fz/h]</div>
+                <div><strong>Q_E</strong> = Summe Abbiegeströme × f (Tab. 2, Seite 9, Längsneigung)</div>
+                <div><strong>Q_K</strong> = Querschnitt vor Einfahrt aus den Abbiegeströmen, je Herkunftsarm mit dessen Faktor bei ±0 % (pauschal 1,1)</div>
+                <div><strong>L_E</strong> je Einfahrt: 1141 − 0,578·Q_K (1/1) | 1455 − 0,537·Q_K (2/1+) (Abb. 6, Seite 12) | 1639,9·e^(−0,0006·Q_K) (2/2, VSS 2005/301, Seite 55)</div>
+                <div><strong>f_F</strong> nach Abb. 3/4, Seite 10 — bilinear interpoliert (2/2: Abb. 4 analog)</div>
+                <div><strong>Q_A / L_A</strong> Ausfahrten-Check (Ziffer 10, Abb. 5, Seite 11): Q_A ≤ L_A an allen Ausfahrten; L_A ≤ 1400 PWE/h, durch FG reduziert; Typ 2/2: Richtwert {LA_MAX_2_2.oneLane} bzw. {LA_MAX_2_2.twoLanes} Fz/h (VSS 2005/301, Ziffer 5.2.3, Seite 64)</div>
+                <div><strong>Wartezeit</strong> reproduziert Abb. 7, Seite 15 (Kimber &amp; Hollis), T = 1,0 h</div>
+                <div><strong>VQS</strong> nach Tab. 3, Seite 14: A ≤ 10 s · B ≤ 20 s · C ≤ 30 s · D ≤ 45 s · E &gt; 45 s · F = Überlast</div>
               </div>
 
             </>
@@ -911,7 +1016,6 @@ export default function RoundaboutApp() {
                                              fontFamily: 'system-ui, Arial, sans-serif' }}>
         <PrintSheet
           nodeName={nodeName}
-          type={type}
           armCount={armCount}
           arms={activeArms}
           result={result}

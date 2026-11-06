@@ -242,16 +242,17 @@ function ArmCard({ arm, index, nodeType, result, onChange }: {
             Mehrere Fussgänger*innen, die gemeinsam queren, blockieren ein Fahrzeug genauso lang wie
             ein Einzelner — das Ereignis ist aber seltener, weil eine Gruppe als ein
             einziges Ereignis zählt. Daher steigt der Sättigungsfluss proportional:{' '}
-            <strong>S_Fg = 900 · ρ</strong> [Fg/h] (Gl. 4, Tab. 9, VSS 2011/308).
+            <strong>S_Fg = 900 · ρ</strong> [Fg/h] (Gl. 4, S. 36; Tab. 9, S. 37, VSS 2011/308).
             <br />
             Je höher ρ → desto grösser S_Fg → desto kleiner y_Fg = Q / S_Fg → desto
             kleiner die Kapazitätsreduktion β = (1 − y_Fg)³ → desto mehr Kapazität
             bleibt für Fahrzeuge.
             <br /><br />
             <strong style={{ color: '#0c4a6e' }}>Wie bestimmen?</strong> ρ wird vor Ort
-            beobachtet: wie viele Fg queren im Schnitt gleichzeitig? Typische Richtwerte
-            (Tab. 9): ρ = 1 Wohngebiet · ρ = 2–3 Innenstadt · ρ = 4–5 stark belebte
-            Lagen. Bei Unsicherheit: ρ = 1 wählen (konservativ, kleinste Kapazität).
+            beobachtet: wie viele Fg queren im Schnitt gleichzeitig? Annahme als Startwert:
+            ρ = 1 Wohngebiet · ρ = 2–3 Innenstadt · ρ = 4–5 stark belebte Lagen; der Bericht
+            nennt keine Lagen, nur Anzahl, ρ und S (Tab. 9, S. 37). Bei Unsicherheit: ρ = 1
+            wählen (konservativ, kleinste Kapazität).
           </div>
         </>
       )}
@@ -298,7 +299,9 @@ function ResultCard({ res }: { res: ArmResult }) {
                     borderBottom: `1px solid ${bd}` }}>
         <span style={{ fontWeight: 800, color: col, minWidth: 20 }}>{lbl}</span>
         {res.name && <span style={{ fontSize: 12, color: col, flex: 1 }}>{res.name}</span>}
-        <LOSBadge los={res.levelOfService} />
+        {res.qFz > 0
+          ? <LOSBadge los={res.levelOfService} />
+          : <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 'auto' }}>kein Verkehr</span>}
       </div>
       {res.querung !== 'keine' && (
         <div style={{ padding: '4px 12px', fontSize: 11, color: '#6b7280', background: '#fff',
@@ -410,6 +413,7 @@ function VSS308PrintSheet({ nodeName, nodeType, arms, result }: {
 }) {
   const date    = new Date().toLocaleDateString('de-CH', { day: '2-digit', month: '2-digit', year: 'numeric' })
   const overall = result.overallLevelOfService
+  const noTraffic = result.arms.every(a => a.qFz <= 0)
   const losRank = ['A','B','C','D','E','F']
 
   const worstArm = result.arms.reduce((w, r) =>
@@ -511,7 +515,7 @@ function VSS308PrintSheet({ nodeName, nodeType, arms, result }: {
 
       {/* Ergebnisse pro Arm */}
       <div style={{ fontWeight: 700, fontSize: 10, color: '#1e3a5f', textTransform: 'uppercase',
-                    letterSpacing: '0.06em', marginBottom: 3 }}>Ergebnisse — Einfahrten (Mittelwert)</div>
+                    letterSpacing: '0.06em', marginBottom: 3 }}>Ergebnisse — Einfahrten (Arm als Mischstreifen)</div>
       <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12 }}>
         <thead>
           <tr>
@@ -616,19 +620,21 @@ function VSS308PrintSheet({ nodeName, nodeType, arms, result }: {
                     background: LOS_BG[overall] }}>
         <div style={{ fontSize: 36, fontWeight: 800, color: LOS_COLOR[overall],
                       lineHeight: 1, minWidth: 32, textAlign: 'center' }}>
-          {overall}
+          {noTraffic ? '–' : overall}
         </div>
         <div>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#111' }}>
-            Gesamtbeurteilung: Qualitätsstufe {overall}
+            {noTraffic ? 'Gesamtbeurteilung: keine (kein Verkehr)' : `Gesamtbeurteilung: Qualitätsstufe ${overall}`}
           </div>
-          <div style={{ fontSize: 10, color: '#444', marginTop: 1 }}>{LOS_DESC[overall]}</div>
-          <div style={{ fontSize: 9, color: '#666', marginTop: 2 }}>
-            Massgebender Arm: {armLabel(worstArm.armIndex)}
-            {worstArm.name ? ` — ${worstArm.name}` : ''}
-            {' '}(LOS {worstArm.levelOfService}
-            {isFinite(worstArm.delay) ? `, ca. ${Math.round(worstArm.delay)} s` : ', Überlast'})
-          </div>
+          {!noTraffic && <>
+            <div style={{ fontSize: 10, color: '#444', marginTop: 1 }}>{LOS_DESC[overall]}</div>
+            <div style={{ fontSize: 9, color: '#666', marginTop: 2 }}>
+              Massgebender Arm: {armLabel(worstArm.armIndex)}
+              {worstArm.name ? ` — ${worstArm.name}` : ''}
+              {' '}(LOS {worstArm.levelOfService}
+              {isFinite(worstArm.delay) ? `, ca. ${Math.round(worstArm.delay)} s` : ', Überlast'})
+            </div>
+          </>}
         </div>
       </div>
 
@@ -637,10 +643,10 @@ function VSS308PrintSheet({ nodeName, nodeType, arms, result }: {
                     padding: '6px 10px', fontSize: 8.5, color: '#444', lineHeight: 1.6,
                     marginBottom: 10 }}>
         <strong style={{ color: '#222' }}>Methodik (VSS 2011/308, Kap. 5):</strong>
-        {' '}Pro Strom: β = ∏(1 − y_i)³ über alle senkrechten Rang-1-Ströme (HS-Fz und/oder Fg, Ein- und Ausfahrt); y_HS = gesamte HS-Belastung / S. HS-Linksabbieger: zusätzlich (1 − y_gegen)³ aus Geradeaus + Rechts des gegenüberliegenden HS-Arms, S = 1650 Fz/h, C = 1 (Rang 2, Tab. 25).
-        L = S·β (Szenario I, Gl. 5); NS-Ströme mit parallelen vortrittsberechtigten Fg-Strömen (Streifen auf nicht überfahrenen HS-Armen, Marker «Sz II»): L = S·y_par + S·(1−y_par)·β (Szenario II, Gl. 6). S_Fz = 1750 Fz/h (HS), 1650 Fz/h (NS). S_Fg = 900·ρ Fg/h (ρ = mittlere Gruppengrösse, Tab. 9).
-        Wartezeit nach Gl. 1 (S. 62): C = 0.5 (Rang 1), C = 1.0 (Rang 2 / gleicher Rang).
-        Einfahrten-Werte: Volumen-gewichtete Mittel. LOS: A ≤10 s · B ≤20 s · C ≤30 s · D ≤45 s · E &gt;45 s · F Überlast.
+        {' '}Pro Strom: β = ∏(1 − y_i)³ über alle senkrechten vortrittsberechtigten Ströme (HS-Fz und/oder Fg, Ein- und Ausfahrt); y_HS = Summe Q/S aller HS-Ströme. HS-Linksabbieger: zusätzlich (1 − y_gegen)³ aus Geradeaus + Rechts des gegenüberliegenden HS-Arms (Tab. 25, S. 58).
+        L = S·β (Szenario I, Gl. 5, S. 60); NS-Ströme und HS-Linksabbieger mit parallelen vortrittsberechtigten Fg-Strömen (Streifen auf nicht überfahrenen HS-Armen, Marker «Sz II»): L = S·y_par + S·(1−y_par)·β (Szenario II, Gl. 6, S. 61). S_Fg = 900·ρ Fg/h (ρ = mittlere Gruppengrösse, Tab. 9, S. 37).
+        S und C (Gl. 1, S. 62): HS-Ströme ohne Fg S = 1750 Fz/h, C = 0.5 (Rang 1); wer Fg Vortritt gewährt, HS-Linksabbieger und NS-Ströme S = 1650 Fz/h, C = 1 (Tab. 26, S. 68).
+        Einfahrten: Arm als Mischstreifen (Annahme, analog SN 640 022, Ziff. 13, S. 7): x = Σ Q/L, L = ΣQ/x; nur β ist volumengewichtet. LOS: A ≤10 s · B ≤20 s · C ≤30 s · D ≤45 s · E &gt;45 s · F Überlast.
       </div>
 
       {/* Fusszeile */}
@@ -660,14 +666,14 @@ const LEGEND_ITEMS: LegendItem[] = [
   { abbr: 'Fz/h',   desc: 'Fahrzeuge pro Stunde — Roheingabe Abbiegeströme' },
   { abbr: 'Fg/h',   desc: 'Fussgänger*innen pro Stunde am Fussgängerstreifen dieser Einfahrt — Gesamtvolumen, unabhängig davon ob eine Mittelinsel vorhanden ist' },
   { abbr: 'MI',     desc: 'Mittelinsel (Verkehrsinsel) am Fussgängerstreifen — teilt den Streifen in zwei selbständige Teile (Art. 47 Abs. 3 VRV). Fahrzeuge müssen Fg, die die Insel noch nicht erreicht haben, keinen Vortritt gewähren. Rechnerisch: wirksames Q_Fg = Q_Fg / 2 (konservative Annahme gleichmässiger Verteilung auf beide Hälften).' },
-  { abbr: 'HS',     desc: 'Hauptstrasse — Rang 1, hat Vortritt gegenüber NS-Fahrzeugen. Ausnahme Linksabbieger: Rang 2 gegenüber dem Gegenverkehr (Geradeaus + Rechts des gegenüberliegenden HS-Arms), S = 1650 Fz/h, C = 1' },
+  { abbr: 'HS',     desc: 'Hauptstrasse — Rang 1 (S = 1750 Fz/h, C = 0.5), hat Vortritt gegenüber NS-Fahrzeugen. Nachrangig mit S = 1650 Fz/h, C = 1 sind Ströme, die Fussgänger*innen Vortritt gewähren (Tab. 26, S. 68), und Linksabbieger gegenüber dem Gegenverkehr (Geradeaus + Rechts des gegenüberliegenden HS-Arms)' },
   { abbr: 'NS',     desc: 'Nebenstrasse — Rang 2, muss Rang-1-Ströme und Fussgänger*innen abwarten' },
   { abbr: 'Q',  unit: 'Fz/h', desc: 'Belastung eines Stroms — Summe aller Fahrzeuge in dieser Bewegungsrichtung pro Stunde' },
-  { abbr: 'S',       desc: 'Sättigungsfluss — empirische Richtwerte (Tab. 13, VSS 2011/308): Fahrzeuge Rang 1 = 1750 Fz/h, Rang 2 = 1650 Fz/h; Fussgänger*innen = 900·ρ Fg/h (ρ = mittlere Anzahl gemeinsam querender Fg, Tab. 9); Tram = 340 T/h; Bus = 600 B/h' },
-  { abbr: 'ρ',       desc: 'Mittlere Gruppengrösse gemeinsam querender Fussgänger*innen — bestimmt den Fg-Sättigungsfluss S_Fg = 900·ρ [Fg/h] (Gl. 4, Tab. 9, VSS 2011/308). Grundidee: Mehrere Fg, die gleichzeitig queren, blockieren ein Fahrzeug genauso lang wie einer allein — das Ereignis ist aber seltener. Mit steigendem ρ sinkt y_Fg = Q/S_Fg und damit β = (1−y_Fg)³ wird grösser → mehr Kapazität für Fahrzeuge. Bestimmung durch Vor-Ort-Beobachtung. Richtwerte: ρ=1 Wohngebiet · ρ=2–3 Innenstadt · ρ=4–5 stark belebte Lagen. Konservativ: ρ=1.' },
+  { abbr: 'S',       desc: 'Sättigungsfluss — empirische Richtwerte (Tab. 13, S. 39, VSS 2011/308): Fahrzeuge Rang 1 = 1750 Fz/h, nachrangig = 1650 Fz/h; Fussgänger*innen = 900·ρ Fg/h (ρ = mittlere Anzahl gemeinsam querender Fg, Tab. 9, S. 37); Tram = 340 T/h; Bus = 600 B/h' },
+  { abbr: 'ρ',       desc: 'Mittlere Gruppengrösse gemeinsam querender Fussgänger*innen — bestimmt den Fg-Sättigungsfluss S_Fg = 900·ρ [Fg/h] (Gl. 4, S. 36; Tab. 9, S. 37, VSS 2011/308). Grundidee: Mehrere Fg, die gleichzeitig queren, blockieren ein Fahrzeug genauso lang wie einer allein — das Ereignis ist aber seltener. Mit steigendem ρ sinkt y_Fg = Q/S_Fg und damit β = (1−y_Fg)³ wird grösser → mehr Kapazität für Fahrzeuge. Bestimmung durch Vor-Ort-Beobachtung. Annahme als Startwert: ρ=1 Wohngebiet · ρ=2–3 Innenstadt · ρ=4–5 stark belebte Lagen (der Bericht nennt keine Lagen, Tab. 9, S. 37). Konservativ: ρ=1.' },
   { abbr: 'y',       desc: 'Sättigungsgrad = Q / S — Auslastung des Stroms relativ zur Sättigung; Grundgrösse für die β-Berechnung (Abkürzungsverz., VSS 2011/308)' },
-  { abbr: 'β',      desc: 'Reduktionsfaktor — Π aller β_i der senkrechten Ströme (Gl. 12); β_i je Verkehrsart (Abb. 23): Bus/Tram = (1−y_i)¹ · Abbieg. Fz/Fg = (1−y_i)³ · Kreisverkehr = (1−y_i)² · Gleicher Rang = y_i/(y₁+y_i) (Kap. 5, VSS 2011/308)' },
-  { abbr: 'L',  unit: 'Fz/h', desc: 'Kapazität des Stroms — Szenario I: L = S × β (Gl. 5); Szenario II (paralleler vortrittsberechtigter Fg-Strom blockiert den Konfliktverkehr): L = S·y_par + S·(1−y_par)·β (Gl. 6, Abb. 22/35, Kap. 5)' },
+  { abbr: 'β',      desc: 'Reduktionsfaktor — Π aller β_i der senkrechten Ströme (Gl. 12, S. 61); β_i je Verkehrsart (Abb. 23, S. 61): Bus/Tram = (1−y_i)¹ · Abbieg. Fz/Fg = (1−y_i)³ · Kreisverkehr = (1−y_i)² · Gleicher Rang = y_i/(y₁+y_i) (Kap. 5, VSS 2011/308)' },
+  { abbr: 'L',  unit: 'Fz/h', desc: 'Kapazität des Stroms — Szenario I: L = S × β (Gl. 5, S. 60); Szenario II (paralleler vortrittsberechtigter Fg-Strom blockiert den Konfliktverkehr): L = S·y_par + S·(1−y_par)·β (Gl. 6, S. 61, Abb. 22, S. 60)' },
   { abbr: 'x',      desc: 'Auslastungsgrad = Q / L; x ≥ 1 bedeutet Überlast' },
   { abbr: 'w',  unit: 's',    desc: 'Mittlere Wartezeit — nach Gl. 1 (VSS 2011/308, S. 62); C = 0.5 für Rang 1, C = 1.0 für Rang 2 und gleichen Rang' },
   { abbr: 'k',  unit: 'Fz',   desc: 'Staulänge = w × L / 3600 — mittlere Anzahl wartender Fahrzeuge' },
@@ -732,6 +738,7 @@ export default function VSS308App() {
 
   const result = useMemo(() => calculateVSS308(calcInput), [calcInput])
   const overall = result.overallLevelOfService
+  const noTraffic = result.arms.every(a => a.qFz <= 0)
 
   // Ströme (from→to) auf die Diagramm-Stromnummern q1–q12 abbilden.
   // Armindizes: 0=A, 1=C, 2=B, 3=D
@@ -745,7 +752,7 @@ export default function VSS308App() {
     const q = QMAP[`${s.fromArmIndex}-${s.toArmIndex}`]
     if (!q) continue
     diagVols[q] = s.Q
-    diagLos[q]  = s.levelOfService as Los
+    if (s.Q > 0) diagLos[q] = s.levelOfService as Los  // ohne Verkehr keine Qualitätsfarbe
   }
 
   // Schematik (Querungen bereinigt wie in der Rechnung)
@@ -871,10 +878,11 @@ export default function VSS308App() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ fontSize: 48, fontWeight: 800, color: LOS_COLOR[overall],
                                lineHeight: 1 }}>
-                  {overall}
+                  {noTraffic ? '–' : overall}
                 </span>
                 <div style={{ fontSize: 12, color: LOS_COLOR[overall] }}>
-                  {overall === 'A' && 'Sehr gut — keine Wartezeiten'}
+                  {noTraffic && 'Kein Verkehr eingegeben, keine Beurteilung'}
+                  {!noTraffic && overall === 'A' && 'Sehr gut — keine Wartezeiten'}
                   {overall === 'B' && 'Gut — kurze Wartezeiten'}
                   {overall === 'C' && 'Befriedigend'}
                   {overall === 'D' && 'Ausreichend — merkliche Wartezeiten'}
@@ -888,7 +896,7 @@ export default function VSS308App() {
             <div style={{ padding: 12 }}>
               <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
                             color: '#6b7280', textTransform: 'uppercase', marginBottom: 8 }}>
-                Einfahrten (Mittelwert)
+                Einfahrten (Arm als Mischstreifen)
               </div>
               {result.arms.map(r => (
                 <ResultCard key={r.armIndex} res={r} />
@@ -928,10 +936,10 @@ export default function VSS308App() {
                           fontSize: 11, color: '#64748b', lineHeight: 1.6 }}>
               <strong style={{ color: '#334155' }}>Methodik:</strong> VSS 2011/308 Kap. 5
               (Menendez/Guler/Puffe). Pro Strom: β = ∏(1−y<sub>i</sub>)³
-              über alle senkrechten Rang-1-Ströme (HS-Fz + Fg Ein-/Ausfahrt); HS-Linksabbieger zusätzlich (1−y_gegen)³ gegen den Gegenverkehr (S = 1650, C = 1).
-              S_Fg = 900·ρ (bei Mittelinsel Q_Fg/2, Art. 47 Abs. 3 VRV). L = S·β (Szenario I, Gl. 5); für NS-Ströme mit parallelen vortrittsberechtigten Fg-Strömen (Fussgängerstreifen auf HS-Armen, die der Strom nicht überfährt) gilt L = S·y_par + S·(1−y_par)·β (Szenario II, Gl. 6, Abb. 22/35) — der Streifen blockiert den HS-Konfliktverkehr und verschafft dem NS-Strom Zeitfenster.
-              Einfahrten-Werte: Volumen-gewichtetes Mittel.
-              C = 0.5 (Rang 1), C = 1.0 (Rang 2 / gleicher Rang).
+              über alle senkrechten vortrittsberechtigten Ströme (HS-Fz + Fg Ein-/Ausfahrt); HS-Linksabbieger zusätzlich (1−y_gegen)³ gegen den Gegenverkehr.
+              S_Fg = 900·ρ (bei Mittelinsel Q_Fg/2, Art. 47 Abs. 3 VRV). L = S·β (Szenario I, Gl. 5, S. 60); für NS-Ströme und HS-Linksabbieger mit parallelen vortrittsberechtigten Fg-Strömen (Fussgängerstreifen auf HS-Armen, die der Strom nicht überfährt) gilt L = S·y_par + S·(1−y_par)·β (Szenario II, Gl. 6, S. 61) — der Streifen blockiert den HS-Konfliktverkehr und verschafft dem Strom Zeitfenster.
+              Einfahrten: Arm als Mischstreifen (Annahme, analog SN 640 022, Ziff. 13, S. 7): x = Σ Q/L, L = ΣQ/x; nur β ist volumengewichtet.
+              HS-Ströme ohne Fg: S = 1750, C = 0.5 (Rang 1). Wer Fg Vortritt gewährt, HS-Linksabbieger und NS-Ströme: S = 1650, C = 1 (Tab. 26, S. 68).
             </div>
 
           </div>

@@ -1,10 +1,11 @@
 // Stochastik-Simulation SN 640 022 — Einmündung & Kreuzung
 // Stufe 1A: lognormal gestreutes t_c (Fahrerheterogenität)
-// Stufe 1B: Cowan M3 Zeitlücken (Kolonnenbildung im Hauptstrom)
+// Stufe 1B: Cowan M3 Zeitlücken je Fahrstreifen (Kolonnenbildung im Hauptstrom)
 // Stufe 2C: Simultane NS-Ströme (gemeinsame Haltlinie)
 // Stufe 2D: Endlicher Stauraum
+// Stufe 3:  Rückstau höherrangiger Ströme analog F13–F20 (Ziff. 11, S. 6)
 // Feature A: Konfigurierbare Grenz-/Folgezeitlücken (tc/tf) pro Strom-Typ
-// Feature C: Fussgänger als Blocking-Events im Hauptstrom
+// Feature C: Fussgänger*innen sperren die Fahrtrichtung, die sie überqueren
 // Feature D: Mehrere Zeitintervalle mit Carry-over-Queue
 // Referenz: Troutbeck & Brilon, Traffic Flow Theory Kap. 8
 
@@ -61,8 +62,8 @@ function groupSize(leg: PedestrianLegConfig): number {
 }
 
 export interface PedestrianConfig {
-  armA: PedestrianLegConfig   // HS-Arm A: beeinflusst NS-Arm-B-Ströme
-  armC: PedestrianLegConfig   // HS-Arm C: beeinflusst NS-Arm-D-Ströme
+  armA: PedestrianLegConfig   // HS-Arm A: hält den Hauptstrom von A an und sperrt Ströme über den Streifen
+  armC: PedestrianLegConfig   // HS-Arm C: hält den Hauptstrom von C an und sperrt Ströme über den Streifen
   armB?: PedestrianLegConfig  // NS-Arm B: Direktsperre für Ströme mit Abfahrt/Ankunft an Arm B
   armD?: PedestrianLegConfig  // NS-Arm D: Direktsperre (nur 4-Arm)
 }
@@ -185,6 +186,19 @@ export const GAP_PARAMS_SN640022: Record<GapStreamType, GapParams> = {
   sideLeft:  { tc: 7.2, tf: 3.9 },
 }
 
+// ── Preset «SN 640 022 (mit +90)» ─────────────────────────────────────────────
+// Rechengrössen für den Vergleich mit der Norm, keine gemessenen Zeitlücken: Die Werte
+// sind so gewählt, dass die Kapazität nach Harders bei exponentiellen Lücken die
+// Abb.-2-Kurven samt CH-Erhöhung (Ziff. 9, S. 4) über qpi 100–1800 Fz/h trifft
+// (Kleinste Quadrate; mittlere Abweichung 3–6 %, höchstens 7–14 %). Der Sprung +90 lässt
+// sich mit t_c, t_f nicht genau abbilden; die Abweichung liegt vor allem bei kleinem qpi.
+export const GAP_PARAMS_SN640022_CH: Record<GapStreamType, GapParams> = {
+  mainLeft:  { tc: 4.85, tf: 2.55 },
+  sideRight: { tc: 5.2,  tf: 3.2 },
+  sideCross: { tc: 5.05, tf: 4.05 },
+  sideLeft:  { tc: 5.45, tf: 4.1 },
+}
+
 // Feature A: gapParamsFor mit optionalen Overrides
 export function gapParamsFor(streamNumber: number, overrides?: GapOverrides): GapParams {
   const type: GapStreamType =
@@ -233,78 +247,8 @@ function sampleHeadway(lambdaFz: number, cfg: FullConfig): number {
 
 // ── Hilfsfunktionen ───────────────────────────────────────────────────────────
 
-// Feature C: Fussgänger-Blocking-Events im Hauptstrom
-// Fussgänger-Gruppen kommen Poisson-verteilt, blockieren den HS für t_block Sekunden.
-// Während t_block gibt es eine erzwungene Lücke für NS-Fahrzeuge.
-// HS-Fahrzeuge, die während t_block ankommen, werden danach als Cluster freigegeben.
-// Mittelinsel (Art. 47 Abs. 3 VRV): Fussgänger queren nur eine Hälfte → t_block × 0.5.
-function generateConflicts(
-  lambdaFz: number,
-  cfg: FullConfig,
-  pedMod?: { lambdaFg: number; tBlock: number },
-): number[] {
-  const horizon = conflictHorizon(cfg)
-  // Ohne Fussgänger: klassische Implementierung
-  if (!pedMod || pedMod.lambdaFg <= 0) {
-    const arr: number[] = []
-    let t = 0
-    while (true) {
-      t += sampleHeadway(lambdaFz, cfg)
-      if (t >= horizon) break
-      arr.push(t)
-    }
-    return arr
-  }
-
-  const t_block = pedMod.tBlock
-
-  // Sperrzeiten [start, end] generieren (aufsteigend); überlappende zusammenführen,
-  // damit ein Fahrzeug erst am Ende der gesamten Sperrung freigegeben wird
-  const blocks: [number, number][] = []
-  let tFg = 0
-  while (true) {
-    tFg += -Math.log(cfg.rng()) / pedMod.lambdaFg
-    if (tFg >= horizon) break
-    const last = blocks[blocks.length - 1]
-    if (last && tFg <= last[1]) last[1] = tFg + t_block
-    else blocks.push([tFg, tFg + t_block])
-  }
-
-  // HS-Fahrzeuge generieren
-  const rawArrivals: number[] = []
-  let t = 0
-  while (true) {
-    t += sampleHeadway(lambdaFz, cfg)
-    if (t >= horizon) break
-    rawArrivals.push(t)
-  }
-
-  // Fahrzeuge in Sperrzeiten → Cluster nach Ende der Sperre
-  const conflicts: number[] = []
-  const blockBacklog = new Map<number, number>()  // blockEnd → Anzahl angestauter Fz
-
-  // Ankünfte und Sperrzeiten sind beide aufsteigend → ein gemeinsamer Durchgang
-  // (vorher: jede Ankunft gegen alle Sperrzeiten, bei vielen Fussgängern sehr langsam)
-  let bi = 0
-  for (const arr of rawArrivals) {
-    while (bi < blocks.length && blocks[bi][1] <= arr) bi++
-    if (bi < blocks.length && arr >= blocks[bi][0]) {
-      const e = blocks[bi][1]
-      blockBacklog.set(e, (blockBacklog.get(e) ?? 0) + 1)
-    } else conflicts.push(arr)
-  }
-
-  // Cluster nach jedem Sperr-Ende einfügen
-  for (const [blockEnd, count] of blockBacklog) {
-    let clusterT = blockEnd
-    for (let i = 0; i < count; i++) {
-      if (clusterT < horizon) conflicts.push(clusterT)
-      clusterT += cfg.cowanTm
-    }
-  }
-
-  return conflicts.sort((a, b) => a - b)
-}
+type Interval = [number, number]
+type ArmKey = 'A' | 'B' | 'C' | 'D'
 
 // Hauptstrom und Fussgänger*innen laufen über das Periodenende hinaus weiter: Fahrzeuge,
 // die bei T noch warten, finden danach weiterhin Konfliktverkehr vor (sonst würde die
@@ -313,79 +257,198 @@ function conflictHorizon(cfg: FullConfig): number {
   return 2 * cfg.T
 }
 
-// Direktes Blocking: Sperrzeiten generieren und zu disjunkten Intervallen zusammenführen.
-// Jedes Arm-Leg erzeugt Poisson-verteilte Sperrzeiten; alle Arme werden kombiniert
-// und überlappende Intervalle gemergt → sortierte disjunkte [start, end]-Liste.
-function generateDirectBlocks(
-  legs: (PedestrianLegConfig | undefined)[],
-  T: number,
-  rng: () => number,
-): [number, number][] {
-  const raw: [number, number][] = []
-  for (const leg of legs) {
-    if (!leg?.enabled || !(leg.fg > 0)) continue
-    const t_block = pedBlockingTime(leg)
-    // Häufigkeit der Sperrungen: Gruppen pro Sekunde = (fg / ρ) / 3600
-    const lambda  = leg.fg / (groupSize(leg) * 3600)
-    let t = 0
-    while (true) {
-      t += -Math.log(rng()) / lambda
-      if (t >= T) break
-      raw.push([t, t + t_block])
-    }
+// Sperrzeiten einer Querung: Gruppen kommen Poisson-verteilt und sperren je t_block
+// Sekunden; überlappende Sperrungen werden zusammengefasst. Je Lauf wird jede Querung
+// genau einmal gewürfelt: Dieselben Sperrzeiten halten den Hauptstrom an (Lücken für
+// andere Ströme) und sperren die Fahrzeuge, die den Streifen selbst überfahren.
+function generateBlocks(leg: PedestrianLegConfig, horizon: number, rng: () => number): Interval[] {
+  const tBlock = pedBlockingTime(leg)
+  // Häufigkeit der Sperrungen: Gruppen pro Sekunde = (fg / ρ) / 3600
+  const lambda = leg.fg / (groupSize(leg) * 3600)
+  const blocks: Interval[] = []
+  let t = 0
+  while (true) {
+    t += -Math.log(rng()) / lambda
+    if (t >= horizon) break
+    const last = blocks[blocks.length - 1]
+    if (last && t <= last[1]) last[1] = t + tBlock
+    else blocks.push([t, t + tBlock])
   }
-  if (raw.length === 0) return raw
-  raw.sort((a, b) => a[0] - b[0])
-  const merged: [number, number][] = [raw[0]]
-  for (let i = 1; i < raw.length; i++) {
+  return blocks
+}
+
+// Sortierte, überlappungsfreie Liste aus mehreren Intervall-Listen
+function mergeIntervals(lists: Interval[][]): Interval[] {
+  const filled = lists.filter(l => l.length > 0)
+  if (filled.length === 0) return []
+  if (filled.length === 1) return filled[0]
+  const all = filled.flat().sort((a, b) => a[0] - b[0])
+  const merged: Interval[] = [[all[0][0], all[0][1]]]
+  for (let i = 1; i < all.length; i++) {
     const last = merged[merged.length - 1]
-    if (raw[i][0] <= last[1]) { last[1] = Math.max(last[1], raw[i][1]) }
-    else merged.push(raw[i])
+    if (all[i][0] <= last[1]) last[1] = Math.max(last[1], all[i][1])
+    else merged.push([all[i][0], all[i][1]])
   }
   return merged
 }
 
-// Lückensuche: ersten Zeitpunkt finden, ab dem eine Lücke ≥ tc_i existiert.
-// directBlocks: sortierte disjunkte Sperrzeiten — Abfahrt darf nicht innerhalb liegen.
-// Effizient via Binärsuche + linearem Vorwärtssprung über getroffene Intervalle.
-function findDeparture(
-  seekStart: number, conflicts: number[], tc_i: number,
-  directBlocks?: [number, number][],
-): number {
-  let lo = 0, hi = conflicts.length
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1
-    if (conflicts[mid] <= seekStart) lo = mid + 1
-    else hi = mid
-  }
-  let ptr = lo, prev = seekStart
-  while (ptr < conflicts.length) {
-    if (conflicts[ptr] - prev >= tc_i) break
-    prev = conflicts[ptr]
-    ptr++
-  }
-  // Abfahrt bei Beginn der akzeptierten Lücke (Vorbeifahrt des letzten Konfliktfahrzeugs).
-  // Nachrückende fahren frühestens t_f später und brauchen ab dort wieder t_c:
-  // In einer Lücke der Länge t finden so n Fahrzeuge Platz, wenn t ≥ t_c + (n−1)·t_f
-  // (Harders; Troutbeck & Brilon 1997, Kap. 8). Früher wurde hier zusätzlich t_f
-  // aufgeschlagen — das verlangte t_c + n·t_f und unterschätzte die Kapazität.
-  let departure = prev
+// ── Hauptstrom je Fahrtrichtung ───────────────────────────────────────────────
+// Der Hauptstrom wird je Richtung und Fahrstreifen erzeugt, nicht als ein Strom mit
+// der Rate qpi: Cowan M3 beschreibt einen einzelnen Fahrstreifen (Troutbeck & Brilon
+// 1997, Gl. 8.21–8.23, S. 8-8). Die Überlagerung unabhängiger Fahrstreifen ist das
+// Modell mehrerer Hauptströme (Kap. 8.5.1, S. 8-31); auf dem summierten qpi hätte M3
+// ab 3600/t_m = 2000 Fz/h überhaupt keine Lücken mehr. Weil jedes Fahrzeug seine
+// Herkunft kennt, hält eine Querung nur die Richtung an, die sie tatsächlich überfährt:
+// Sie schafft genau den Strömen Lücken, zu denen sie parallel liegt, und sperrt die
+// Ströme, die sie selbst überfahren (wie Szenario II in VSS 2011/308, Gl. 6, S. 61).
 
-  // Direkte Sperrzeiten: Binärsuche auf das erste Intervall, das nach departure endet
-  if (directBlocks && directBlocks.length > 0) {
-    let iLo = 0, iHi = directBlocks.length
+// Fahrzeugarten eines Hauptstrom-Arms; die Bitmasken je Nebenstrom bilden F1–F8 ab
+const THROUGH_RIGHT = 1  // Geradeaus auf dem rechten Fahrstreifen (Fussnote 2, S. 3)
+const THROUGH_OTHER = 2  // Geradeaus auf weiteren Fahrstreifen
+const TURN_HALF     = 4  // Rechtsabbieger, die in 0,5·q3 bzw. 0,5·q9 zählen
+const TURN_REST     = 8  // die übrigen Rechtsabbieger
+const THROUGH = THROUGH_RIGHT | THROUGH_OTHER
+const KINDS = [THROUGH_RIGHT, THROUGH_OTHER, TURN_HALF, TURN_REST]
+
+interface MainArm {
+  through: number      // q2 bzw. q8 [Fz/h]
+  rightLane: number    // Anteil davon auf dem rechten Fahrstreifen [Fz/h]
+  turn: number         // q3 bzw. q9 [Fz/h]
+  ownTurnLane: boolean // Rechtsabbieger auf eigenem Streifen (kein Mischverkehr mit Geradeaus)
+}
+
+// Fahrzeuge eines Fahrstreifens, die in eine Sperrzeit fallen, fahren erst an deren Ende
+// weiter und rücken im Abstand t_m nach. Ohne Sperrzeiten bleibt der Strom unverändert.
+function releaseAfterBlocks(raw: number[], blocks: Interval[], tm: number): number[] {
+  if (blocks.length === 0) return raw
+  const out: number[] = []
+  let bi = 0, prev = -Infinity, prevHeld = false
+  for (const t0 of raw) {
+    let t = t0
+    if (prevHeld && t < prev + tm) t = prev + tm
+    while (bi < blocks.length && blocks[bi][1] <= t) bi++
+    if (bi < blocks.length && t >= blocks[bi][0]) t = blocks[bi][1]
+    prevHeld = t > t0
+    prev = t
+    out.push(t)
+  }
+  return out
+}
+
+// Vorbeifahrten eines Fahrstreifens mit der Stärke rate [Fz/h]
+function laneArrivals(rate: number, horizon: number, cfg: FullConfig): number[] {
+  const out: number[] = []
+  if (!(rate > 0)) return out
+  const lambda = rate / 3600
+  let t = 0
+  while (true) {
+    t += sampleHeadway(lambda, cfg)
+    if (t >= horizon) break
+    out.push(t)
+  }
+  return out
+}
+
+// Vorbeifahrten eines Hauptstrom-Arms am Knoten, getrennt nach Fahrzeugart
+function generateMainArm(arm: MainArm, blocks: Interval[], cfg: FullConfig): Map<number, number[]> {
+  const horizon = conflictHorizon(cfg)
+  const byKind = new Map<number, number[]>(KINDS.map(k => [k, []]))
+  const turnInRightLane = arm.ownTurnLane ? 0 : arm.turn
+  const pTurn = turnInRightLane > 0 ? turnInRightLane / (arm.rightLane + turnInRightLane) : 0
+  const turnKind = () => cfg.rng() < 0.5 ? TURN_HALF : TURN_REST
+
+  // Rechter Fahrstreifen: Geradeaus und, ohne eigenen Streifen, die Rechtsabbieger
+  const rightLane = releaseAfterBlocks(
+    laneArrivals(arm.rightLane + turnInRightLane, horizon, cfg), blocks, cfg.cowanTm)
+  for (const t of rightLane)
+    byKind.get(cfg.rng() < pTurn ? turnKind() : THROUGH_RIGHT)!.push(t)
+  // Weitere Geradeaus-Fahrstreifen und eigener Rechtsabbiegestreifen
+  byKind.get(THROUGH_OTHER)!.push(...releaseAfterBlocks(
+    laneArrivals(arm.through - arm.rightLane, horizon, cfg), blocks, cfg.cowanTm))
+  if (arm.ownTurnLane) {
+    for (const t of releaseAfterBlocks(laneArrivals(arm.turn, horizon, cfg), blocks, cfg.cowanTm))
+      byKind.get(turnKind())!.push(t)
+  }
+  return byKind
+}
+
+function pick(byKind: Map<number, number[]>, mask: number): number[][] {
+  return KINDS.filter(k => mask & k).map(k => byKind.get(k)!)
+}
+
+// Hauptstrom-Anteile je Nebenstrom nach F1–F8 mit den Fussnoten 1–3 (Ziff. 7, S. 3)
+function mainConflictMasks(sn: number, flags: SN640022LaneFlags): { a: number; c: number } {
+  const halfA = flags.armASeparateLane ? 0 : TURN_HALF              // 0,5·q3, Fn 1
+  const halfC = flags.armCSeparateLane ? 0 : TURN_HALF              // 0,5·q9, Fn 1
+  const fullA = flags.armATriangleIsland ? 0 : TURN_HALF | TURN_REST // q3, Fn 3
+  const fullC = flags.armCTriangleIsland ? 0 : TURN_HALF | TURN_REST // q9, Fn 3
+  switch (sn) {
+    case 1:  return { a: 0, c: THROUGH | fullC }                     // F1
+    case 7:  return { a: THROUGH | fullA, c: 0 }                     // F2
+    case 6:  return { a: THROUGH_RIGHT | halfA, c: 0 }               // F3, Fn 2
+    case 12: return { a: 0, c: THROUGH_RIGHT | halfC }               // F4, Fn 2
+    case 5:  return { a: THROUGH | halfA, c: THROUGH | fullC }       // F5
+    case 11: return { a: THROUGH | fullA, c: THROUGH | halfC }       // F6
+    case 4:  return { a: THROUGH | halfA, c: THROUGH }               // F7
+    default: return { a: THROUGH, c: THROUGH | halfC }               // F8 (Strom 10)
+  }
+}
+
+// Nebenströme, deren Fahrzeuge in qpi zählen (F5–F8, q6/q12 nach Fussnote 4, S. 3)
+function vehicleConflicts(sn: number, flags: SN640022LaneFlags): number[] {
+  switch (sn) {
+    case 5: case 11: return [1, 7]
+    case 4:  return flags.armDRightIsland ? [1, 7, 11] : [1, 7, 11, 12]
+    case 10: return flags.armBRightIsland ? [1, 7, 5] : [1, 7, 5, 6]
+    default: return []
+  }
+}
+
+// Zufahrtsarm je Nebenstrom und Querungen, die er an Abfahrt und Ankunft selbst überfährt
+const ENTRY: Record<number, ArmKey> = { 1: 'A', 4: 'B', 5: 'B', 6: 'B', 7: 'C', 10: 'D', 11: 'D', 12: 'D' }
+const CROSSES: Record<number, ArmKey[]> = {
+  1: ['A', 'D'], 4: ['B', 'A'], 5: ['B', 'D'], 6: ['B', 'C'],
+  7: ['C', 'B'], 10: ['D', 'C'], 11: ['D', 'B'], 12: ['D', 'A'],
+}
+
+// Lückensuche: ersten Zeitpunkt ab seekStart finden, an dem die Lücke bis zum nächsten
+// Konfliktfahrzeug mindestens tc_i beträgt und keine Sperrzeit läuft. Fällt die Abfahrt
+// in eine Sperrzeit, beginnt die Suche an deren Ende von vorne: Dann gilt wieder die
+// Grenzzeitlücke, die vorher gefundene Lücke kann inzwischen zu kurz sein.
+// usable[i] sagt, ob die Lücke vor conflicts[i] für diesen Strom frei ist (Rückstau
+// höherrangiger Ströme, siehe gapAvailability); ohne Angabe sind alle Lücken frei.
+export function findDeparture(
+  seekStart: number, conflicts: Float64Array, tc_i: number, blocks: Interval[],
+  usable?: Uint8Array,
+): number {
+  let start = seekStart
+  while (true) {
+    let lo = 0, hi = conflicts.length
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1
+      if (conflicts[mid] <= start) lo = mid + 1
+      else hi = mid
+    }
+    let ptr = lo, prev = start
+    while (ptr < conflicts.length) {
+      if (conflicts[ptr] - prev >= tc_i && (!usable || usable[ptr])) break
+      prev = conflicts[ptr]
+      ptr++
+    }
+    // Abfahrt bei Beginn der akzeptierten Lücke (Vorbeifahrt des letzten Konfliktfahrzeugs).
+    // Nachrückende fahren frühestens t_f später und brauchen ab dort wieder t_c:
+    // In einer Lücke der Länge t finden so n Fahrzeuge Platz, wenn t ≥ t_c + (n−1)·t_f
+    // (Harders; Troutbeck & Brilon 1997, Kap. 8.4.1, S. 8-12).
+    const departure = prev
+
+    let iLo = 0, iHi = blocks.length
     while (iLo < iHi) {
       const m = (iLo + iHi) >>> 1
-      if (directBlocks[m][1] <= departure) iLo = m + 1; else iHi = m
+      if (blocks[m][1] <= departure) iLo = m + 1; else iHi = m
     }
-    let idx = iLo
-    // Vorwärts durch getroffene Intervalle (disjunkt → maximal O(treffer))
-    while (idx < directBlocks.length && departure > directBlocks[idx][0]) {
-      departure = directBlocks[idx][1]
-      idx++
-    }
+    if (iLo >= blocks.length || departure <= blocks[iLo][0]) return departure
+    start = blocks[iLo][1]
   }
-  return departure
 }
 
 // ── Auslastung der Haltelinie ─────────────────────────────────────────────────
@@ -395,145 +458,151 @@ function findDeparture(
 // nicht, um die in T ankommenden Fahrzeuge abzufertigen: Die Warteschlange wächst
 // bis zum Periodenende (Überlastung, QS F). Entspricht x = q/L der Analytik.
 
-// ── HS-Ströme: unabhängige Simulation (mit 1A + 1B) ──────────────────────────
+// ── Haltelinien ───────────────────────────────────────────────────────────────
+// Eine Haltelinie: HS-Linksabbieger je Richtung (eigener Streifen), NS-Arm gemeinsam.
 
-function simulateStream(
-  q: number, qpi: number, tc: number, tf: number,
-  cfg: FullConfig,
-  pedMod?: { lambdaFg: number; tBlock: number },
-  crossingLegs?: (PedestrianLegConfig | undefined)[],
-): { delays: number[]; utilization: number } {
-  if (q <= 0) return { delays: [], utilization: 0 }
-  const lambdaC = qpi / 3600
-  const lambdaN = q / 3600
-  const delays: number[] = []
-  let busy = 0
-
-  for (let run = 0; run < cfg.runs; run++) {
-    const conflicts    = generateConflicts(lambdaC, cfg, pedMod)
-    const directBlocks = crossingLegs ? generateDirectBlocks(crossingLegs, conflictHorizon(cfg), cfg.rng) : undefined
-    let t = 0, nextFreeSlot = 0
-    while (true) {
-      t += -Math.log(cfg.rng()) / lambdaN
-      if (t >= cfg.T) break
-      // Steht das Fahrzeug bei Ankunft bereits hinter einem Vorgänger (Server belegt)?
-      // Dann darf es frühestens t_f nach dessen Abfahrt einfahren — die Folgezeitlücke
-      // taktet den Abfluss innerhalb einer grossen Lücke (Sättigungsabfluss 3600/t_f;
-      // Troutbeck & Brilon 1997, Kap. 8.4.1: t_f = Kopffolge wartender Fahrzeuge in
-      // derselben Hauptstromlücke). Frei einfahrende Fahrzeuge erhalten kein t_f.
-      const queued    = t < nextFreeSlot
-      const seekStart = queued ? nextFreeSlot + tf : t
-      const departure = findDeparture(seekStart, conflicts, sampleTc(tc, cfg), directBlocks)
-      delays.push(departure - t)
-      busy += departure - Math.max(t, nextFreeSlot)
-      nextFreeSlot = departure
-    }
-  }
-  return { delays, utilization: busy / (cfg.runs * cfg.T) }
-}
-
-// ── NS-Arme: simultane Simulation (2C + 2D) ───────────────────────────────────
-
-interface ArmStreamDef {
+interface LineStream {
   streamNumber: number
   q:   number
-  qpi: number
   tc:  number
   tf:  number
-  // Fussgängerstreifen an Abfahrt- und Ankunftsarm dieses Stroms (Direktsperre)
-  crossingLegs: (PedestrianLegConfig | undefined)[]
+  mask: { a: number; c: number }
+  vehicleConflicts: number[]
+  crosses: ArmKey[]
 }
 
-// pedMod: erzeugt Lücken im Konfliktstrom (Gap-Effekt durch HS-Fussgängerstreifen)
-// preBacklog: Fahrzeuge aus vorangehendem Intervall
-function simulateArm(
-  streams: ArmStreamDef[],
-  storage: number,
-  cfg: FullConfig,
-  pedMod?: { lambdaFg: number; tBlock: number },
-  preBacklog?: number,
-): { delayMap: Map<number, number[]>; avgEndBacklog: number; utilization: number } {
-  const delayMap = new Map<number, number[]>()
-  for (const s of streams) delayMap.set(s.streamNumber, [])
+interface Line {
+  key:     string
+  storage: number
+  streams: LineStream[]
+}
 
-  const active = streams.filter(s => s.q > 0)
-  if (active.length === 0) return { delayMap, avgEndBacklog: 0, utilization: 0 }
-  let busy = 0
+interface LineVehicle {
+  arrival: number
+  si:      number   // Index in Line.streams
+  tc:      number
+  carried: boolean  // aus dem vorangehenden Intervall übernommen
+}
 
-  const totalQ = active.reduce((s, st) => s + st.q, 0)
-  const lambdaN = totalQ / 3600
-
+// Ankünfte einer Haltelinie: übernommene Fahrzeuge bei t = 0, dann Poisson-Prozess.
+// Persönliche Grenzzeitlücke einmal je Fahrzeug.
+function generateVehicles(line: Line, carried: number, cfg: FullConfig): LineVehicle[] {
+  const totalQ = line.streams.reduce((s, st) => s + st.q, 0)
   const weights: number[] = []
   let cum = 0
-  for (const s of active) { cum += s.q / totalQ; weights.push(cum) }
-
-  let totalEndBacklog = 0
-
-  for (let run = 0; run < cfg.runs; run++) {
-    const conflictsPerIdx   = active.map(s => generateConflicts(s.qpi / 3600, cfg, pedMod))
-    const directBlocksPerIdx = active.map(s => generateDirectBlocks(s.crossingLegs, conflictHorizon(cfg), cfg.rng))
-
-    // Feature D: Pre-Backlog — Fahrzeuge aus vorangehendem Intervall
-    const preArr: { time: number; si: number }[] = []
-    if (preBacklog && preBacklog > 0) {
-      // Verteilt proportional zu q_i, bei t = 0
-      for (let i = 0; i < preBacklog; i++) {
-        const r = (i + 0.5) / preBacklog
-        let si = weights.findIndex(w => r < w)
-        if (si < 0) si = active.length - 1
-        preArr.push({ time: 0, si })
-      }
-    }
-
-    // Normale Ankünfte
-    const arrivals: { time: number; si: number }[] = []
-    let t = 0
-    while (true) {
-      t += -Math.log(cfg.rng()) / lambdaN
-      if (t >= cfg.T) break
-      const r = cfg.rng()
-      let si = weights.findIndex(w => r < w)
-      if (si < 0) si = active.length - 1
-      arrivals.push({ time: t, si })
-    }
-
-    const allArrivals = [...preArr, ...arrivals]
-
-    let nextFreeSlot = 0
-    let sysStart = 0
-    const departures: number[] = []
-
-    for (const { time: arrival, si } of allArrivals) {
-      while (sysStart < departures.length && departures[sysStart] <= arrival) sysStart++
-      const inSystem = departures.length - sysStart
-
-      if (inSystem >= storage) continue
-
-      // Folgezeitlücke für nachrückende Wartende (wie simulateStream, Kap. 8.4.1):
-      // ein bei Ankunft bereits anstehendes Fahrzeug fährt frühestens t_f nach der
-      // Abfahrt des Vordermanns; frei Einfahrende ohne t_f-Aufschlag.
-      const tf_i = active[si].tf
-      const queued    = arrival < nextFreeSlot
-      const seekStart = queued ? nextFreeSlot + tf_i : arrival
-      const tc_i = sampleTc(active[si].tc, cfg)
-      const departure = findDeparture(seekStart, conflictsPerIdx[si], tc_i, directBlocksPerIdx[si])
-
-      // Wartezeit: nur für nicht-Pre-Backlog-Fahrzeuge mit arrival > 0 sinnvoll zu messen
-      // Pre-Backlog-Fahrzeuge haben arrival=0, das Delay wäre irreführend → überspringen
-      if (arrival > 0) {
-        delayMap.get(active[si].streamNumber)!.push(departure - arrival)
-      }
-      departures.push(departure)
-      busy += departure - Math.max(arrival, nextFreeSlot)
-      nextFreeSlot = departure
-    }
-
-    // Feature D: Fahrzeuge die noch nach cfg.T abfahren = Carry-over für nächstes Intervall
-    const endBacklog = departures.filter(d => d > cfg.T).length
-    totalEndBacklog += endBacklog
+  for (const s of line.streams) { cum += s.q / totalQ; weights.push(cum) }
+  const streamAt = (r: number) => {
+    const si = weights.findIndex(w => r < w)
+    return si < 0 ? line.streams.length - 1 : si
   }
+  const vehicle = (arrival: number, si: number, isCarried: boolean): LineVehicle =>
+    ({ arrival, si, tc: sampleTc(line.streams[si].tc, cfg), carried: isCarried })
 
-  return { delayMap, avgEndBacklog: totalEndBacklog / cfg.runs, utilization: busy / (cfg.runs * cfg.T) }
+  const out: LineVehicle[] = []
+  // Verteilt proportional zu q_i, bei t = 0
+  for (let i = 0; i < carried; i++) out.push(vehicle(0, streamAt((i + 0.5) / carried), true))
+  const lambda = totalQ / 3600
+  let t = 0
+  while (true) {
+    t += -Math.log(cfg.rng()) / lambda
+    if (t >= cfg.T) break
+    out.push(vehicle(t, streamAt(cfg.rng()), false))
+  }
+  return out
+}
+
+interface LinePass {
+  delays:     number[][]  // je Index in Line.streams
+  busy:       number
+  endBacklog: number      // Fahrzeuge, die erst nach T abfahren → Übertrag ins nächste Intervall
+}
+
+// Alle Fahrzeuge einer Haltelinie in Ankunftsreihenfolge abfertigen. Steht ein Fahrzeug
+// bei Ankunft hinter einem Vorgänger, fährt es frühestens t_f nach dessen Abfahrt
+// (Sättigungsabfluss 3600/t_f; Troutbeck & Brilon 1997, Kap. 8.4.1, S. 8-12); frei Einfahrende
+// erhalten keinen t_f-Aufschlag.
+function runLine(line: Line, vehicles: LineVehicle[], run: RunContext, usableOf: (s: LineStream, n: number) => Uint8Array | undefined, T: number): LinePass {
+  const conflicts = line.streams.map(s => run.conflictsOf(s))
+  const blocks    = line.streams.map(s => run.blocksOf(s))
+  const usable    = line.streams.map((s, i) => usableOf(s, conflicts[i].length))
+  const delays: number[][] = line.streams.map(() => [])
+  const departures: number[] = []
+  let nextFreeSlot = 0, sysStart = 0, busy = 0
+
+  for (const v of vehicles) {
+    while (sysStart < departures.length && departures[sysStart] <= v.arrival) sysStart++
+    if (departures.length - sysStart >= line.storage) continue
+
+    // <=: Übernommene Fahrzeuge stehen alle bei t = 0 und rücken einzeln nach
+    const tf        = line.streams[v.si].tf
+    const queued    = departures.length > 0 && v.arrival <= nextFreeSlot
+    const seekStart = queued ? nextFreeSlot + tf : v.arrival
+    const departure = findDeparture(seekStart, conflicts[v.si], v.tc, blocks[v.si], usable[v.si])
+
+    // Übernommene Fahrzeuge: ihre Wartezeit gehört zum vorangehenden Intervall
+    if (!v.carried) delays[v.si].push(departure - v.arrival)
+    departures.push(departure)
+    busy += departure - Math.max(v.arrival, nextFreeSlot)
+    nextFreeSlot = departure
+  }
+  return { delays, busy, endBacklog: departures.filter(d => d > T).length }
+}
+
+// ── Ein Simulationslauf ───────────────────────────────────────────────────────
+
+interface RunContext {
+  conflictsOf: (s: LineStream) => Float64Array
+  blocksOf:    (s: LineStream) => Interval[]
+}
+
+// Zufällige Umwelt eines Laufs: Jede Querung und jeder Hauptstrom wird genau einmal
+// gewürfelt und gilt für alle Ströme. Die Nebenströme in qpi (q1, q7, q5, q6, q11, q12)
+// zählen wie in F5–F8 als eigener, vom Hauptstrom unabhängiger Konfliktverkehr.
+function generateRun(
+  mainFlows: { a: MainArm; c: MainArm },
+  legs: Partial<Record<ArmKey, PedestrianLegConfig>>,
+  vehicleRates: Map<number, number>,
+  cfg: FullConfig,
+): RunContext {
+  const horizon = conflictHorizon(cfg)
+  const blocksAt: Record<ArmKey, Interval[]> = { A: [], B: [], C: [], D: [] }
+  for (const k of ['A', 'B', 'C', 'D'] as const) {
+    const leg = legs[k]
+    if (leg) blocksAt[k] = generateBlocks(leg, horizon, cfg.rng)
+  }
+  const mainA = generateMainArm(mainFlows.a, blocksAt.A, cfg)
+  const mainC = generateMainArm(mainFlows.c, blocksAt.C, cfg)
+  const vehicleLanes = new Map<number, number[]>()
+  for (const [sn, rate] of vehicleRates)
+    vehicleLanes.set(sn, releaseAfterBlocks(laneArrivals(rate, horizon, cfg), blocksAt[ENTRY[sn]], cfg.cowanTm))
+
+  return {
+    conflictsOf: s => {
+      const lists = [
+        ...pick(mainA, s.mask.a), ...pick(mainC, s.mask.c),
+        ...s.vehicleConflicts.map(h => vehicleLanes.get(h) ?? []),
+      ]
+      const out = new Float64Array(lists.reduce((n, l) => n + l.length, 0))
+      let i = 0
+      for (const l of lists) { out.set(l, i); i += l.length }
+      return out.sort()
+    },
+    blocksOf: s => mergeIntervals(s.crosses.map(k => blocksAt[k])),
+  }
+}
+
+// Grundleistungsfähigkeit eines Stroms in der Simulation: Abfahrten je Stunde bei
+// dauernd besetzter Haltelinie. Mit Fussgänger*innen sind deren Sperrzeiten enthalten.
+function saturatedDepartures(s: LineStream, run: RunContext, cfg: FullConfig): number {
+  const conflicts = run.conflictsOf(s)
+  const blocks    = run.blocksOf(s)
+  let count = 0, t = 0
+  while (true) {
+    t = findDeparture(t, conflicts, sampleTc(s.tc, cfg), blocks)
+    if (t >= cfg.T) return count
+    count++
+    t += s.tf
+  }
 }
 
 // ── Statistik ─────────────────────────────────────────────────────────────────
@@ -617,96 +686,98 @@ export interface StochasticMultiResult {
 
 // ── Interne Haupt-Simulation ──────────────────────────────────────────────────
 
+const CAPACITY_RUNS = 30  // Läufe für die Grundleistungsfähigkeit (siehe gapAvailability)
+
 function runInternal(
   volumes: number[][],
   flags: SN640022LaneFlags,
   rawVolumes: number[][] | undefined,
   config: StochasticConfig,
-  preBacklogB: number,
-  preBacklogD: number,
-): { result: StochasticSN640022Result; endBacklogB: number; endBacklogD: number } | null {
+  carried: Map<string, number>,
+): { result: StochasticSN640022Result; endBacklog: Map<string, number> } | null {
   const analytical = analyzeSN640022(volumes, flags, rawVolumes)
   if (!analytical) return null
 
   const cfg = resolveConfig(config)
   const t0 = performance.now()
-  const n = volumes.length
+  const raw = rawVolumes ?? volumes
+  const isCrossing = volumes.length === 4
 
-  const hsNums   = n === 3 ? [7]          : [1, 7]
-  const armBNums = n === 3 ? [4, 6]       : [4, 5, 6]
-  const armDNums = n === 4 ? [10, 11, 12] : []
-
-  // Fussgänger-Konfigurationen je Arm (undefined = kein Fussgängerstreifen)
+  // Fussgänger-Konfigurationen je Arm; (fg > 0) ist auch für NaN falsch →
+  // ungültige Eingaben wirken wie «kein Streifen»
   const peds = cfg.pedestrians
-  // (fg > 0) ist auch für NaN falsch → ungültige Eingaben wirken wie «kein Streifen»
-  const legA = peds?.armA?.enabled && (peds.armA.fg > 0) ? peds.armA : undefined
-  const legB = peds?.armB?.enabled && (peds.armB.fg > 0) ? peds.armB : undefined
-  const legC = peds?.armC?.enabled && (peds.armC.fg > 0) ? peds.armC : undefined
-  const legD = peds?.armD?.enabled && (peds.armD.fg > 0) ? peds.armD : undefined
+  const legs: Partial<Record<ArmKey, PedestrianLegConfig>> = {}
+  for (const [key, leg] of [['A', peds?.armA], ['B', peds?.armB], ['C', peds?.armC], ['D', peds?.armD]] as const)
+    if (leg?.enabled && leg.fg > 0) legs[key] = leg
 
-  // Gap-Effekt (HS-Fussgängerstreifen erzeugen Lücken im Konfliktstrom):
-  // Arm A → schafft Lücken in q2+q3 → profitieren: NS-B-Ströme (4,5,6) + Strom 7 (C→B)
-  // Arm C → schafft Lücken in q8+q9 → profitieren: NS-D-Ströme (10,11,12) + Strom 1 (A→D)
-  // lambdaFg = Häufigkeit der Sperrungen [Gruppen/s] = (fg / ρ) / 3600; tBlock = Querungsdauer
-  const pedModA = legA ? { lambdaFg: legA.fg / (groupSize(legA) * 3600), tBlock: pedBlockingTime(legA) } : undefined
-  const pedModC = legC ? { lambdaFg: legC.fg / (groupSize(legC) * 3600), tBlock: pedBlockingTime(legC) } : undefined
+  // Hauptstrom-Arme A und C (Fz/h)
+  const q2 = raw[0][1], q3 = raw[0][2], q8 = raw[1][0], q9 = raw[1][3] ?? 0
+  const mainFlows = {
+    a: { through: q2, rightLane: flags.armAQ2Override ?? q2, turn: q3,
+         ownTurnLane: flags.armASeparateLane || flags.armATriangleIsland },
+    c: { through: q8, rightLane: flags.armCQ8Override ?? q8, turn: q9,
+         ownTurnLane: flags.armCSeparateLane || flags.armCTriangleIsland },
+  }
+  // Nebenströme als Konfliktverkehr tieferer Ränge (Fz/h)
+  const vehicleRates = new Map<number, number>(isCrossing
+    ? [[1, raw[0][3]], [7, raw[1][2]], [5, raw[2][3]], [6, raw[2][1]], [11, raw[3][2]], [12, raw[3][0]]]
+    : [[7, raw[1][2]]])
 
-  // Crossing-Zuweisung: jeder Strom wird an seinem Abfahrt- UND Ankunftsarm
-  // direkt durch den dortigen Fussgängerstreifen gesperrt.
-  // Abfahrtsarm / Ankunftsarm (nach SN 640 022-Strom-Nummerierung):
-  //   1 (A→D): A, D  |  4 (B→A): B, A  |  5 (B→D): B, D  |  6 (B→C): B, C
-  //   7 (C→B): C, B  | 10 (D→C): D, C  | 11 (D→B): D, B  | 12 (D→A): D, A
-  const crossings: Record<number, (PedestrianLegConfig | undefined)[]> = {
-    1:  [legA, legD],
-    4:  [legB, legA],
-    5:  [legB, legD],
-    6:  [legB, legC],
-    7:  [legC, legB],
-    10: [legD, legC],
-    11: [legD, legB],
-    12: [legD, legA],
+  const streamDefs = new Map<number, LineStream>(analytical.streams.map(s => {
+    const { tc, tf } = gapParamsFor(s.streamNumber, cfg.gapOverrides)
+    return [s.streamNumber, {
+      streamNumber: s.streamNumber, q: s.volumePWE, tc, tf,
+      mask: mainConflictMasks(s.streamNumber, flags),
+      vehicleConflicts: vehicleConflicts(s.streamNumber, flags),
+      crosses: CROSSES[s.streamNumber],
+    }]
+  }))
+  const makeLine = (key: string, numbers: number[], storage: number): Line | null => {
+    const streams = numbers.map(n => streamDefs.get(n)!).filter(s => s.q > 0)
+    return streams.length > 0 ? { key, storage, streams } : null
+  }
+  const lines = (isCrossing
+    ? [makeLine('1', [1], Infinity), makeLine('7', [7], Infinity),
+       makeLine('B', [4, 5, 6], cfg.storageB), makeLine('D', [10, 11, 12], cfg.storageD)]
+    : [makeLine('7', [7], Infinity), makeLine('B', [4, 6], cfg.storageB)])
+    .filter((l): l is Line => l !== null)
+
+  const newRun = () => generateRun(mainFlows, legs, vehicleRates, cfg)
+
+  // Rückstau höherrangiger Ströme (Ziff. 11, S. 6): siehe gapAvailability
+  const availability = gapAvailability(streamDefs, newRun, volumes, flags, rawVolumes, cfg)
+  const usableOf = (s: LineStream, n: number): Uint8Array | undefined => {
+    const p = availability.get(s.streamNumber) ?? 1
+    if (p >= 1) return undefined
+    const flagsOfGaps = new Uint8Array(n)
+    for (let i = 0; i < n; i++) flagsOfGaps[i] = cfg.rng() < p ? 1 : 0
+    return flagsOfGaps
   }
 
-  const makeArmDef = (sn: number): ArmStreamDef | null => {
-    const s = analytical.streams.find(x => x.streamNumber === sn)
-    if (!s) return null
-    const { tc, tf } = gapParamsFor(sn, cfg.gapOverrides)
-    return { streamNumber: sn, q: s.volumePWE, qpi: s.qpi, tc, tf, crossingLegs: crossings[sn] ?? [] }
+  const delaysOf = new Map<number, number[]>()
+  const busy = new Map<string, number>()
+  const backlog = new Map<string, number>()
+  const vehiclesOf = (line: Line) => generateVehicles(line, carried.get(line.key) ?? 0, cfg)
+  for (let i = 0; i < cfg.runs; i++) {
+    const run = newRun()
+    for (const line of lines) {
+      const p = runLine(line, vehiclesOf(line), run, usableOf, cfg.T)
+      busy.set(line.key, (busy.get(line.key) ?? 0) + p.busy)
+      backlog.set(line.key, (backlog.get(line.key) ?? 0) + p.endBacklog)
+      line.streams.forEach((s, si) => {
+        const all = delaysOf.get(s.streamNumber) ?? []
+        for (const d of p.delays[si]) all.push(d)
+        delaysOf.set(s.streamNumber, all)
+      })
+    }
   }
 
-  const streamDelays = new Map<number, number[]>()
-  const streamUtil   = new Map<number, number>()
-  let endBacklogB = 0
-  let endBacklogD = 0
-
-  // HS-Ströme: unabhängige Simulation
-  // Strom 7 (C→B): Gap-Effekt von Arm A; Direktsperre durch Arm C + Arm B
-  // Strom 1 (A→D): Gap-Effekt von Arm C; Direktsperre durch Arm A + Arm D
-  for (const sn of hsNums) {
-    const s = analytical.streams.find(x => x.streamNumber === sn)
-    if (!s) continue
-    const { tc, tf } = gapParamsFor(sn, cfg.gapOverrides)
-    const hsPed     = sn === 7 ? pedModA : sn === 1 ? pedModC : undefined
-    const crossing  = crossings[sn] ?? []
-    const { delays, utilization } = simulateStream(s.volumePWE, s.qpi, tc, tf, cfg, hsPed, crossing)
-    streamDelays.set(sn, delays)
-    streamUtil.set(sn, utilization)
-  }
-
-  // NS Arm B: simultan mit Carry-over
-  const armBDefs = armBNums.map(makeArmDef).filter((d): d is ArmStreamDef => d !== null)
-  if (armBDefs.length > 0) {
-    const { delayMap, avgEndBacklog, utilization } = simulateArm(armBDefs, cfg.storageB, cfg, pedModA, preBacklogB)
-    for (const [sn, delays] of delayMap) { streamDelays.set(sn, delays); streamUtil.set(sn, utilization) }
-    endBacklogB = avgEndBacklog
-  }
-
-  // NS Arm D: simultan mit Carry-over
-  const armDDefs = armDNums.map(makeArmDef).filter((d): d is ArmStreamDef => d !== null)
-  if (armDDefs.length > 0) {
-    const { delayMap, avgEndBacklog, utilization } = simulateArm(armDDefs, cfg.storageD, cfg, pedModC, preBacklogD)
-    for (const [sn, delays] of delayMap) { streamDelays.set(sn, delays); streamUtil.set(sn, utilization) }
-    endBacklogD = avgEndBacklog
+  const streamUtil = new Map<number, number>()
+  const endBacklog = new Map<string, number>()
+  for (const line of lines) {
+    for (const s of line.streams)
+      streamUtil.set(s.streamNumber, (busy.get(line.key) ?? 0) / (cfg.runs * cfg.T))
+    endBacklog.set(line.key, (backlog.get(line.key) ?? 0) / cfg.runs)
   }
 
   const streams: StochasticStreamResult[] = analytical.streams.map(s => ({
@@ -714,7 +785,7 @@ function runInternal(
     name:           s.name,
     rang:           s.rang,
     qpi:            s.qpi,
-    stats:          computeStats(streamDelays.get(s.streamNumber) ?? []),
+    stats:          computeStats(delaysOf.get(s.streamNumber) ?? []),
     utilization:    streamUtil.get(s.streamNumber) ?? 0,
   }))
 
@@ -724,9 +795,34 @@ function runInternal(
       durationMs: performance.now() - t0,
       config,
     },
-    endBacklogB,
-    endBacklogD,
+    endBacklog,
   }
+}
+
+// Rückstaukopplung analog F13–F20 (Ziff. 11, S. 6): Ein Nebenstrom kann eine Lücke nur
+// nutzen, wenn die höherrangigen Ströme keinen Rückstau haben. Die Wahrscheinlichkeit
+// dafür rechnet dieselbe Normrechnung wie der analytische Rechner, aber mit den
+// simulierten Grundleistungsfähigkeiten (t_c, t_f, Lückenmodell, Fussgänger*innen).
+// In der Simulation wird dann jede Lücke mit dieser Wahrscheinlichkeit als frei gezogen.
+// Eine mikroskopische Kopplung (wartende Fahrzeuge sperren direkt) trifft die Norm nicht:
+// Rang-2-Fahrzeuge warten gerade dann, wenn der Hauptstrom ohnehin keine Lücke bietet,
+// und fahren gebündelt ab; die Kapazität von Strom 4 lag so bis zum 3,6-Fachen über L4.
+function gapAvailability(
+  streamDefs: Map<number, LineStream>, newRun: () => RunContext,
+  volumes: number[][], flags: SN640022LaneFlags, rawVolumes: number[][] | undefined,
+  cfg: FullConfig,
+): Map<number, number> {
+  const runs = Math.min(cfg.runs, CAPACITY_RUNS)
+  const counts = new Map<number, number>()
+  for (let i = 0; i < runs; i++) {
+    const run = newRun()
+    for (const [sn, s] of streamDefs)
+      counts.set(sn, (counts.get(sn) ?? 0) + saturatedDepartures(s, run, cfg))
+  }
+  const G = (sn: number) => (counts.get(sn) ?? 0) * 3600 / (runs * cfg.T)
+  const coupled = analyzeSN640022(volumes, flags, rawVolumes, G)!
+  return new Map(coupled.streams.map(s =>
+    [s.streamNumber, s.basicCapacity > 0 ? s.capacity / s.basicCapacity : 1]))
 }
 
 // ── Öffentliche API ───────────────────────────────────────────────────────────
@@ -737,7 +833,7 @@ export function runStochasticSN640022(
   rawVolumes?: number[][],
   config: StochasticConfig = {},
 ): StochasticSN640022Result | null {
-  return runInternal(volumes, flags, rawVolumes, config, 0, 0)?.result ?? null
+  return runInternal(volumes, flags, rawVolumes, config, new Map())?.result ?? null
 }
 
 // Feature D: Mehrere Zeitintervalle mit Carry-over-Queue
@@ -749,23 +845,18 @@ export function runStochasticSN640022Multi(
   if (intervals.length === 0) return null
   const t0 = performance.now()
   const results: StochasticIntervalResult[] = []
-  let backlogB = 0
-  let backlogD = 0
+  // Noch wartende Fahrzeuge je Haltelinie (HS-Linksabbieger und NS-Arme)
+  let backlog = new Map<string, number>()
 
   for (const iv of intervals) {
-    const r = runInternal(
-      iv.volumes, flags, iv.rawVolumes,
-      { ...config, T: iv.T },
-      Math.round(backlogB),
-      Math.round(backlogD),
-    )
+    const carried = new Map([...backlog].map(([k, v]) => [k, Math.round(v)]))
+    const r = runInternal(iv.volumes, flags, iv.rawVolumes, { ...config, T: iv.T }, carried)
     if (!r) return null
-    backlogB = r.endBacklogB
-    backlogD = r.endBacklogD
+    backlog = r.endBacklog
     results.push({
       label:     iv.label,
       result:    r.result,
-      carryOver: Math.round(backlogB + backlogD),
+      carryOver: Math.round([...backlog.values()].reduce((s, v) => s + v, 0)),
     })
   }
 

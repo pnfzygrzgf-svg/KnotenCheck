@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import einmuendungSvg from './assets/einmuendung.svg'
 import kreuzungSvg    from './assets/kreuzung.svg'
 import {
-  GAP_PARAMS, GAP_PARAMS_SN640022,
+  GAP_PARAMS, GAP_PARAMS_SN640022, GAP_PARAMS_SN640022_CH,
   pedBlockingTime, normalizePedestrianLeg, V_FG, DEFAULT_FAHRBAHNBREITE, MITTELINSEL_GRENZE_M,
 } from './engine/stochasticSN640022'
 import type {
@@ -14,6 +14,7 @@ import {
   defaultIntersection, toSNVolumes, toSNRawVolumes, toSNLaneFlags,
 } from './engine/armConfiguration'
 import type { ArmConfiguration, IntersectionConfiguration } from './engine/armConfiguration'
+import type { SN640022LaneFlags } from './engine/types'
 import { conformArms } from './engine/armConfiguration'
 import { conform, oneOf } from './engine/conform'
 import { QUERUNG_ERGEBNIS, QUERUNG_LABEL, type Querung } from './engine/querung'
@@ -33,8 +34,8 @@ import { StochasticPanel } from './StochasticPanel'
 const LEGEND_ITEMS: LegendItem[] = [
   { abbr: 'Fz/h',      desc: 'Fahrzeuge pro Stunde — Roheingabe' },
   { abbr: 'PWE/h',     desc: 'Personenwageneinheiten pro Stunde — umgerechnet mit f (Tab. 1/2, SN 640 022)' },
-  { abbr: 'qpi', unit: 'Fz/h', desc: 'Massgebende Hauptstrombelastung — nach SN 640 022 F1–F8; bestimmt wie viele Konfliktereignisse pro Sekunde im Hauptstrom generiert werden' },
-  { abbr: 'Rg',        desc: 'Rang — 1 = Hauptstrasse (kein Warten), 2 = HS-Linksabbieger / NS-Rechtseinbieger, 3 = NS-Kreuzen, 4 = NS-Linkseinbiegen' },
+  { abbr: 'qpi', unit: 'Fz/h', desc: 'Massgebende Hauptstrombelastung nach SN 640 022 (Ziff. 7, S. 3) — sagt, welche Fahrzeuge der Strom abwarten muss' },
+  { abbr: 'Rg',        desc: 'Rang — 1 = Hauptstrasse (kein Warten), 2 = HS-Linksabbieger / NS-Rechtseinbieger, 3 = NS-Kreuzen, 4 = NS-Linkseinbiegen. Ab Rang 3 ist eine Lücke nur frei, wenn die höherrangigen Ströme keinen Rückstau haben (Ziff. 11, S. 6, SN 640 022)' },
   { abbr: 't_c', unit: 's', desc: 'Grenzzeitlücke — Mindestzeitlücke im Hauptstrom, die ein Fahrer als ausreichend akzeptiert; je Manöver aus HBS 2015, Kap. S5, Tabelle S5-3 (Zeichen 205)' },
   { abbr: 't_f', unit: 's', desc: 'Folgezeitlücke — Mindestabstand zwischen zwei aufeinanderfolgenden Fahrzeugen, die in derselben Hauptstromlücke einfahren; aus HBS 2015, Kap. S5, Tabelle S5-3' },
   { abbr: 'w',   unit: 's', desc: 'Simulierte mittlere Wartezeit — Mittelwert aller Wartezeiten (Abfahrtszeit − Ankunftszeit) über alle Fahrzeuge und alle Simulationsläufe' },
@@ -80,6 +81,16 @@ function mergeIntervalArms(
   })
 }
 
+// Die Simulation kennt nur eine Haltelinie je Arm und keine Dreiecksinseln; ältere
+// Dateien mit gesetzter Insel laden weiter, die Insel wirkt hier aber nicht.
+function simFlags(cfg: IntersectionConfiguration): SN640022LaneFlags {
+  return {
+    ...toSNLaneFlags(cfg),
+    armATriangleIsland: false, armCTriangleIsland: false,
+    armBRightIsland: false, armDRightIsland: false,
+  }
+}
+
 // ── Fussgänger*innen-Felder (Footer in ArmCard) ───────────────────────────────
 
 type PedArmKey = 'armA' | 'armC' | 'armB' | 'armD'
@@ -123,7 +134,7 @@ function PedFooter({ leg: rawLeg, isHS, onChange }: {
         </select>
         {!isHS && leg.enabled && (
           <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 'auto' }}>
-            nur Direktsperre (kein Gap-Effekt)
+            sperrt nur Ströme über den Streifen
           </span>
         )}
       </div>
@@ -200,10 +211,10 @@ function PedFooter({ leg: rawLeg, isHS, onChange }: {
 
 type GapKey = 'mainLeft' | 'sideRight' | 'sideCross' | 'sideLeft'
 const GAP_LABELS: Record<GapKey, string> = {
-  mainLeft:  'HS-Linksabbieger (Ström 1, 7)',
-  sideRight: 'NS-Rechtseinbiegen (Ström 6, 12)',
-  sideCross: 'NS-Kreuzen (Ström 5, 11)',
-  sideLeft:  'NS-Linkseinbiegen (Ström 4, 10)',
+  mainLeft:  'HS-Linksabbieger (Ströme 1, 7)',
+  sideRight: 'NS-Rechtseinbiegen (Ströme 6, 12)',
+  sideCross: 'NS-Kreuzen (Ströme 5, 11)',
+  sideLeft:  'NS-Linkseinbiegen (Ströme 4, 10)',
 }
 
 function GapConfigSection({ overrides, onChange }: {
@@ -211,24 +222,30 @@ function GapConfigSection({ overrides, onChange }: {
   onChange: (o: GapOverrides) => void
 }) {
   const keys: GapKey[] = ['mainLeft', 'sideRight', 'sideCross', 'sideLeft']
-  const preset: 'hbs' | 'sn' | 'custom' =
+  const matches = (p: typeof GAP_PARAMS) =>
+    keys.every(k => overrides[k]?.tc === p[k].tc && overrides[k]?.tf === p[k].tf)
+  const preset: 'hbs' | 'sn' | 'sn-ch' | 'custom' =
     keys.every(k => overrides[k] === undefined) ? 'hbs'
-    : keys.every(k => overrides[k]?.tc === GAP_PARAMS_SN640022[k].tc
-                   && overrides[k]?.tf === GAP_PARAMS_SN640022[k].tf) ? 'sn'
+    : matches(GAP_PARAMS_SN640022) ? 'sn'
+    : matches(GAP_PARAMS_SN640022_CH) ? 'sn-ch'
     : 'custom'
+  const applyPreset = (p: typeof GAP_PARAMS) => onChange({
+    mainLeft:  { ...p.mainLeft },
+    sideRight: { ...p.sideRight },
+    sideCross: { ...p.sideCross },
+    sideLeft:  { ...p.sideLeft },
+  })
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
         <ToggleBtn small active={preset === 'hbs'} onClick={() => onChange({})}>
           HBS 2015 (Standard)
         </ToggleBtn>
-        <ToggleBtn small active={preset === 'sn'} onClick={() => onChange({
-          mainLeft:  { ...GAP_PARAMS_SN640022.mainLeft },
-          sideRight: { ...GAP_PARAMS_SN640022.sideRight },
-          sideCross: { ...GAP_PARAMS_SN640022.sideCross },
-          sideLeft:  { ...GAP_PARAMS_SN640022.sideLeft },
-        })}>
+        <ToggleBtn small active={preset === 'sn'} onClick={() => applyPreset(GAP_PARAMS_SN640022)}>
           SN 640 022 (implizit)
+        </ToggleBtn>
+        <ToggleBtn small active={preset === 'sn-ch'} onClick={() => applyPreset(GAP_PARAMS_SN640022_CH)}>
+          SN 640 022 (mit +90)
         </ToggleBtn>
         {preset === 'custom' && (
           <span style={{ fontSize: 10, color: '#9ca3af' }}>benutzerdefiniert</span>
@@ -239,6 +256,13 @@ function GapConfigSection({ overrides, onChange }: {
           Äquivalente Zeitlücken, rückgerechnet aus den Abb.-2-Kurven der SN 640 022
           (Siegloch-Fit, ±0.2–0.4 s). Ohne die CH-Erhöhung von +90 PWE/h —
           die Simulation rechnet mit diesem Preset konservativ.
+        </div>
+      )}
+      {preset === 'sn-ch' && (
+        <div style={{ fontSize: 10, color: '#9ca3af', lineHeight: 1.5 }}>
+          Rechengrössen, keine gemessenen Zeitlücken: Mit exponentiellen Lücken und ohne Streuung
+          von t_c trifft die Simulation so die Kurven der Norm samt +90 PWE/h (Ziff. 9, S. 4)
+          im Mittel auf 3–6 %.
         </div>
       )}
       {keys.map(k => {
@@ -337,7 +361,7 @@ function IntervalCard({ iv, baseArms, armCount, index, onUpdate, onRemove }: {
         <div style={{ padding: '8px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
           {arms.map((arm, i) => (
             <ArmCard key={arm.id} arm={arm} index={i} isHS={i < 2}
-              armCount={armCount} geometryLocked hideMixedLane live
+              armCount={armCount} geometryLocked hideMixedLane hideIsland live
               opposingHSSeparateLane={i >= 2 ? (baseArms[i === 2 ? 0 : 1]?.hasSeparateTurnLane ?? false) : false}
               onChange={a => setArm(i, a)} />
           ))}
@@ -547,14 +571,14 @@ export default function SimulationApp() {
           T:          iv.T * 60,
         }
       })
-      const flags = toSNLaneFlags({ name: '', arms: baseArms })
+      const flags = simFlags({ name: '', arms: baseArms })
       req = { kind: 'multi', intervals: ivs, flags, config: fullConfig }
     } else {
       const icfg: IntersectionConfiguration = { name: '', arms: baseArms }
       const volumes = toSNVolumes(icfg)
       const raw     = toSNRawVolumes(icfg)
       if (!volumes || !raw) return
-      req = { kind: 'single', volumes, raw, flags: toSNLaneFlags(icfg), config: fullConfig }
+      req = { kind: 'single', volumes, raw, flags: simFlags(icfg), config: fullConfig }
     }
 
     workerRef.current?.terminate()
@@ -710,7 +734,7 @@ export default function SimulationApp() {
             const leg = pedestrians[pedKey] ?? defaultLeg()
             return (
               <ArmCard key={arm.id} arm={arm} index={i} isHS={i < 2}
-                armCount={armCount} hideMixedLane live
+                armCount={armCount} hideMixedLane hideIsland live
                 opposingHSSeparateLane={i >= 2 ? (baseArms[i === 2 ? 0 : 1]?.hasSeparateTurnLane ?? false) : false}
                 onChange={a => setArm(i, a)}
                 footer={
@@ -803,7 +827,7 @@ export default function SimulationApp() {
                   </div>
                   {[
                     { val: true,  label: 'Cowan M3',    desc: 'Kolonnenbildung (realistischer bei qpi > 600 Fz/h)' },
-                    { val: false, label: 'Exponential', desc: 'Einfachstes Modell, identisch mit SN 640 022-Annahme' },
+                    { val: false, label: 'Exponential', desc: 'Einfachstes Modell, passt zu den Kurven der SN 640 022' },
                   ].map(o => (
                     <label key={String(o.val)}
                       style={{ display: 'flex', alignItems: 'flex-start', gap: 8,

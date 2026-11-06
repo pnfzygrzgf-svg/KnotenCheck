@@ -13,8 +13,10 @@ import {
   computeQKfromTurnings,
   computeQAfromTurnings,
   exitCapacity,
+  exitCapacityFor,
   entryFactor,
   ringFactor,
+  entryTypesFromFile,
 } from '../roundaboutCalculator'
 
 const approx = (actual: number, expected: number, tol: number) =>
@@ -43,7 +45,7 @@ describe('entryFactor / ringFactor (Tab. 2)', () => {
   })
 })
 
-// ── Q_K aus Abbiegeströmen (Abb. 10, S. 10) ──────────────────────────────────
+// ── Q_K aus Abbiegeströmen (Abb. 10, S. 18) ──────────────────────────────────
 // Norm-Beispiel: Arm 1: r=110, s=380, l=260; Arm 4: s=410, l=130; Arm 3: l=60
 // PCE≈1.0 im Norm-Beispiel → Fz ≈ PWE
 
@@ -73,13 +75,13 @@ describe('computeQKfromTurnings (Abb. 10)', () => {
 
 // ── Ausfahrten-Check L_A (Tab. 5, Abb. 5, Ziffer 10) ─────────────────────────
 describe('exitCapacity L_A und Ausfahrten-Check (Tab. 5)', () => {
-  // L_A(FG) — abgelesene Stützpunkte aus Abb. 5
+  // L_A(FG) — Stützpunkte aus den Vektorkurven von Abb. 5 (S. 11); Tab. 5 ist gerundet abgelesen
   test('3.5 m FG=0   → 1400', () => approx(exitCapacity(0),   1400, 1))
   test('3.5 m FG=100 → 1310', () => approx(exitCapacity(100), 1310, 1))
-  test('3.5 m FG=250 → 1195', () => approx(exitCapacity(250), 1195, 1))
+  test('3.5 m FG=250 → 1193', () => approx(exitCapacity(250), 1193, 1))
   test('3.5 m FG=300 → 1160', () => approx(exitCapacity(300), 1160, 1))
-  test('4.5 m FG=100 → 1280', () => approx(exitCapacity(100, true), 1280, 1))
-  test('4.5 m FG=300 → 1100', () => approx(exitCapacity(300, true), 1100, 1))
+  test('4.5 m FG=100 → 1284', () => approx(exitCapacity(100, true), 1284, 1))
+  test('4.5 m FG=300 → 1097', () => approx(exitCapacity(300, true), 1097, 1))
   test('4.5 m steiler als 3.5 m', () => expect(exitCapacity(300, true)).toBeLessThan(exitCapacity(300, false)))
 
   const r = calculateRoundabout({
@@ -269,5 +271,93 @@ describe('Q_K über dem Gültigkeitsbereich der L_E-Formel wird markiert', () =>
   test.each([['1/1', 1400], ['2/1+', 2000], ['2/2', 1800]] as const)('%s: Grenze %i PWE/h', (type, limit) => {
     const r = calculateRoundabout({ type, qe: [300, 300, 300], qk: [limit, limit + 1, 100], fg: [0, 0, 0] })
     expect(r.entries.map(e => e.qkOutOfRange)).toEqual([false, true, false])
+  })
+})
+
+// ── f_F nach den Vektorkurven von Abb. 3 und 4 (S. 10) ────────────────────────
+describe('f_F trifft die Vektorkurven', () => {
+  test.each([
+    ['1/1', 400, 700, 0.93], ['1/1', 200, 800, 0.98], ['1/1', 300, 500, 0.913], ['1/1', 100, 900, 1],
+    ['2/1+', 100, 800, 0.981], ['2/1+', 400, 1200, 0.914], ['2/1+', 300, 600, 0.878], ['2/1+', 200, 1200, 1],
+  ] as const)('%s, FG %i, Q_K %i → %f', (type, fg, qk, expected) => {
+    approx(correctionFactorFF(type, fg, qk), expected, 0.0005)
+  })
+})
+
+// ── Typ je Einfahrt: Iteration des Normbeispiels (Tab. 8, S. 22; Tab. 9, S. 23) ──
+describe('Typ je Einfahrt: Arme 1 und 4 zweistreifig, in einem Lauf', () => {
+  const r = calculateRoundabout({
+    type: ['2/1+', '1/1', '1/1', '2/1+'],
+    qe: [750, 470, 570, 960], qk: [600, 770, 690, 480],
+    fg: [100, 300, 250, 0], qa: [840, 580, 550, 780],
+  })
+  const [arm1, arm2, arm3, arm4] = r.entries
+
+  test('Typ steht je Einfahrt im Resultat', () =>
+    expect(r.entries.map(e => e.type)).toEqual(['2/1+', '1/1', '1/1', '2/1+']))
+  test('Arm 1 (Tab. 8/9): L_E 1132, f_F 0,95, 1075, X 0,70, R 325, 11 s, B', () => {
+    approx(arm1.leBase, 1132, 1.5)
+    approx(arm1.fF, 0.95, 0.001)
+    approx(arm1.capacity, 1075, 2)
+    approx(arm1.utilizationDegree, 0.70, 0.005)
+    approx(arm1.reserve, 325, 2)
+    approx(arm1.delay, 11, 1)
+    expect(arm1.levelOfService).toBe('B')
+  })
+  test('Arm 4 (Tab. 8/9): L_E 1197, f_F 1,00, X 0,80, R 237, 14 s, B', () => {
+    approx(arm4.capacity, 1197, 1)
+    expect(arm4.fF).toBe(1)
+    approx(arm4.utilizationDegree, 0.80, 0.005)
+    approx(arm4.reserve, 237, 1)
+    approx(arm4.delay, 14, 1)
+    expect(arm4.levelOfService).toBe('B')
+  })
+  test('Arme 2 und 3 bleiben einstreifig (Tab. 6/7)', () => {
+    approx(arm2.capacity, 668, 5)
+    approx(arm3.capacity, 712, 5)
+    expect(arm2.levelOfService).toBe('B')
+    expect(arm3.levelOfService).toBe('C')
+  })
+  test('Gesamt-QS C, keine Ausfahrt überlastet', () => {
+    expect(r.overallLevelOfService).toBe('C')
+    expect(r.exitOverload).toBe(false)
+  })
+})
+
+describe('Speicherdatei: Typ je Einfahrt', () => {
+  test('ältere Datei: Typ je Knoten gilt für alle Arme', () =>
+    expect(entryTypesFromFile({ type: '2/1+', arms: [{ right: 1 }, {}] }, 4)).toEqual(['2/1+', '2/1+', '2/1+', '2/1+']))
+  test('neuere Datei: Typ je Arm', () =>
+    expect(entryTypesFromFile({ arms: [{ type: '2/1+' }, { type: '1/1' }, { type: '2/2' }, { type: '1/1' }] }, 4))
+      .toEqual(['2/1+', '1/1', '2/2', '1/1']))
+  test('ungültige Werte: Standard 1/1', () =>
+    expect(entryTypesFromFile({ type: 'x', arms: [{ type: 3 }] }, 2)).toEqual(['1/1', '1/1']))
+})
+
+// ── Ausfahrten Typ 2/2 (VSS 2005/301 Ziffer 5.2.3, S. 64) ─────────────────────
+describe('Ausfahrt Typ 2/2', () => {
+  test('ohne Fussgänger: 1700 einstreifig, 1850 zweistreifig', () => {
+    expect(exitCapacityFor('2/2', 0)).toBe(1700)
+    expect(exitCapacityFor('2/2', 0, false, true)).toBe(1850)
+  })
+  test('Typen 1/1 und 2/1+ bleiben bei Abb. 5, auch mit gesetzter Zweistreifigkeit', () => {
+    expect(exitCapacityFor('1/1', 0, false, true)).toBe(1400)
+    expect(exitCapacityFor('2/1+', 100, true)).toBe(exitCapacity(100, true))
+  })
+  test('Annahme: Abzug anteilig Abb. 5, zweistreifig mit der 4,5-m-Kurve', () => {
+    approx(exitCapacityFor('2/2', 100), 1700 * 1309 / 1400, 1e-9)
+    approx(exitCapacityFor('2/2', 100, true), 1700 * 1284 / 1400, 1e-9)
+    approx(exitCapacityFor('2/2', 100, false, true), 1850 * 1284 / 1400, 1e-9)
+  })
+  test('Q_A 1500: Typ 2/2 hält, Typ 1/1 ist überlastet; Annahme nur mit Fussgängern markiert', () => {
+    const base = { qe: [100, 100], qk: [0, 0], qa: [1500, 1500], fg: [0, 200] }
+    const r22 = calculateRoundabout({ ...base, type: '2/2', exitTwoLanes: [true, false] })
+    expect(r22.exits[0].overloaded).toBe(false)
+    expect(r22.exits[0].twoLanes).toBe(true)
+    expect(r22.exits[0].fgAssumed).toBe(false)
+    expect(r22.exits[1].fgAssumed).toBe(true)
+    const r11 = calculateRoundabout({ ...base, type: '1/1', exitTwoLanes: [true, false] })
+    expect(r11.exitOverload).toBe(true)
+    expect(r11.exits[0].twoLanes).toBe(false)
   })
 })
