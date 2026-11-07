@@ -1,4 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
+import UebernahmeHinweis from './karte/UebernahmeHinweis'
+import BerichtQuellen from './karte/BerichtQuellen'
+import BelastungsVergleich from './karte/BelastungsVergleich'
+import { querschnitteKnoten } from './karte/vergleich'
+import { intersectionAus, kartenBezugAus, kartenBezugLesen, type KnotenUebernahme } from './karte/rechner'
 import { createPortal } from 'react-dom'
 import einmuendungSvg from './assets/einmuendung.svg'
 import kreuzungSvg    from './assets/kreuzung.svg'
@@ -16,18 +21,20 @@ import {
 import type { ArmConfiguration, IntersectionConfiguration } from './engine/armConfiguration'
 import type { SN640022LaneFlags } from './engine/types'
 import { conformArms } from './engine/armConfiguration'
-import { conform, oneOf } from './engine/conform'
+import { conform, oneOf, wahl } from './engine/conform'
+import { offenSimulation } from './engine/offeneAngaben'
 import { QUERUNG_ERGEBNIS, QUERUNG_LABEL, type Querung } from './engine/querung'
 import type { SimRequest, SimResponse } from './simulation.worker'
 import { exportTool, importTool } from './saveLoad'
 import { useIsActiveModule } from './activeModule'
-import { Toast } from './Toast'
+import { Meldung } from './Meldung'
 import { simLOS, streamMovementName } from './uiHelpers'
-import { useToast } from './useToast'
-import { LegendBox, type LegendItem } from './LegendBox'
-import { NumInput, Row, Ckbx, LOSBadge, ToggleBtn, ToolbarBtn } from './ui'
+import { useMeldung } from './useMeldung'
+import { HilfeUnten, SoFunktionierts, type LegendItem } from './Hilfe'
+import { LeereWahl, NumInput, OffeneAngaben, Row, Ckbx, LOSBadge, ToggleBtn, ToolbarBtn } from './ui'
 import { ArmCard } from './ArmCard'
 import { StochasticPanel } from './StochasticPanel'
+import { RechnerFuss } from './Fusszeile'
 
 // ── Legende ───────────────────────────────────────────────────────────────────
 
@@ -52,15 +59,15 @@ const LEGEND_ITEMS: LegendItem[] = [
 interface SimIntervalInput {
   id:    string
   label: string
-  T:     15 | 30 | 45 | 60  // Minuten
+  T:     15 | 30 | 45 | 60 | null  // Minuten; null = noch nicht gewählt
   arms:  ArmConfiguration[]
 }
 
-function defaultInterval(armCount: 3 | 4, label: string): SimIntervalInput {
+function defaultInterval(armCount: 3 | 4): SimIntervalInput {
   return {
     id:    crypto.randomUUID(),
-    label,
-    T:     60,
+    label: '',
+    T:     null,
     arms:  defaultIntersection(armCount).arms,
   }
 }
@@ -96,7 +103,7 @@ function simFlags(cfg: IntersectionConfiguration): SN640022LaneFlags {
 type PedArmKey = 'armA' | 'armC' | 'armB' | 'armD'
 
 function defaultLeg(): PedestrianLegConfig {
-  return { enabled: false, querung: 'keine', fg: 0, rho: 1, mittelinsel: false }
+  return { enabled: false, fg: 0, rho: 0, mittelinsel: false }   // Querung und Gruppengrösse noch nicht gewählt
 }
 
 const PED_ARM_LABEL: Record<PedArmKey, string> = { armA: 'A', armC: 'C', armB: 'B', armD: 'D' }
@@ -110,6 +117,7 @@ function PedFooter({ leg: rawLeg, isHS, onChange }: {
   const bg = isHS ? '#eff6ff' : '#fff7ed'
   // Querung bereinigt (fehlendes Feld → aus enabled; Trottoirüberfahrt nur an NS-Armen)
   const leg     = normalizePedestrianLeg(rawLeg, !isHS)
+  const gewaehlt = rawLeg.querung !== undefined
   const isTUe   = leg.querung === 'trottoirueberfahrt'
   const optionen: Querung[] = isHS ? ['keine', 'fgs'] : ['keine', 'fgs', 'trottoirueberfahrt']
   const setQuerung = (q: Querung) => onChange({
@@ -123,17 +131,18 @@ function PedFooter({ leg: rawLeg, isHS, onChange }: {
       {/* Auswahl-Zeile */}
       <div style={{ padding: '6px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ fontSize: 12, fontWeight: 600,
-                       color: leg.enabled ? '#15803d' : '#9ca3af' }}>
+                       color: leg.enabled ? '#15803d' : 'var(--text-muted)' }}>
           Querung
         </span>
-        <select value={leg.querung}
+        <select value={gewaehlt ? leg.querung : ''}
           onChange={e => setQuerung(e.target.value as Querung)}
           style={{ fontSize: 12, padding: '2px 6px', borderRadius: 4,
-                   border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>
+                   border: '1px solid var(--border)', background: '#fff', cursor: 'pointer' }}>
+          {!gewaehlt && <LeereWahl />}
           {optionen.map(q => <option key={q} value={q}>{QUERUNG_LABEL[q]}</option>)}
         </select>
         {!isHS && leg.enabled && (
-          <span style={{ fontSize: 10, color: '#9ca3af', marginLeft: 'auto' }}>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 'auto' }}>
             sperrt nur Ströme über den Streifen
           </span>
         )}
@@ -141,16 +150,13 @@ function PedFooter({ leg: rawLeg, isHS, onChange }: {
 
       {/* Eingabefelder */}
       {leg.enabled && (() => {
-        const breitMode = leg.fahrbahnbreite !== undefined
-        const breite    = leg.fahrbahnbreite ?? DEFAULT_FAHRBAHNBREITE
+        const breite    = leg.fahrbahnbreite
         const tBlock    = pedBlockingTime(leg)
         const freq      = leg.rho > 0 ? leg.fg / leg.rho : leg.fg   // Sperrungen/h
         return (
         <>
           {isTUe && (
-            <div style={{ margin: '0 14px 8px', padding: '6px 9px', borderRadius: 5,
-                          background: '#fef3c7', border: '1px solid #fde047',
-                          fontSize: 10, color: '#854d0e', lineHeight: 1.5 }}>
+            <div className="hinweis klein" style={{ margin: '0 14px 8px' }}>
               <strong>Trottoirüberfahrt:</strong> Fussgänger*innen haben Vortritt (VRV Art. 41
               Abs. 2). Gerechnet wie ein Fussgängerstreifen über die Nebenstrasse – Annahme,
               VSS 2011/308 kennt die Trottoirüberfahrt nicht.
@@ -159,13 +165,14 @@ function PedFooter({ leg: rawLeg, isHS, onChange }: {
           <Row label={isTUe ? 'Fussgänger*innen auf der Trottoirüberfahrt' : 'Fussgänger*innen'}
                sub={isTUe ? '[Fg/h]' : 'VSS 2011/308 · Fg/h am Fussgängerstreifen'}>
             <NumInput value={leg.fg} onChange={v => onChange({ ...leg, fg: v })} max={2000} live />
-            <span style={{ fontSize: 11, color: '#9ca3af', width: 30 }}>Fg/h</span>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 30 }}>Fg/h</span>
           </Row>
           <Row label="Gruppengrösse ρ" sub="steuert die Häufigkeit der Sperrungen (fg/ρ), nicht die Dauer">
-            <select value={leg.rho}
+            <select value={leg.rho || ''}
               onChange={e => onChange({ ...leg, rho: Number(e.target.value) })}
-              style={{ fontSize: 13, padding: '3px 6px', borderRadius: 4,
-                       border: '1px solid #d1d5db', background: '#fff' }}>
+              style={{ fontSize: 14, padding: '3px 6px', borderRadius: 4,
+                       border: '1px solid var(--border)', background: '#fff' }}>
+              {!leg.rho && <LeereWahl />}
               {[1, 2, 3, 4, 5].map(r => (
                 <option key={r} value={r}>
                   {r} {r === 1 ? '(Einzeln)' : r === 2 ? '(Paar)' : r >= 4 ? '(Gruppe)' : ''}
@@ -173,21 +180,12 @@ function PedFooter({ leg: rawLeg, isHS, onChange }: {
               ))}
             </select>
           </Row>
-          <Row label={isTUe ? 'Eigene Breite der Einmündung' : 'Eigene Fahrbahnbreite'}
-               sub={`aus = Standard ${DEFAULT_FAHRBAHNBREITE} m; bestimmt die Sperrdauer`}>
-            <Ckbx checked={breitMode}
-              onChange={v => onChange({ ...leg, fahrbahnbreite: v ? DEFAULT_FAHRBAHNBREITE : undefined })} />
+          <Row label={isTUe ? 'Breite der Einmündung' : 'Fahrbahnbreite'} sub={`bestimmt die Sperrdauer · Querung mit v_FG = ${V_FG.toFixed(2)} m/s (VSS 40 240)`}>
+            <NumInput value={breite ?? 0} onChange={v => onChange({ ...leg, fahrbahnbreite: v > 0 ? v : undefined })} max={30} live />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 30 }}>m</span>
           </Row>
-          {breitMode && (
-            <Row label={isTUe ? 'Breite der Einmündung' : 'Fahrbahnbreite'} sub={`Querung mit v_FG = ${V_FG.toFixed(2)} m/s (VSS 40 240)`}>
-              <NumInput value={breite} onChange={v => onChange({ ...leg, fahrbahnbreite: v })} max={30} live />
-              <span style={{ fontSize: 11, color: '#9ca3af', width: 30 }}>m</span>
-            </Row>
-          )}
-          {!isTUe && breitMode && breite >= MITTELINSEL_GRENZE_M && (
-            <div style={{ margin: '0 14px 8px', padding: '6px 9px', borderRadius: 5,
-                          background: '#fef3c7', border: '1px solid #fde047',
-                          fontSize: 10, color: '#854d0e', lineHeight: 1.5 }}>
+          {!isTUe && breite !== undefined && breite >= MITTELINSEL_GRENZE_M && (
+            <div className="hinweis klein" style={{ margin: '0 14px 8px' }}>
               Ab {MITTELINSEL_GRENZE_M} m Fahrbahnbreite ist gemäss VSS 40 241 eine Mittelinsel erforderlich.
             </div>
           )}
@@ -196,10 +194,10 @@ function PedFooter({ leg: rawLeg, isHS, onChange }: {
               <Ckbx checked={leg.mittelinsel} onChange={v => onChange({ ...leg, mittelinsel: v })} />
             </Row>
           )}
-          <div style={{ padding: '4px 14px 8px', fontSize: 10, color: '#6b7280' }}>
+          {breite !== undefined && leg.rho > 0 && <div style={{ padding: '4px 14px 8px', fontSize: 12, color: 'var(--text-muted)' }}>
             Sperrzeit: {breite} m / {V_FG.toFixed(2)} m/s{leg.mittelinsel ? ' × 0.5 (Mittelinsel)' : ''} ={' '}
             <strong>{tBlock.toFixed(1)} s</strong> je Gruppe · ≈ <strong>{Math.round(freq)}</strong> Sperrungen/h
-          </div>
+          </div>}
         </>
         )
       })()}
@@ -217,15 +215,17 @@ const GAP_LABELS: Record<GapKey, string> = {
   sideLeft:  'NS-Linkseinbiegen (Ströme 4, 10)',
 }
 
-function GapConfigSection({ overrides, onChange }: {
+function GapConfigSection({ overrides, gewaehlt, onChange }: {
   overrides: GapOverrides
-  onChange: (o: GapOverrides) => void
+  gewaehlt:  boolean   // ohne Wahl bleiben Vorgabe und Felder leer
+  onChange:  (o: GapOverrides) => void
 }) {
   const keys: GapKey[] = ['mainLeft', 'sideRight', 'sideCross', 'sideLeft']
   const matches = (p: typeof GAP_PARAMS) =>
     keys.every(k => overrides[k]?.tc === p[k].tc && overrides[k]?.tf === p[k].tf)
-  const preset: 'hbs' | 'sn' | 'sn-ch' | 'custom' =
-    keys.every(k => overrides[k] === undefined) ? 'hbs'
+  const preset: 'hbs' | 'sn' | 'sn-ch' | 'custom' | null =
+    !gewaehlt ? null
+    : keys.every(k => overrides[k] === undefined) ? 'hbs'
     : matches(GAP_PARAMS_SN640022) ? 'sn'
     : matches(GAP_PARAMS_SN640022_CH) ? 'sn-ch'
     : 'custom'
@@ -239,7 +239,7 @@ function GapConfigSection({ overrides, onChange }: {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
         <ToggleBtn small active={preset === 'hbs'} onClick={() => onChange({})}>
-          HBS 2015 (Standard)
+          HBS 2015
         </ToggleBtn>
         <ToggleBtn small active={preset === 'sn'} onClick={() => applyPreset(GAP_PARAMS_SN640022)}>
           SN 640 022 (implizit)
@@ -248,18 +248,18 @@ function GapConfigSection({ overrides, onChange }: {
           SN 640 022 (mit +90)
         </ToggleBtn>
         {preset === 'custom' && (
-          <span style={{ fontSize: 10, color: '#9ca3af' }}>benutzerdefiniert</span>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>benutzerdefiniert</span>
         )}
       </div>
       {preset === 'sn' && (
-        <div style={{ fontSize: 10, color: '#9ca3af', lineHeight: 1.5 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
           Äquivalente Zeitlücken, rückgerechnet aus den Abb.-2-Kurven der SN 640 022
           (Siegloch-Fit, ±0.2–0.4 s). Ohne die CH-Erhöhung von +90 PWE/h —
           die Simulation rechnet mit diesem Preset konservativ.
         </div>
       )}
       {preset === 'sn-ch' && (
-        <div style={{ fontSize: 10, color: '#9ca3af', lineHeight: 1.5 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
           Rechengrössen, keine gemessenen Zeitlücken: Mit exponentiellen Lücken und ohne Streuung
           von t_c trifft die Simulation so die Kurven der Norm samt +90 PWE/h (Ziff. 9, S. 4)
           im Mittel auf 3–6 %.
@@ -272,39 +272,39 @@ function GapConfigSection({ overrides, onChange }: {
         const tfV  = ov.tf ?? def.tf
         return (
           <div key={k}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#374151', marginBottom: 3 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 3 }}>
               {GAP_LABELS[k]}
-              <span style={{ color: '#9ca3af', fontWeight: 400, marginLeft: 6 }}>
-                (Default: tc={def.tc} s, tf={def.tf} s)
+              <span style={{ color: 'var(--text-muted)', fontWeight: 400, marginLeft: 6 }}>
+                (HBS 2015: tc={def.tc} s, tf={def.tf} s)
               </span>
             </div>
             <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
-                <span style={{ color: '#374151', width: 22 }}>tc</span>
+                <span style={{ color: 'var(--text)', width: 22 }}>tc</span>
                 <input type="number" step="0.1" min="1" max="12"
-                  value={tcV}
+                  value={gewaehlt ? tcV : ''}
                   onChange={e => onChange({ ...overrides, [k]: { ...ov, tc: Number(e.target.value) } })}
                   style={{ width: 60, padding: '2px 5px', borderRadius: 4,
-                           border: '1px solid #d1d5db', fontSize: 12, textAlign: 'right' }} />
-                <span style={{ color: '#9ca3af' }}>s</span>
+                           border: '1px solid var(--border)', fontSize: 12, textAlign: 'right' }} />
+                <span style={{ color: 'var(--text-muted)' }}>s</span>
               </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
-                <span style={{ color: '#374151', width: 22 }}>tf</span>
+                <span style={{ color: 'var(--text)', width: 22 }}>tf</span>
                 <input type="number" step="0.1" min="0.5" max="8"
-                  value={tfV}
+                  value={gewaehlt ? tfV : ''}
                   onChange={e => onChange({ ...overrides, [k]: { ...ov, tf: Number(e.target.value) } })}
                   style={{ width: 60, padding: '2px 5px', borderRadius: 4,
-                           border: '1px solid #d1d5db', fontSize: 12, textAlign: 'right' }} />
-                <span style={{ color: '#9ca3af' }}>s</span>
+                           border: '1px solid var(--border)', fontSize: 12, textAlign: 'right' }} />
+                <span style={{ color: 'var(--text-muted)' }}>s</span>
               </label>
               {(ov.tc !== undefined || ov.tf !== undefined) && (
                 <button onClick={() => {
                   const n = { ...overrides }
                   delete n[k]
                   onChange(n)
-                }} style={{ fontSize: 10, color: '#9ca3af', background: 'none',
+                }} style={{ fontSize: 12, color: 'var(--text-muted)', background: 'none',
                             border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
-                  Reset
+                  zurücksetzen
                 </button>
               )}
             </div>
@@ -330,32 +330,33 @@ function IntervalCard({ iv, baseArms, armCount, index, onUpdate, onRemove }: {
     onUpdate({ ...iv, arms: next })
   }
   return (
-    <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden',
+    <div style={{ border: '1px solid var(--kachel-rand)', borderRadius: 8, overflow: 'hidden',
                   marginBottom: 8, background: '#fff' }}>
       <div style={{ background: '#f8fafc', padding: '8px 14px', display: 'flex',
                     alignItems: 'center', gap: 8, cursor: 'pointer' }}
            onClick={() => setExpanded(e => !e)}>
-        <span style={{ fontSize: 12, color: '#9ca3af', width: 20 }}>{index + 1}.</span>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 20 }}>{index + 1}.</span>
         <input type="text" value={iv.label}
           onClick={e => e.stopPropagation()}
           onChange={e => onUpdate({ ...iv, label: e.target.value })}
           placeholder="Zeitraum (z.B. 07:30–08:00)"
           style={{ flex: 1, padding: '2px 8px', borderRadius: 4,
-                   border: '1px solid #d1d5db', fontSize: 12, color: '#374151' }} />
-        <select value={iv.T} onClick={e => e.stopPropagation()}
+                   border: '1px solid var(--border)', fontSize: 12, color: 'var(--text)' }} />
+        <select value={iv.T ?? ''} onClick={e => e.stopPropagation()}
           onChange={e => onUpdate({ ...iv, T: Number(e.target.value) as 15|30|45|60 })}
           style={{ fontSize: 12, padding: '2px 6px', borderRadius: 4,
-                   border: '1px solid #d1d5db', background: '#fff' }}>
+                   border: '1px solid var(--border)', background: '#fff' }}>
+          {iv.T === null && <LeereWahl />}
           {([15, 30, 45, 60] as const).map(t => (
             <option key={t} value={t}>{t} min</option>
           ))}
         </select>
         {index > 0 && (
           <button onClick={e => { e.stopPropagation(); onRemove() }}
-            style={{ fontSize: 11, color: '#dc2626', background: 'none',
+            style={{ fontSize: 12, color: '#dc2626', background: 'none',
                      border: 'none', cursor: 'pointer' }}>✕</button>
         )}
-        <span style={{ fontSize: 11, color: '#9ca3af' }}>{expanded ? '▲' : '▼'}</span>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{expanded ? '▲' : '▼'}</span>
       </div>
       {expanded && (
         <div style={{ padding: '8px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -495,39 +496,45 @@ function RunConfigSummary({ result }: { result: StochasticSN640022Result | Stoch
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 
-export default function SimulationApp() {
+export default function SimulationApp({ uebernahme }: { uebernahme?: KnotenUebernahme }) {
   const isActive = useIsActiveModule()  // Druckblatt nur im sichtbaren Modul
-  const [nodeName,    setNodeName]    = useState('Neue Simulation')
-  const [armCount,    setArmCount]    = useState<3 | 4>(3)
-  const [baseArms,    setBaseArms]    = useState<ArmConfiguration[]>(() => defaultIntersection(3).arms)
-  const [pedestrians, setPedestrians] = useState<PedestrianConfig>({
-    armA: defaultLeg(),
-    armC: defaultLeg(),
+  const [nodeName,    setNodeName]    = useState(uebernahme?.name ?? '')
+  const [armCount,    setArmCount]    = useState<3 | 4>(uebernahme?.armCount ?? 3)
+  const [armGewaehlt, setArmGewaehlt] = useState(!!uebernahme)   // Knotentyp hat keinen Startwert
+  const [baseArms,    setBaseArms]    = useState<ArmConfiguration[]>(() => uebernahme ? intersectionAus(uebernahme).arms : defaultIntersection(3).arms)
+  const [pedestrians, setPedestrians] = useState<PedestrianConfig>(() => {
+    const leg = (label: string): PedestrianLegConfig => {
+      const f = uebernahme?.arme.find(a => a.label === label)?.fgs
+      return f ? { ...defaultLeg(), enabled: true, querung: 'fgs', mittelinsel: f.insel } : defaultLeg()
+    }
+    return { armA: leg('A'), armC: leg('C'), ...(uebernahme ? { armB: leg('B'), armD: leg('D') } : {}) }
   })
+  const [karte, setKarte] = useState(() => uebernahme ? kartenBezugAus(uebernahme, 'simulation') : null)
   const [gapOverrides,  setGapOverrides]  = useState<GapOverrides>({})
+  const [gapGewaehlt,   setGapGewaehlt]   = useState(false)
   const [useIntervals,  setUseIntervals]  = useState(false)
   const [intervals,     setIntervals]     = useState<SimIntervalInput[]>(() => [
-    defaultInterval(3, 'Spitzenstunde'),
+    defaultInterval(uebernahme?.armCount ?? 3),
   ])
-  const [simConfig,     setSimConfig]     = useState<StochasticConfig>({
-    runs: 200, useCowan: true, tcSigma: 0.5,
-  })
+  const [simConfig,     setSimConfig]     = useState<StochasticConfig>({})
   const [result,        setResult]        = useState<
     StochasticSN640022Result | StochasticMultiResult | null
   >(null)
   const [running,       setRunning]       = useState(false)
-  const [showAdvanced,  setShowAdvanced]  = useState(false)
-  const [showGapConfig, setShowGapConfig] = useState(false)
-  const { msg: toastMsg, show: showToast } = useToast()
+  // Offen, weil die Felder darin Pflicht sind
+  const [showAdvanced,  setShowAdvanced]  = useState(true)
+  const [showGapConfig, setShowGapConfig] = useState(true)
+  const { meldung, melden, schliessen: meldungZu } = useMeldung()
 
   // ── Arm-Count wechseln ────────────────────────────────────────────────────
 
   function handleArmCount(n: 3 | 4) {
+    setArmGewaehlt(true)
     if (armCount === n) return
     stopWorker()
     setArmCount(n)
     setBaseArms(defaultIntersection(n).arms)
-    setIntervals([defaultInterval(n, 'Spitzenstunde')])
+    setIntervals([defaultInterval(n)])
     setResult(null)
   }
 
@@ -548,6 +555,14 @@ export default function SimulationApp() {
   const inputKey = JSON.stringify({ armCount, baseArms, pedestrians, gapOverrides, useIntervals, intervals, simConfig })
   const [resultKey, setResultKey] = useState('')
 
+  const offen = armGewaehlt
+    ? offenSimulation({
+        arms: baseArms, beine: [pedestrians.armA, pedestrians.armC, pedestrians.armB, pedestrians.armD],
+        intervalle: useIntervals ? intervals : null, zeitluecken: gapGewaehlt,
+        runs: simConfig.runs, useCowan: simConfig.useCowan, tcSigma: simConfig.tcSigma,
+      })
+    : ['Knotentyp']
+
   function stopWorker() {
     workerRef.current?.terminate()
     workerRef.current = null
@@ -555,20 +570,21 @@ export default function SimulationApp() {
   }
 
   function handleRun() {
+    if (offen.length > 0) return
     const fullConfig: StochasticConfig = { ...simConfig, gapOverrides, pedestrians }
     let req: SimRequest
     if (useIntervals && intervals.length >= 1) {
       // Volumen je Intervall mit Basis-Geometrie kombinieren → konsistent mit den
       // aus baseArms abgeleiteten Lane-Flags.
-      const ivs: SimInterval[] = intervals.map(iv => {
+      const ivs: SimInterval[] = intervals.map((iv, nr) => {
         const icfg: IntersectionConfiguration = {
           name: '', arms: mergeIntervalArms(baseArms, iv.arms),
         }
         return {
-          label:      iv.label,
+          label:      iv.label || `Intervall ${nr + 1}`,
           volumes:    toSNVolumes(icfg)!,
           rawVolumes: toSNRawVolumes(icfg) ?? undefined,
-          T:          iv.T * 60,
+          T:          iv.T! * 60,
         }
       })
       const flags = simFlags({ name: '', arms: baseArms })
@@ -592,12 +608,12 @@ export default function SimulationApp() {
         setResult(e.data.result)
         setResultKey(startedWith)
       } else {
-        alert(`Die Simulation ist fehlgeschlagen: ${e.data.error}`)
+        melden(`Die Simulation ist fehlgeschlagen: ${e.data.error}`, true)
       }
     }
     worker.onerror = () => {
       stopWorker()
-      alert('Die Simulation ist fehlgeschlagen.')
+      melden('Die Simulation ist fehlgeschlagen.', true)
     }
     worker.postMessage(req)
   }
@@ -607,22 +623,26 @@ export default function SimulationApp() {
   const handleExport = () =>
     exportTool({
       tool: 'simulation', filePrefix: 'Simulation',
-      name: nodeName, fallbackName: 'simulation', showToast,
-      data: { armCount, baseArms, pedestrians, gapOverrides, useIntervals, intervals, simConfig },
+      name: nodeName, fallbackName: 'simulation', melden,
+      data: { armCount, baseArms, pedestrians, gapOverrides, gapGewaehlt, useIntervals, intervals, simConfig, ...(karte ? { karte } : {}) },
     })
 
   const handleImport = () =>
     importTool('simulation', (d, name) => {
+      setKarte(kartenBezugLesen(d.karte))
       const n = oneOf<3 | 4>([3, 4], d.armCount, 3)
+      const leer = d.leereFelder === true
       const obj = (v: unknown) => (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>
       const pos = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined
       // Fussgänger*innen je Arm
-      // querung in der Vorlage offen lassen: fehlt sie (ältere Dateien), folgt sie aus
-      // enabled; Trottoirüberfahrt nur an NS-Armen (B, D), dort ohne Mittelinsel
+      // Fehlt die Querung in einer älteren Datei, folgt sie aus enabled, ohne eigene Breite galt der Standard. In neuen
+      // Dateien heisst beides: noch nicht gewählt. Trottoirüberfahrt nur an NS-Armen (B, D), dort ohne Mittelinsel
       const leg = (v: unknown, istNS: boolean): PedestrianLegConfig => {
         const l = conform<PedestrianLegConfig>({ ...defaultLeg(), fahrbahnbreite: undefined, querung: undefined }, v)
-        return normalizePedestrianLeg(
-          { ...l, rho: oneOf([1, 2, 3, 4, 5], l.rho, 1), fahrbahnbreite: pos(l.fahrbahnbreite) }, istNS)
+        const gruppe = [1, 2, 3, 4, 5]
+        const bein = { ...l, rho: leer ? wahl(gruppe, l.rho) ?? 0 : oneOf(gruppe, l.rho, 1),
+          fahrbahnbreite: pos(l.fahrbahnbreite) ?? (leer ? undefined : DEFAULT_FAHRBAHNBREITE) }
+        return leer && bein.querung === undefined ? bein : normalizePedestrianLeg(bein, istNS)
       }
       const pedRaw = obj(d.pedestrians)
       const peds: PedestrianConfig = { armA: leg(pedRaw.armA, false), armC: leg(pedRaw.armC, false) }
@@ -642,38 +662,40 @@ export default function SimulationApp() {
         return {
           id:    typeof iv.id === 'string' ? iv.id : crypto.randomUUID(),
           label: typeof iv.label === 'string' ? iv.label : `Intervall ${i + 1}`,
-          T:     oneOf<15 | 30 | 45 | 60>([15, 30, 45, 60], iv.T, 60),
-          arms:  conformArms(iv.arms, n),
+          T:     leer ? wahl<15 | 30 | 45 | 60>([15, 30, 45, 60], iv.T) : oneOf<15 | 30 | 45 | 60>([15, 30, 45, 60], iv.T, 60),
+          arms:  conformArms(iv.arms, n, leer),
         }
       }).slice(0, 6)
       // Simulationsparameter: Auswahlwerte prüfen; Stauraum null (= gespeichertes ∞) → unbegrenzt
       const sc = obj(d.simConfig)
       const cfg: StochasticConfig = {
-        runs:     oneOf([50, 100, 200, 500], sc.runs, 200),
-        useCowan: typeof sc.useCowan === 'boolean' ? sc.useCowan : true,
+        runs:     leer ? wahl([50, 100, 200, 500], sc.runs) ?? undefined : oneOf([50, 100, 200, 500], sc.runs, 200),
+        useCowan: typeof sc.useCowan === 'boolean' ? sc.useCowan : leer ? undefined : true,
         // Streuung t_c; ältere Dateien mit Erlang-Ordnung: k = 1 (konstant) → 0 s, sonst Standard
-        tcSigma:  oneOf([0, 0.5, 1], sc.tcSigma, sc.erlangK === 1 ? 0 : 0.5),
+        tcSigma:  leer ? wahl([0, 0.5, 1], sc.tcSigma) ?? undefined : oneOf([0, 0.5, 1], sc.tcSigma, sc.erlangK === 1 ? 0 : 0.5),
         ...(pos(sc.storageB) !== undefined && { storageB: pos(sc.storageB) }),
         ...(pos(sc.storageD) !== undefined && { storageD: pos(sc.storageD) }),
       }
       stopWorker()
-      setNodeName(name || 'Simulation')
+      setNodeName(name)
       setArmCount(n)
-      setBaseArms(conformArms(d.baseArms, n))
+      setArmGewaehlt(true)
+      setBaseArms(conformArms(d.baseArms, n, leer))
       setPedestrians(peds)
       setGapOverrides(gaps)
+      setGapGewaehlt(leer ? d.gapGewaehlt === true : true)
       setUseIntervals(d.useIntervals === true)
-      setIntervals(ivs.length > 0 ? ivs : [defaultInterval(n, 'Spitzenstunde')])
+      setIntervals(ivs.length > 0 ? ivs : [defaultInterval(n)])
       setSimConfig(cfg)
       setResult(null)
-    }, showToast)
+    }, melden)
 
   // ── Intervalle verwalten ──────────────────────────────────────────────────
 
   function addInterval() {
     setIntervals(prev => [
       ...prev,
-      defaultInterval(armCount, `Intervall ${prev.length + 1}`),
+      defaultInterval(armCount),
     ])
   }
 
@@ -692,40 +714,44 @@ export default function SimulationApp() {
   return (
     <main style={{ maxWidth: 1200, margin: '0 auto', padding: '20px 16px',
                    fontFamily: 'system-ui, sans-serif' }}>
-      <Toast msg={toastMsg} />
+      <Meldung text={meldung} onClose={meldungZu} />
+      {uebernahme && <UebernahmeHinweis u={uebernahme} rechner="simulation" />}
+      <SoFunktionierts rechner="simulation" />
+      {karte && <BelastungsVergleich vergleich={karte.vergleich}
+        querschnitte={querschnitteKnoten(baseArms.map(a => ({ left: a.leftVolume, straight: a.straightVolume, right: a.rightVolume })))} />}
 
 
       {/* ── Header ── */}
-      <div style={{ background: '#fff', borderRadius: 10, padding: '12px 20px',
-                    marginBottom: 16, boxShadow: '0 1px 3px #0001',
-                    display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <div className="kachel" style={{ padding: '12px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <input type="text" value={nodeName} onChange={e => setNodeName(e.target.value)}
           placeholder="Bezeichnung der Simulation"
           style={{ flexBasis: '100%', padding: '5px 10px', borderRadius: 5,
-                   border: '1px solid #d1d5db', fontSize: 14, fontWeight: 600, color: '#1e293b' }} />
+                   border: '1px solid var(--border)', fontSize: 14, fontWeight: 600, color: 'var(--text-strong)' }} />
 
-        <span style={{ fontWeight: 600, fontSize: 14, color: '#374151' }}>Knotentyp</span>
+        <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text)' }}>Knotentyp</span>
         {([3, 4] as const).map(n => (
-          <ToggleBtn key={n} active={armCount === n} onClick={() => handleArmCount(n)}>
+          <ToggleBtn key={n} active={armGewaehlt && armCount === n} onClick={() => handleArmCount(n)}>
             {n === 3 ? 'T-Knoten (3 Arme)' : 'Kreuzung (4 Arme)'}
           </ToggleBtn>
         ))}
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
-          <ToolbarBtn onClick={handleExport}>Speichern</ToolbarBtn>
-          <ToolbarBtn onClick={handleImport}>Laden</ToolbarBtn>
-          {result && !running && <ToolbarBtn onClick={() => window.print()}>Drucken</ToolbarBtn>}
+          <ToolbarBtn onClick={handleExport}>Fall speichern</ToolbarBtn>
+          <ToolbarBtn onClick={handleImport}>Fall laden</ToolbarBtn>
+          {result && !running && <ToolbarBtn onClick={() => window.print()}>Bericht / PDF</ToolbarBtn>}
         </div>
       </div>
 
+      {!armGewaehlt && <OffeneAngaben liste={offen} />}
+
       {/* ── Layout: Input | Ergebnisse ── */}
-      <div className="layout-grid">
+      {armGewaehlt && <div className="layout-grid">
 
         {/* ─── Input-Panel ─── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
           {/* Arm-Cards mit FG-Eingabe als Footer */}
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280',
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)',
                         textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
             {useIntervals ? 'Basis-Geometrie (Geometrie-Flags)' : 'Verkehrsbelastung'}
           </div>
@@ -745,7 +771,7 @@ export default function SimulationApp() {
           })}
 
           {/* Zeitintervalle-Toggle */}
-          <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden',
+          <div style={{ border: '1px solid var(--kachel-rand)', borderRadius: 8, overflow: 'hidden',
                         background: '#fff' }}>
             <div style={{ background: '#f8fafc', padding: '8px 14px',
                           display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -756,15 +782,15 @@ export default function SimulationApp() {
                   // damit die Eingaben beim Umschalten nicht verloren gehen.
                   setIntervals(prev => [
                     { ...prev[0], arms: baseArms.map(a => ({ ...a })) },
-                    defaultInterval(armCount, 'Spitzenstunde'),
+                    defaultInterval(armCount),
                   ])
                 }
               }} />
               <div>
-                <span style={{ fontWeight: 700, fontSize: 14, color: '#1e293b' }}>
+                <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-strong)' }}>
                   Mehrere Zeitintervalle
                 </span>
-                <span style={{ fontSize: 11, color: '#6b7280', marginLeft: 8 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>
                   Mit Carry-over-Queue zwischen Intervallen
                 </span>
               </div>
@@ -778,9 +804,7 @@ export default function SimulationApp() {
                 ))}
                 {intervals.length < 6 && (
                   <button onClick={addInterval}
-                    style={{ width: '100%', padding: '6px', borderRadius: 6, fontSize: 12,
-                             cursor: 'pointer', border: '1px dashed #d1d5db',
-                             background: '#f9fafb', color: '#6b7280' }}>
+                    className="knopf zweit breit">
                     + Zeitintervall hinzufügen
                   </button>
                 )}
@@ -789,16 +813,16 @@ export default function SimulationApp() {
           </div>
 
           {/* Erweiterte Sim-Parameter */}
-          <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden',
+          <div style={{ border: '1px solid var(--kachel-rand)', borderRadius: 8, overflow: 'hidden',
                         background: '#fff' }}>
             <button onClick={() => setShowAdvanced(a => !a)}
               style={{ width: '100%', padding: '8px 14px', background: '#f8fafc',
                        border: 'none', cursor: 'pointer', textAlign: 'left',
                        display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontWeight: 700, fontSize: 13, color: '#374151' }}>
+              <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>
                 Erweiterte Einstellungen
               </span>
-              <span style={{ fontSize: 11, color: '#9ca3af' }}>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                 {showAdvanced ? '▲' : '▼'}
               </span>
             </button>
@@ -807,7 +831,7 @@ export default function SimulationApp() {
 
                 {/* Simulationsläufe */}
                 <div>
-                  <div style={{ fontWeight: 600, color: '#374151', fontSize: 12, marginBottom: 4 }}>
+                  <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: 12, marginBottom: 4 }}>
                     Anzahl Simulationsläufe
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
@@ -822,7 +846,7 @@ export default function SimulationApp() {
 
                 {/* Zeitlücken-Modell */}
                 <div>
-                  <div style={{ fontWeight: 600, color: '#374151', fontSize: 12, marginBottom: 4 }}>
+                  <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: 12, marginBottom: 4 }}>
                     Zeitlückenverteilung Hauptstrom
                   </div>
                   {[
@@ -832,12 +856,12 @@ export default function SimulationApp() {
                     <label key={String(o.val)}
                       style={{ display: 'flex', alignItems: 'flex-start', gap: 8,
                                cursor: 'pointer', marginBottom: 3 }}>
-                      <input type="radio" checked={(simConfig.useCowan ?? true) === o.val}
+                      <input type="radio" checked={simConfig.useCowan === o.val}
                         onChange={() => setSimConfig(c => ({ ...c, useCowan: o.val }))}
                         style={{ marginTop: 2, flexShrink: 0 }} />
                       <span style={{ fontSize: 12 }}>
                         <strong>{o.label}</strong>
-                        <span style={{ color: '#9ca3af', marginLeft: 6 }}>{o.desc}</span>
+                        <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}>{o.desc}</span>
                       </span>
                     </label>
                   ))}
@@ -846,33 +870,33 @@ export default function SimulationApp() {
                 {/* Streuung der Grenzzeitlücke */}
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 12, color: '#374151', fontWeight: 600 }}>
+                    <span style={{ fontSize: 12, color: 'var(--text)', fontWeight: 600 }}>
                       Streuung t_c zwischen Fahrer*innen
                     </span>
                     <div style={{ display: 'flex', gap: 4 }}>
                       {([0, 0.5, 1] as const).map(sd => (
-                        <ToggleBtn key={sd} small active={(simConfig.tcSigma ?? 0.5) === sd}
+                        <ToggleBtn key={sd} small active={simConfig.tcSigma === sd}
                           onClick={() => setSimConfig(c => ({ ...c, tcSigma: sd }))}>
                           {sd === 0 ? 'keine (konstant)' : `σ = ${sd.toFixed(1)} s`}
                         </ToggleBtn>
                       ))}
                     </div>
                   </div>
-                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>
                     Lognormal um den Nominalwert t_c. «keine» entspricht der Annahme des analytischen Verfahrens.
                   </div>
                 </div>
 
                 {/* Stauraum */}
                 <div>
-                  <div style={{ fontWeight: 600, color: '#374151', fontSize: 12, marginBottom: 4 }}>
+                  <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: 12, marginBottom: 4 }}>
                     Stauraum Nebenstrasse
-                    <span style={{ fontWeight: 400, color: '#9ca3af', marginLeft: 6 }}>leer = unbegrenzt</span>
+                    <span style={{ fontWeight: 400, color: 'var(--text-muted)', marginLeft: 6 }}>leer = unbegrenzt</span>
                   </div>
                   <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                     {(['B', 'D'] as const).slice(0, armCount === 3 ? 1 : 2).map(arm => (
                       <label key={arm} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ color: '#374151', fontSize: 12 }}>Arm {arm}</span>
+                        <span style={{ color: 'var(--text)', fontSize: 12 }}>Arm {arm}</span>
                         <input type="number" min={1} max={99}
                           value={
                             (arm === 'B' ? simConfig.storageB : simConfig.storageD) === undefined ||
@@ -887,8 +911,8 @@ export default function SimulationApp() {
                             setSimConfig(c => arm === 'B' ? { ...c, storageB: v } : { ...c, storageD: v })
                           }}
                           style={{ width: 56, padding: '3px 6px', borderRadius: 4,
-                                   border: '1px solid #d1d5db', fontSize: 12, textAlign: 'right' }} />
-                        <span style={{ color: '#9ca3af', fontSize: 12 }}>Fz</span>
+                                   border: '1px solid var(--border)', fontSize: 12, textAlign: 'right' }} />
+                        <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Fz</span>
                       </label>
                     ))}
                   </div>
@@ -897,17 +921,18 @@ export default function SimulationApp() {
                 {/* tc/tf Override */}
                 <div>
                   <button onClick={() => setShowGapConfig(g => !g)}
-                    style={{ fontSize: 11, color: '#6b7280', background: 'none',
+                    style={{ fontSize: 12, color: 'var(--text-muted)', background: 'none',
                              border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
                     {showGapConfig ? '▲ Grenz-/Folgezeitlücken ausblenden' : '▼ Grenz-/Folgezeitlücken (tc/tf) anpassen'}
                   </button>
                   {showGapConfig && (
                     <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 6,
-                                  background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                      <GapConfigSection overrides={gapOverrides} onChange={setGapOverrides} />
+                                  background: '#f8fafc', border: '1px solid var(--kachel-rand)' }}>
+                      <GapConfigSection overrides={gapOverrides} gewaehlt={gapGewaehlt}
+                        onChange={o => { setGapOverrides(o); setGapGewaehlt(true) }} />
                       {Object.keys(gapOverrides).length > 0 && (
-                        <button onClick={() => setGapOverrides({})}
-                          style={{ marginTop: 8, fontSize: 11, color: '#dc2626',
+                        <button onClick={() => { setGapOverrides({}); setGapGewaehlt(false) }}
+                          style={{ marginTop: 8, fontSize: 12, color: '#dc2626',
                                    background: 'none', border: 'none', cursor: 'pointer',
                                    textDecoration: 'underline' }}>
                           Alle tc/tf zurücksetzen
@@ -926,23 +951,19 @@ export default function SimulationApp() {
         <div>
           {/* Run-Button */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-            <button onClick={handleRun} disabled={running}
-              style={{ flex: 1, padding: '10px 0', borderRadius: 8, fontSize: 14,
-                       cursor: running ? 'wait' : 'pointer',
-                       border: '1px solid #1e3a5f',
-                       background: running ? '#e5e7eb' : '#1e3a5f',
-                       color: running ? '#9ca3af' : '#fff', fontWeight: 700 }}>
+            <button onClick={handleRun} disabled={running || offen.length > 0}
+              className="knopf" style={{ flex: 1 }}>
               {running ? 'Simulation läuft…' : result ? 'Neu starten' : 'Simulation starten'}
             </button>
             {running && (
               <button onClick={stopWorker}
-                style={{ padding: '10px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
+                style={{ padding: '10px 14px', borderRadius: 8, fontSize: 14, cursor: 'pointer',
                          border: '1px solid #dc2626', background: '#fff', color: '#dc2626', fontWeight: 700 }}>
                 Abbrechen
               </button>
             )}
             {result && (
-              <span style={{ fontSize: 11, color: '#6b7280' }}>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                 {isMultiResult
                   ? `${(result as StochasticMultiResult).intervals.length} Intervalle · ${Math.round((result as StochasticMultiResult).totalDurationMs)} ms`
                   : `${(result as StochasticSN640022Result).runs} Läufe · ${Math.round((result as StochasticSN640022Result).durationMs)} ms`
@@ -951,11 +972,13 @@ export default function SimulationApp() {
             )}
           </div>
 
+          {offen.length > 0 && !running && <OffeneAngaben liste={offen} />}
+
           {/* Leer-Zustand */}
           {!result && !running && (
-            <div style={{ padding: '16px', borderRadius: 10, background: '#f8fafc',
-                          border: '1px solid #e2e8f0', textAlign: 'center', color: '#64748b',
-                          fontSize: 13 }}>
+            <div style={{ padding: '16px', borderRadius: 12, background: '#f8fafc',
+                          border: '1px solid var(--kachel-rand)', textAlign: 'center', color: 'var(--text-muted)',
+                          fontSize: 14 }}>
               <img
                 src={armCount === 3 ? einmuendungSvg : kreuzungSvg}
                 alt={armCount === 3 ? 'T-Knoten Schema' : 'Kreuzung Schema'}
@@ -965,12 +988,12 @@ export default function SimulationApp() {
               Simulation starten um Wartezeit-Verteilungen, Histogramme und Percentile (P50/P85/P95)
               je Verkehrsstrom zu berechnen.
               {[pedestrians.armA, pedestrians.armC, pedestrians.armB, pedestrians.armD].some(l => l?.enabled) ? (
-                <div style={{ marginTop: 8, fontSize: 11, color: '#15803d' }}>
+                <div style={{ marginTop: 8, fontSize: 12, color: '#15803d' }}>
                   Fussgänger*innen aktiv — Blocking-Events werden simuliert.
                 </div>
               ) : null}
               {Object.keys(gapOverrides).length > 0 ? (
-                <div style={{ marginTop: 4, fontSize: 11, color: '#b45309' }}>
+                <div style={{ marginTop: 4, fontSize: 12, color: '#b45309' }}>
                   Benutzerdefinierte tc/tf-Werte aktiv.
                 </div>
               ) : null}
@@ -979,8 +1002,7 @@ export default function SimulationApp() {
 
           {/* Eingaben seit dem Lauf geändert → Resultat passt nicht mehr zur Anzeige links */}
           {result && !running && resultKey !== inputKey && (
-            <div style={{ padding: '8px 12px', borderRadius: 6, background: '#fff7ed',
-                          border: '1px solid #fdba74', fontSize: 12, color: '#9a3412', marginBottom: 12 }}>
+            <div className="hinweis klein" style={{ marginBottom: 12 }}>
               Die Eingaben wurden seit der letzten Simulation geändert — das Resultat ist veraltet.
               Bitte neu starten.
             </div>
@@ -997,37 +1019,15 @@ export default function SimulationApp() {
             <MultiIntervalPanel result={result as StochasticMultiResult} />
           )}
         </div>
-      </div>
+      </div>}
 
-      <LegendBox items={LEGEND_ITEMS} />
+      <HilfeUnten rechner="simulation" legende={LEGEND_ITEMS} quellen={karte?.quellen} />
 
-      <footer style={{ fontSize: 11, color: '#9ca3af', textAlign: 'center', marginTop: 24, lineHeight: 2 }}>
-        <div>
-          Stochastische Simulation auf Basis der SN 640 022 (Strom-Topologie, Konfliktvolumen)
-          mit Grenz-/Folgezeitlücken nach HBS 2015. Die Ergebnisse ersetzen keine Überprüfung
-          durch eine Fachperson.
-        </div>
-        <div>
-          © 2026 pnfzygrzgf-svg · Quellcode:{' '}
-          <a href="https://github.com/pnfzygrzgf-svg/KnotenCheck"
-             target="_blank" rel="noopener noreferrer"
-             style={{ color: '#9ca3af', textDecoration: 'underline' }}>
-            GitHub
-          </a>
-          {' '}· Lizenz:{' '}
-          <a href="https://www.gnu.org/licenses/agpl-3.0.html"
-             target="_blank" rel="noopener noreferrer"
-             style={{ color: '#9ca3af', textDecoration: 'underline' }}>
-            AGPL-3.0
-          </a> (Code),{' '}
-          <a href="https://creativecommons.org/licenses/by-sa/4.0/deed.de"
-             target="_blank" rel="noopener noreferrer"
-             style={{ color: '#9ca3af', textDecoration: 'underline' }}>
-            CC BY-SA 4.0
-          </a> (Inhalte)
-          {' '}— kommerzielle Nutzung untersagt.
-        </div>
-      </footer>
+      <RechnerFuss>
+        Stochastische Simulation auf Basis der SN 640 022 (Strom-Topologie, Konfliktvolumen)
+        mit Grenz-/Folgezeitlücken nach HBS 2015. Die Ergebnisse ersetzen keine Überprüfung
+        durch eine Fachperson.
+      </RechnerFuss>
 
       {/* Druckansicht: Resultat mit der Konfiguration, mit der es gerechnet wurde */}
       {isActive && result && createPortal(
@@ -1057,6 +1057,7 @@ export default function SimulationApp() {
             Stochastische Simulation auf Basis der SN 640 022 mit Grenz-/Folgezeitlücken nach HBS 2015.
             Die Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.
           </div>
+          <BerichtQuellen zeilen={karte?.quellen ?? []} />
         </div>,
         document.body,
       )}

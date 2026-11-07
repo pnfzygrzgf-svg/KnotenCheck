@@ -1,19 +1,26 @@
 import { useState, useMemo } from 'react'
+import UebernahmeHinweis from './karte/UebernahmeHinweis'
+import BerichtQuellen from './karte/BerichtQuellen'
+import BelastungsVergleich from './karte/BelastungsVergleich'
+import { querschnitteKreisel } from './karte/vergleich'
+import { kartenBezugAus, kartenBezugLesen, type KnotenUebernahme } from './karte/rechner'
 import { createPortal } from 'react-dom'
 import { calculateRoundabout, computeQKfromTurnings, computeQAfromTurnings, entryTypesFromFile,
-  entryFactor, ringFactor, RB_PCE_MOTOR, FG_MAX_NORM, QK_MAX_NORM, LA_MAX_2_2 } from './engine/roundaboutCalculator'
-import { conform, conformFixed, oneOf } from './engine/conform'
+  entryFactor, ringFactor, RB_PCE_MOTOR, FG_MAX_NORM, QK_MAX_NORM, LA_MAX_2_2, ROUNDABOUT_TYPES } from './engine/roundaboutCalculator'
+import { conform, conformFixed, oneOf, wahl } from './engine/conform'
+import { offenKreisel } from './engine/offeneAngaben'
 import type { RoundaboutType, LevelOfService, EntryResult, ExitResult,
   GradientPCE, RbVehicleMix } from './engine/roundaboutCalculator'
 import kreiselSvg from './assets/Kreisel.svg'
 import kreisel3ArmSvg from './assets/Kreisel_3_arm.svg'
 import { exportTool, importTool } from './saveLoad'
 import { useIsActiveModule } from './activeModule'
-import { LegendBox, type LegendItem } from './LegendBox'
-import { Toast } from './Toast'
+import { HilfeUnten, SoFunktionierts, type LegendItem } from './Hilfe'
+import { Meldung } from './Meldung'
 import { LOS_BG, LOS_COLOR, delayText, utilizationColor } from './uiHelpers'
-import { useToast } from './useToast'
-import { LOSBadge, NumInput, Row, SectionLabel, UtilBar, ToggleBtn } from './ui'
+import { useMeldung } from './useMeldung'
+import { LeereWahl, LOSBadge, NumInput, OffeneAngaben, Row, SectionLabel, UtilBar, ToggleBtn } from './ui'
+import { RechnerFuss } from './Fusszeile'
 
 // ── Tab. 2: PW-Äquivalente — Logik in roundaboutCalculator.ts ─────────────────
 const GRADIENT_OPTIONS: { value: GradientPCE; label: string }[] = [
@@ -38,21 +45,25 @@ const TYPE_OPTIONS: { value: RoundaboutType; label: string; desc: string }[] = [
 
 interface ArmInput {
   name: string
-  type: RoundaboutType  // Fahrstreifenanordnung der Einfahrt (Ziffer 11, Seite 12)
+  type: RoundaboutType | null  // Fahrstreifenanordnung der Einfahrt (Ziffer 11, Seite 12); null = noch nicht gewählt
   right: number      // 1. Ausfahrt (Rechtsabbieger)  [Fz/h]
   straight: number   // 2. Ausfahrt (Geradeaus)        [Fz/h] — nur 4-Arm
   left: number       // 3. Ausfahrt (Linksabbieger)    [Fz/h]
   fg: number         // Fussgängerquerungen            [FG/h]
-  gradient: GradientPCE
-  exitWide: boolean  // Ausfahrtsbreite 4.5 m statt 3.5 m (Abb. 5)
-  exitTwoLanes: boolean  // zweistreifige Ausfahrt (nur Typ 2/2, VSS 2005/301)
-  mix?: RbVehicleMix // detaillierte Verkehrsmischung (undefined = pauschal/Motorfahrzeuge)
+  gradient: GradientPCE | null
+  exitWide: boolean | null  // Ausfahrtsbreite 4.5 m statt 3.5 m (Abb. 5)
+  exitTwoLanes: boolean | null  // zweistreifige Ausfahrt (nur Typ 2/2, VSS 2005/301)
+  mischung: 'pauschal' | 'detail' | null
+  mix?: RbVehicleMix // detaillierte Verkehrsmischung (nur «detail»)
 }
 
 function defaultArm(): ArmInput {
-  return { name: '', type: '1/1', right: 0, straight: 0, left: 0, fg: 0,
-           gradient: '±0%', exitWide: false, exitTwoLanes: false }
+  return { name: '', type: null, right: 0, straight: 0, left: 0, fg: 0,
+           gradient: null, exitWide: null, exitTwoLanes: null, mischung: null }
 }
+
+// f der Einfahrt; 0, solange die Neigung fehlt (die Rechnung läuft dann nicht)
+const fEinfahrt = (a: ArmInput) => (a.gradient ? entryFactor(a.gradient, a.mix) : 0)
 
 // Einfahrende Fz/h eines Arms; beim 3-Arm-Kreisel gibt es keinen Geradeaus-Strom
 // (das ausgeblendete Feld kann noch einen Wert aus dem 4-Arm enthalten)
@@ -78,9 +89,10 @@ function ArmCard({ arm, index, armCount, qkFzh, qkPWE, onChange }: {
 }) {
   const upd = <K extends keyof ArmInput>(k: K, v: ArmInput[K]) => onChange({ ...arm, [k]: v })
   const mix    = arm.mix
-  const pce    = entryFactor(arm.gradient, mix)
+  const pce    = arm.gradient ? entryFactor(arm.gradient, mix) : null
+  const pceText = pce === null ? '–' : pce.toFixed(2)
   const qeFzh  = entryFzh(arm, armCount)
-  const qePWE  = Math.round(qeFzh * pce)
+  const qePWE  = pce === null ? '–' : Math.round(qeFzh * pce)
   // PW-Anteil (Rest) für die Detail-Mischung
   const pwPct  = mix ? Math.max(0, 100 - mix.pctFR - mix.pctMR - mix.pctLW - mix.pctLZ) : 100
   const pwOk   = !mix || (mix.pctFR + mix.pctMR + mix.pctLW + mix.pctLZ) <= 100
@@ -91,8 +103,8 @@ function ArmCard({ arm, index, armCount, qkFzh, qkPWE, onChange }: {
       <div style={{ background: '#f0f6ff', padding: '10px 14px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
           <span style={{ fontWeight: 700, fontSize: 15, color: '#1d4ed8' }}>Kreiselarm {index + 1}</span>
-          <span style={{ fontSize: 11, color: '#6b7280' }}>
-            f = {pce.toFixed(2)} · Q_E = {qePWE} PWE/h
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            f = {pceText} · Q_E = {qePWE} PWE/h
           </span>
         </div>
         <input type="text" value={arm.name}
@@ -100,14 +112,15 @@ function ArmCard({ arm, index, armCount, qkFzh, qkPWE, onChange }: {
           placeholder={`Strassenname Arm ${index + 1}`}
           style={{ width: '100%', padding: '3px 8px', borderRadius: 4,
                    border: '1px solid #bfdbfe', fontSize: 12,
-                   background: '#ffffffaa', color: '#374151' }} />
+                   background: '#ffffffaa', color: 'var(--text)' }} />
       </div>
 
       {/* Fahrstreifenanordnung */}
       <Row label="Typ der Einfahrt" sub={TYPE_OPTIONS.find(t => t.value === arm.type)?.desc}>
-        <select value={arm.type} onChange={e => upd('type', e.target.value as RoundaboutType)}
-          style={{ fontSize: 13, padding: '3px 6px', borderRadius: 4,
-                   border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>
+        <select value={arm.type ?? ''} onChange={e => upd('type', e.target.value as RoundaboutType)}
+          style={{ fontSize: 14, padding: '3px 6px', borderRadius: 4,
+                   border: '1px solid var(--border)', background: '#fff', cursor: 'pointer' }}>
+          {arm.type === null && <LeereWahl />}
           {TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.value}</option>)}
         </select>
       </Row>
@@ -116,33 +129,34 @@ function ArmCard({ arm, index, armCount, qkFzh, qkPWE, onChange }: {
       <SectionLabel title={`Abbiegeströme Arm ${index + 1} (Abb. 10, Seite 18)`} />
       <Row label="1. Ausfahrt — rechts" sub={`→ Arm ${(index + 1) % armCount + 1}`}>
         <NumInput live value={arm.right} onChange={v => upd('right', v)} width={80} />
-        <span style={{ fontSize: 11, color: '#9ca3af', width: 36 }}>Fz/h</span>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36 }}>Fz/h</span>
       </Row>
       {armCount === 4 && (
         <Row label="2. Ausfahrt — geradeaus" sub={`→ Arm ${(index + 2) % armCount + 1}`}>
           <NumInput live value={arm.straight} onChange={v => upd('straight', v)} width={80} />
-          <span style={{ fontSize: 11, color: '#9ca3af', width: 36 }}>Fz/h</span>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36 }}>Fz/h</span>
         </Row>
       )}
       <Row label={armCount === 4 ? '3. Ausfahrt — links' : '2. Ausfahrt — links'}
            sub={`→ Arm ${(index + (armCount === 4 ? 3 : 2)) % armCount + 1}`}>
         <NumInput live value={arm.left} onChange={v => upd('left', v)} width={80} />
-        <span style={{ fontSize: 11, color: '#9ca3af', width: 36 }}>Fz/h</span>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36 }}>Fz/h</span>
       </Row>
 
       {/* Fussgänger*innen */}
       <Row label={`Fussgängerquerungen Fg${index + 1}`}
            sub="Einfluss via f_F (Einfahrt, Abb. 3/4, Seite 10) und L_A (Ausfahrt, Abb. 5, Seite 11). 0 = kein Einfluss">
         <NumInput live value={arm.fg} onChange={v => upd('fg', v)} width={80} />
-        <span style={{ fontSize: 11, color: '#9ca3af', width: 36 }}>FG/h</span>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36 }}>FG/h</span>
       </Row>
       {arm.type === '2/2' && (
         <Row label="Fahrstreifen der Ausfahrt"
              sub={`Richtwert ohne Fussgänger*innen: ${LA_MAX_2_2.oneLane} bzw. ${LA_MAX_2_2.twoLanes} Fz/h (VSS 2005/301, Ziffer 5.2.3, Seite 64)`}>
-          <select value={arm.exitTwoLanes ? '2' : '1'}
+          <select value={arm.exitTwoLanes === null ? '' : arm.exitTwoLanes ? '2' : '1'}
             onChange={e => upd('exitTwoLanes', e.target.value === '2')}
-            style={{ fontSize: 13, padding: '3px 6px', borderRadius: 4,
-                     border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>
+            style={{ fontSize: 14, padding: '3px 6px', borderRadius: 4,
+                     border: '1px solid var(--border)', background: '#fff', cursor: 'pointer' }}>
+            {arm.exitTwoLanes === null && <LeereWahl />}
             <option value="1">einstreifig</option>
             <option value="2">zweistreifig</option>
           </select>
@@ -151,10 +165,11 @@ function ArmCard({ arm, index, armCount, qkFzh, qkPWE, onChange }: {
       {!(arm.type === '2/2' && arm.exitTwoLanes) && (
         <Row label="Ausfahrtsbreite B"
              sub="Länge des Fussgängerstreifens an der Ausfahrt (Abb. 5, Seite 11). Wirkt auf L_A">
-          <select value={arm.exitWide ? '4.5' : '3.5'}
+          <select value={arm.exitWide === null ? '' : arm.exitWide ? '4.5' : '3.5'}
             onChange={e => upd('exitWide', e.target.value === '4.5')}
-            style={{ fontSize: 13, padding: '3px 6px', borderRadius: 4,
-                     border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>
+            style={{ fontSize: 14, padding: '3px 6px', borderRadius: 4,
+                     border: '1px solid var(--border)', background: '#fff', cursor: 'pointer' }}>
+            {arm.exitWide === null && <LeereWahl />}
             <option value="3.5">3,5 m</option>
             <option value="4.5">4,5 m</option>
           </select>
@@ -163,24 +178,24 @@ function ArmCard({ arm, index, armCount, qkFzh, qkPWE, onChange }: {
 
       {/* Längsneigung */}
       <SectionLabel title="Verkehrsmischung und Längsneigung" />
-      <div style={{ padding: '8px 14px 6px', borderBottom: '1px solid #f3f4f6' }}>
+      <div style={{ padding: '8px 14px 6px', borderBottom: '1px solid var(--kachel-rand)' }}>
         <div style={{ display: 'flex', gap: 6 }}>
-          <ToggleBtn small active={!mix} onClick={() => upd('mix', undefined)}>
+          <ToggleBtn small active={arm.mischung === 'pauschal'} onClick={() => onChange({ ...arm, mischung: 'pauschal', mix: undefined })}>
             Pauschal
           </ToggleBtn>
-          <ToggleBtn small active={!!mix}
-            onClick={() => upd('mix', mix ?? { pctFR: 0, pctMR: 0, pctLW: 0, pctLZ: 0 })}>
+          <ToggleBtn small active={arm.mischung === 'detail'}
+            onClick={() => onChange({ ...arm, mischung: 'detail', mix: mix ?? { pctFR: 0, pctMR: 0, pctLW: 0, pctLZ: 0 } })}>
             Detailliert (Fahrzeugkategorien)
           </ToggleBtn>
         </div>
-        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 5 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 5 }}>
           Pauschal: Spalte «Motorfahrzeuge» (Tab. 2, Seite 9). · Detailliert: gewichtetes f aus den
           Fahrzeugkategorien (Tab. 2, Seite 9). Die Kreiselfahrbahn nutzt die Mischung bei ±0 %.
         </div>
       </div>
       <Row label="Neigung der Einfahrt"
-           sub={`in Fahrtrichtung · f = ${pce.toFixed(2)} (Tab. 2, Seite 9). Q_K immer ±0 %`}>
-        <select value={arm.gradient}
+           sub={`in Fahrtrichtung · f = ${pceText} (Tab. 2, Seite 9). Q_K immer ±0 %`}>
+        <select value={arm.gradient ?? ''}
           onChange={e => {
             const g = e.target.value as GradientPCE
             // FR (Fahrrad/Mofa) nur bei ±0 % definiert — beim Verlassen zurücksetzen
@@ -189,8 +204,9 @@ function ArmCard({ arm, index, armCount, qkFzh, qkPWE, onChange }: {
             else
               upd('gradient', g)
           }}
-          style={{ fontSize: 13, padding: '3px 6px', borderRadius: 4,
-                   border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>
+          style={{ fontSize: 14, padding: '3px 6px', borderRadius: 4,
+                   border: '1px solid var(--border)', background: '#fff', cursor: 'pointer' }}>
+          {arm.gradient === null && <LeereWahl />}
           {GRADIENT_OPTIONS.map(o => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
@@ -201,28 +217,28 @@ function ArmCard({ arm, index, armCount, qkFzh, qkPWE, onChange }: {
           <Row key={r.key} label={r.label}>
             <NumInput live value={mix[r.key]} min={0} max={100} width={70}
               onChange={v => onChange({ ...arm, mix: { ...mix, [r.key]: v } })} />
-            <span style={{ fontSize: 11, color: '#9ca3af', width: 16 }}>%</span>
+            <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 16 }}>%</span>
           </Row>
         ))}
         <Row label="PW – Personenwagen" sub="Rest aus den übrigen Anteilen">
-          <span style={{ fontSize: 13, fontWeight: 600, color: pwOk ? '#374151' : '#dc2626' }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: pwOk ? 'var(--text)' : '#dc2626' }}>
             {Math.round(pwPct)} %
           </span>
-          {!pwOk && <span style={{ fontSize: 11, color: '#dc2626', marginLeft: 4 }}>Summe &gt; 100 %</span>}
+          {!pwOk && <span style={{ fontSize: 12, color: '#dc2626', marginLeft: 4 }}>Summe &gt; 100 %</span>}
         </Row>
       </>)}
 
       {/* Abgeleitete Werte */}
       <SectionLabel title="Abgeleitete Werte" />
       <Row label="Einfahrtsvolumen Q_E"
-           sub={`${qeFzh} Fz/h × ${pce.toFixed(2)} (Tab. 2, Seite 9)`}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>
+           sub={`${qeFzh} Fz/h × ${pceText} (Tab. 2, Seite 9)`}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap' }}>
           {qePWE} PWE/h
         </span>
       </Row>
       <Row label="Kreisfahrbahnbelastung Q_K"
            sub={`${Math.round(qkFzh)} Fz/h aus den Abbiegeströmen, je Herkunftsarm mit dessen Faktor bei ±0 %`}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap' }}>
           {qkPWE} PWE/h
         </span>
       </Row>
@@ -238,19 +254,19 @@ function EntryCard({ e, arm, armNumber }: { e: EntryResult; arm: ArmInput; armNu
   const overflow = !isFinite(e.delay)
 
   return (
-    <div style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb',
+    <div style={{ background: '#fff', borderRadius: 8, border: '1px solid var(--kachel-rand)',
                   marginBottom: 10, overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '10px 14px', borderBottom: '1px solid #f3f4f6' }}>
+                    padding: '10px 14px', borderBottom: '1px solid var(--kachel-rand)' }}>
         <div>
-          <span style={{ fontWeight: 700, fontSize: 14, color: '#1e293b' }}>Arm {armNumber}</span>
-          <span style={{ fontSize: 11, color: '#6b7280', marginLeft: 8 }}>Typ {e.type}</span>
-          {arm.name && <span style={{ fontSize: 12, color: '#6b7280', marginLeft: 8 }}>{arm.name}</span>}
+          <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-strong)' }}>Arm {armNumber}</span>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>Typ {e.type}</span>
+          {arm.name && <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>{arm.name}</span>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 15, fontWeight: 700, color: col }}>{pct} %</span>
           {e.loaded ? <LOSBadge los={e.levelOfService} />
-            : <span style={{ fontSize: 11, color: '#9ca3af' }}>kein Einfahrtsverkehr</span>}
+            : <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>kein Einfahrtsverkehr</span>}
         </div>
       </div>
 
@@ -259,38 +275,38 @@ function EntryCard({ e, arm, armNumber }: { e: EntryResult; arm: ArmInput; armNu
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 8px',
-                    padding: '8px 14px 10px', fontSize: 12, color: '#6b7280' }}>
+                    padding: '8px 14px 10px', fontSize: 12, color: 'var(--text-muted)' }}>
         <div>
-          <span style={{ color: '#9ca3af' }}>Q_E </span>
-          <strong style={{ color: '#374151' }}>{e.qe} PWE/h</strong>
+          <span style={{ color: 'var(--text-muted)' }}>Q_E </span>
+          <strong style={{ color: 'var(--text)' }}>{e.qe} PWE/h</strong>
         </div>
         <div>
-          <span style={{ color: '#9ca3af' }}>Q_K </span>
-          <strong style={{ color: '#374151' }}>{e.qk} PWE/h</strong>
+          <span style={{ color: 'var(--text-muted)' }}>Q_K </span>
+          <strong style={{ color: 'var(--text)' }}>{e.qk} PWE/h</strong>
         </div>
         <div>
-          <span style={{ color: '#9ca3af' }}>L_E (ohne FG) </span>
+          <span style={{ color: 'var(--text-muted)' }}>L_E (ohne FG) </span>
           <strong>{Math.round(e.leBase)}</strong>
         </div>
         <div>
-          <span style={{ color: '#9ca3af' }}>f_F </span>
+          <span style={{ color: 'var(--text-muted)' }}>f_F </span>
           <strong>{e.fF.toFixed(3)}</strong>
         </div>
         <div>
-          <span style={{ color: '#9ca3af' }}>L_E (mit FG) </span>
+          <span style={{ color: 'var(--text-muted)' }}>L_E (mit FG) </span>
           <strong>{Math.round(e.capacity)} PWE/h</strong>
         </div>
         <div>
-          <span style={{ color: '#9ca3af' }}>Reserve R </span>
+          <span style={{ color: 'var(--text-muted)' }}>Reserve R </span>
           <strong style={{ color: e.reserve < 0 ? '#dc2626' : '#16a34a' }}>
             {overflow ? '— (Überlast)' : `${Math.round(e.reserve)} PWE/h`}
           </strong>
         </div>
         <div style={{ gridColumn: '1 / -1' }}>
-          <span style={{ color: '#9ca3af' }}>Wartezeit </span>
+          <span style={{ color: 'var(--text-muted)' }}>Wartezeit </span>
           <strong style={{ color: overflow ? '#dc2626' : undefined }}>{e.loaded ? delayText(e.delay) : '—'}</strong>
           {arm.fg > 0 && (
-            <span style={{ marginLeft: 8, color: '#9ca3af' }}>(FG = {arm.fg} FG/h)</span>
+            <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>(FG = {arm.fg} FG/h)</span>
           )}
         </div>
         {e.fgOutOfRange && (
@@ -315,13 +331,13 @@ function ExitCard({ e, arm, armNumber }: { e: ExitResult; arm: ArmInput; armNumb
   const pct = Math.min(999, Math.round(e.utilizationDegree * 100))
   return (
     <div style={{ background: '#fff', borderRadius: 8,
-                  border: `1px solid ${e.overloaded ? '#dc2626' : '#e5e7eb'}`,
+                  border: `1px solid ${e.overloaded ? '#dc2626' : 'var(--kachel-rand)'}`,
                   marginBottom: 10, overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '10px 14px', borderBottom: '1px solid #f3f4f6' }}>
+                    padding: '10px 14px', borderBottom: '1px solid var(--kachel-rand)' }}>
         <div>
-          <span style={{ fontWeight: 700, fontSize: 14, color: '#1e293b' }}>Arm {armNumber}</span>
-          {arm.name && <span style={{ fontSize: 12, color: '#6b7280', marginLeft: 8 }}>{arm.name}</span>}
+          <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-strong)' }}>Arm {armNumber}</span>
+          {arm.name && <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>{arm.name}</span>}
         </div>
         <span style={{ fontSize: 15, fontWeight: 700, color: col }}>
           {pct} %{e.overloaded ? ' · überlastet' : ''}
@@ -331,20 +347,20 @@ function ExitCard({ e, arm, armNumber }: { e: ExitResult; arm: ArmInput; armNumb
         <UtilBar value={e.utilizationDegree} />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 8px',
-                    padding: '8px 14px 10px', fontSize: 12, color: '#6b7280' }}>
+                    padding: '8px 14px 10px', fontSize: 12, color: 'var(--text-muted)' }}>
         <div>
-          <span style={{ color: '#9ca3af' }}>Q_A </span>
-          <strong style={{ color: '#374151' }}>{e.qa} PWE/h</strong>
+          <span style={{ color: 'var(--text-muted)' }}>Q_A </span>
+          <strong style={{ color: 'var(--text)' }}>{e.qa} PWE/h</strong>
         </div>
         <div>
-          <span style={{ color: '#9ca3af' }}>L_A </span>
+          <span style={{ color: 'var(--text-muted)' }}>L_A </span>
           <strong>{Math.round(e.capacity)} PWE/h</strong>
-          <span style={{ color: '#9ca3af' }}> ({exitLabel(e, arm)})</span>
+          <span style={{ color: 'var(--text-muted)' }}> ({exitLabel(e, arm)})</span>
         </div>
         <div style={{ gridColumn: '1 / -1' }}>
-          <span style={{ color: '#9ca3af' }}>X = Q_A / L_A </span>
+          <span style={{ color: 'var(--text-muted)' }}>X = Q_A / L_A </span>
           <strong style={{ color: col }}>{e.utilizationDegree.toFixed(2)}</strong>
-          {arm.fg > 0 && <span style={{ marginLeft: 8, color: '#9ca3af' }}>(FG = {arm.fg} FG/h)</span>}
+          {arm.fg > 0 && <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>(FG = {arm.fg} FG/h)</span>}
         </div>
         {e.type === '2/2' && (
           <div style={{ gridColumn: '1 / -1', marginTop: 4, color: '#b45309' }}>{exitNote(e)}</div>
@@ -470,7 +486,7 @@ function PrintSheet({ nodeName, armCount, arms, result }: {
         </thead>
         <tbody>
           {arms.map((arm, i) => {
-            const pce   = entryFactor(arm.gradient, arm.mix)
+            const pce   = entryFactor(arm.gradient ?? '±0%', arm.mix)   // Druckblatt gibt es nur mit Ergebnis, die Neigung ist dann gewählt
             const qeFzh = entryFzh(arm, armCount)
             return (
               <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f7f7f7' }}>
@@ -692,48 +708,65 @@ const LEGEND_ITEMS: LegendItem[] = [
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 
-export default function RoundaboutApp() {
+export default function RoundaboutApp({ uebernahme }: { uebernahme?: KnotenUebernahme }) {
   const isActive = useIsActiveModule()  // Druckblatt nur im sichtbaren Modul
-  const [armCount, setArmCount] = useState<3 | 4>(4)
-  const [nodeName, setNodeName] = useState('')
-  const [arms, setArms]         = useState<ArmInput[]>([
-    defaultArm(), defaultArm(), defaultArm(), defaultArm(),
-  ])
+  const [armCount, setArmCount] = useState<3 | 4>(uebernahme?.armCount ?? 4)
+  const [armGewaehlt, setArmGewaehlt] = useState(!!uebernahme)   // Armzahl hat keinen Startwert
+  const [nodeName, setNodeName] = useState(uebernahme?.name ?? '')
+  const [arms, setArms]         = useState<ArmInput[]>(() =>
+    [defaultArm(), defaultArm(), defaultArm(), defaultArm()].map((a, i) => {
+      const v = uebernahme?.arme[i]
+      return { ...a, ...v?.stroeme, name: v?.name ?? '', gradient: v?.neigung ?? a.gradient, type: v?.kreiselTyp ?? a.type,
+        mischung: v?.schwerverkehr ? 'detail' as const : null,
+        ...(v?.schwerverkehr ? { mix: { pctFR: 0, pctMR: 0, pctLW: v.schwerverkehr.lw, pctLZ: v.schwerverkehr.lz } } : {}) }
+    }))
+  const [karte, setKarte] = useState(() => uebernahme ? kartenBezugAus(uebernahme, 'sn024a') : null)
 
   const setArm = (i: number, arm: ArmInput) =>
     setArms(prev => { const a = [...prev]; a[i] = arm; return a })
 
-  const { msg: toastMsg, show: showToast } = useToast()
+  const { meldung, melden, schliessen: meldungZu } = useMeldung()
 
   const handleExport = () =>
     exportTool({
       tool: 'sn024a', filePrefix: 'SN024a',
-      name: nodeName, fallbackName: 'kreisel', showToast,
-      data: { nodeName, armCount, arms },
+      name: nodeName, fallbackName: 'kreisel', melden,
+      data: { nodeName, armCount, arms, ...(karte ? { karte } : {}) },
     })
 
   const handleImport = () =>
     importTool('sn024a', d => {
         setNodeName(typeof d.nodeName === 'string' ? d.nodeName : '')
+        setKarte(kartenBezugLesen(d.karte))
         setArmCount(oneOf<3 | 4>([3, 4], d.armCount, 4))
+        setArmGewaehlt(true)
         // Immer 4 Arme halten (3-Arm nutzt die ersten drei); Typ, Neigung und Mischung prüfen
-        const types = entryTypesFromFile(d, 4)
-        setArms(conformFixed([defaultArm(), defaultArm(), defaultArm(), defaultArm()], d.arms).map((a, i) => ({
-          ...a,
-          type: types[i],
-          gradient: oneOf(Object.keys(RB_PCE_MOTOR) as GradientPCE[], a.gradient, '±0%'),
-          mix: a.mix ? conform<RbVehicleMix>({ pctFR: 0, pctMR: 0, pctLW: 0, pctLZ: 0 }, a.mix) : undefined,
-        })))
-      }, showToast)
+        const leer = d.leereFelder === true, types = entryTypesFromFile(d, 4)
+        const neigungen = Object.keys(RB_PCE_MOTOR) as GradientPCE[]
+        const janein = (v: unknown) => (leer ? (typeof v === 'boolean' ? v : null) : v === true)
+        setArms(conformFixed([defaultArm(), defaultArm(), defaultArm(), defaultArm()], d.arms).map((a, i) => {
+          const mix = a.mix ? conform<RbVehicleMix>({ pctFR: 0, pctMR: 0, pctLW: 0, pctLZ: 0 }, a.mix) : undefined
+          return {
+            ...a, mix,
+            type: leer ? wahl(ROUNDABOUT_TYPES, a.type) : types[i],
+            gradient: leer ? wahl(neigungen, a.gradient) : oneOf(neigungen, a.gradient, '±0%'),
+            exitWide: janein(a.exitWide), exitTwoLanes: janein(a.exitTwoLanes),
+            mischung: leer ? wahl(['pauschal', 'detail'] as const, a.mischung) : mix ? 'detail' : 'pauschal',
+          }
+        }))
+      }, melden)
 
   function handleReset() {
     setNodeName('')
     setArms([defaultArm(), defaultArm(), defaultArm(), defaultArm()])
-    showToast('Zurückgesetzt')
+    setArmGewaehlt(false)
+    melden('Zurückgesetzt')
   }
 
   // Neue Identität genau dann, wenn sich Arme oder Armzahl ändern (Abhängigkeit der Memos unten)
   const activeArms = useMemo(() => arms.slice(0, armCount), [arms, armCount])
+
+  const offen = useMemo(() => (armGewaehlt ? offenKreisel(activeArms) : ['Anzahl Arme']), [armGewaehlt, activeArms])
 
   // Q_K aus Abbiegeströmen (Fz/h) — Formel: Abb. 10 / Herleitung Ring-Querschnitt
   const qkFzh = useMemo(() => computeQKfromTurnings(
@@ -745,9 +778,9 @@ export default function RoundaboutApp() {
 
   // Q_A je Ausfahrt (PWE/h) — Annahme: Bewegungen mit dem f ihres Herkunftsarms gewichtet (Einfahrt)
   const qaPWE = useMemo(() => computeQAfromTurnings(
-    activeArms.map(a => a.right * entryFactor(a.gradient, a.mix)),
-    activeArms.map(a => a.straight * entryFactor(a.gradient, a.mix)),
-    activeArms.map(a => a.left * entryFactor(a.gradient, a.mix)),
+    activeArms.map(a => a.right * fEinfahrt(a)),
+    activeArms.map(a => a.straight * fEinfahrt(a)),
+    activeArms.map(a => a.left * fEinfahrt(a)),
     armCount,
   ).map(Math.round), [armCount, activeArms])
 
@@ -760,16 +793,15 @@ export default function RoundaboutApp() {
   ).map(Math.round), [armCount, activeArms])
 
   const result = useMemo(() => {
-    const qe = activeArms.map(a =>
-      Math.round(entryFzh(a, armCount) * entryFactor(a.gradient, a.mix))
-    )
+    if (offen.length > 0) return null
+    const qe = activeArms.map(a => Math.round(entryFzh(a, armCount) * fEinfahrt(a)))
     const qk = qkPWE
     const fg = activeArms.map(a => a.fg)
-    const exitWide = activeArms.map(a => a.exitWide)
-    const exitTwoLanes = activeArms.map(a => a.exitTwoLanes)
+    const exitWide = activeArms.map(a => a.exitWide === true)
+    const exitTwoLanes = activeArms.map(a => a.exitTwoLanes === true)
     if (qe.every(v => v === 0)) return null
-    return calculateRoundabout({ type: activeArms.map(a => a.type), qe, qk, fg, qa: qaPWE, exitWide, exitTwoLanes })
-  }, [armCount, activeArms, qkPWE, qaPWE])
+    return calculateRoundabout({ type: activeArms.map(a => a.type!), qe, qk, fg, qa: qaPWE, exitWide, exitTwoLanes })
+  }, [armCount, activeArms, qkPWE, qaPWE, offen])
 
   const overall = result?.overallLevelOfService
   const anyTwoTwo = activeArms.some(a => a.type === '2/2')
@@ -778,83 +810,75 @@ export default function RoundaboutApp() {
   return (
     <>
     <main style={{ maxWidth: 1100, margin: '0 auto', padding: '20px 16px' }}>
+      <Meldung text={meldung} onClose={meldungZu} />
+      {uebernahme && <UebernahmeHinweis u={uebernahme} rechner="sn024a" />}
+      <SoFunktionierts rechner="sn024a" />
+      {karte && <BelastungsVergleich vergleich={karte.vergleich} querschnitte={querschnitteKreisel(arms.slice(0, armCount))} />}
 
 
       {/* Knoten-Konfiguration */}
-      <div style={{ background: '#fff', borderRadius: 10, padding: '12px 20px',
-                    marginBottom: 16, boxShadow: '0 1px 3px #0001',
-                    display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <div className="kachel" style={{ padding: '12px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <input type="text" value={nodeName}
           onChange={e => setNodeName(e.target.value)}
           placeholder="Bezeichnung des Kreisverkehrs"
           style={{ flexBasis: '100%', padding: '5px 10px', borderRadius: 5,
-                   border: '1px solid #d1d5db', fontSize: 14, fontWeight: 600, color: '#1e293b' }} />
+                   border: '1px solid var(--border)', fontSize: 14, fontWeight: 600, color: 'var(--text-strong)' }} />
 
-        <span style={{ fontWeight: 600, fontSize: 14, color: '#374151' }}>Alle Arme</span>
-        {TYPE_OPTIONS.map(t => {
+        {armGewaehlt && <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text)' }}>Alle Arme</span>}
+        {armGewaehlt && TYPE_OPTIONS.map(t => {
           const on = activeArms.every(a => a.type === t.value)
           return (
             <button key={t.value} onClick={() => setArms(prev => prev.map(a => ({ ...a, type: t.value })))}
-              style={{ padding: '5px 18px', borderRadius: 6, fontSize: 13, cursor: 'pointer',
-                       fontWeight: on ? 700 : 400,
-                       background: on ? '#1e3a5f' : '#f3f4f6',
-                       color: on ? '#fff' : '#374151',
-                       border: on ? '1px solid #1e3a5f' : '1px solid #d1d5db' }}>
+              className={`knopf${on ? '' : ' zweit'}`}>
               {t.label}
             </button>
           )
         })}
-        <span style={{ flexBasis: '100%', fontSize: 11, color: '#6b7280', padding: '2px 0', marginTop: -4 }}>
+        {armGewaehlt && <span style={{ flexBasis: '100%', fontSize: 12, color: 'var(--text-muted)', padding: '2px 0', marginTop: -4 }}>
           Der Typ gilt je Einfahrt und lässt sich in jeder Armkarte einzeln wählen (Ziffer 11, Seite 12).
-        </span>
+        </span>}
 
         {anyTwoTwo && (
-          <span style={{ flexBasis: '100%', fontSize: 11, color: '#6b7280',
+          <span style={{ flexBasis: '100%', fontSize: 12, color: 'var(--text-muted)',
                          padding: '2px 0', marginTop: -4 }}>
             Grundlage Typ 2/2: VSS-Forschungsbericht 2005/301 — <em>Leistungsfähigkeit zweistreifiger Kreisel</em>, ETH Zürich / RUB Bochum / SNZ, 2009
           </span>
         )}
         {anyTwoTwo && !allTwoTwo && (
-          <span style={{ flexBasis: '100%', fontSize: 11, color: '#b45309',
+          <span style={{ flexBasis: '100%', fontSize: 12, color: '#b45309',
                          padding: '2px 0', marginTop: -4 }}>
             Typ 2/2 setzt eine zweistreifige Kreiselfahrbahn voraus, 1/1 und 2/1+ gelten für eine einstreifige
             (Ziffer 11, Seite 12). Eine Kreiselfahrbahn kann nicht beides sein: Typen prüfen.
           </span>
         )}
 
-        <span style={{ fontWeight: 600, fontSize: 14, color: '#374151', marginLeft: 8 }}>Arme</span>
+        <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text)', marginLeft: 8 }}>Arme</span>
         {([3, 4] as const).map(n => (
-          <button key={n} onClick={() => setArmCount(n)}
-            style={{ padding: '5px 18px', borderRadius: 6, fontSize: 13, cursor: 'pointer',
-                     fontWeight: armCount === n ? 700 : 400,
-                     background: armCount === n ? '#1e3a5f' : '#f3f4f6',
-                     color: armCount === n ? '#fff' : '#374151',
-                     border: armCount === n ? '1px solid #1e3a5f' : '1px solid #d1d5db' }}>
+          <button key={n} onClick={() => { setArmCount(n); setArmGewaehlt(true) }}
+            className={`knopf${armGewaehlt && armCount === n ? '' : ' zweit'}`}>
             {n} Arme
           </button>
         ))}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
           <button onClick={handleExport}
-            style={{ padding: '4px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
-                     border: '1px solid #d1d5db', background: '#f9fafb', color: '#374151' }}>
-            Speichern
+            className="knopf zweit">
+            Fall speichern
           </button>
           <button onClick={handleImport}
-            style={{ padding: '4px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
-                     border: '1px solid #d1d5db', background: '#f9fafb', color: '#374151' }}>
-            Laden
+            className="knopf zweit">
+            Fall laden
           </button>
           <button onClick={handleReset}
-            style={{ padding: '4px 8px', fontSize: 11, cursor: 'pointer',
-                     background: 'none', border: 'none', color: '#9ca3af',
-                     textDecoration: 'underline' }}>
-            Zurücksetzen
+            className="knopf zweit">
+            zurücksetzen
           </button>
         </div>
       </div>
 
+      {!armGewaehlt && <OffeneAngaben liste={offen} />}
+
       {/* Hauptlayout */}
-      <div className="layout-grid">
+      {armGewaehlt && <div className="layout-grid">
 
         {/* Arm-Karten */}
         <div className={`arms-grid${armCount === 4 ? ' arms-grid-4' : ''}`}>
@@ -865,13 +889,12 @@ export default function RoundaboutApp() {
         </div>
 
         {/* Ergebnisse (sticky) */}
-        <div className="results-panel"
-             style={{ background: '#fff', borderRadius: 10, padding: 20,
-                      boxShadow: '0 1px 3px #0001' }}>
+        <div className="results-panel kachel"
+             style={{ padding: 20 }}>
 
           {/* Schematik */}
           <div style={{ marginBottom: 12, borderRadius: 8, overflow: 'hidden',
-                        border: '1px solid #e5e7eb', background: '#fafafa', padding: 8 }}>
+                        border: '1px solid var(--kachel-rand)', background: '#fafafa', padding: 8 }}>
             <img src={armCount === 3 ? kreisel3ArmSvg : kreiselSvg} alt="Kreisverkehr Schema"
               style={{ width: '100%', height: 'auto', display: 'block',
                        maxHeight: 280, objectFit: 'contain' }} />
@@ -884,16 +907,12 @@ export default function RoundaboutApp() {
             window.addEventListener('afterprint', () => { document.title = prev }, { once: true })
             window.print()
           }}
-            style={{ width: '100%', marginBottom: 12, padding: '7px 0', borderRadius: 6,
-                     fontSize: 12, cursor: 'pointer', border: '1px solid #1e3a5f',
-                     background: '#1e3a5f', color: '#fff', fontWeight: 600 }}>
-            Bewertungsblatt (Druckansicht)
+            className="knopf breit" style={{ marginBottom: 12 }}>
+            Bericht / PDF
           </button>
 
           {/* Beta-Hinweis */}
-          <div style={{ marginBottom: 14, padding: '7px 12px', borderRadius: 6,
-                        background: '#fff7ed', border: '1px solid #fed7aa',
-                        fontSize: 11, color: '#92400e', fontWeight: 600 }}>
+          <div className="hinweis klein" style={{ marginBottom: 14 }}>
             ⚠ Beta — Resultate mit Vorsicht verwenden.
           </div>
 
@@ -901,17 +920,17 @@ export default function RoundaboutApp() {
             <>
               {/* Gesamtbeurteilung */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                            padding: '14px 16px', borderRadius: 10, marginBottom: 16,
+                            padding: '14px 16px', borderRadius: 12, marginBottom: 16,
                             background: LOS_BG[overall],
                             border: `1px solid ${LOS_COLOR[overall]}44` }}>
                 <div>
-                  <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 2 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 2 }}>
                     Gesamtbeurteilung · {allTwoTwo ? 'VSS 2005/301' : anyTwoTwo ? 'SN 640 024a · VSS 2005/301' : 'SN 640 024a'}
                   </div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-strong)' }}>
                     Qualitätsstufe {overall}
                   </div>
-                  <div style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>
                     (schlechteste Einfahrt)
                   </div>
                   {result!.exitOverload && (
@@ -923,7 +942,7 @@ export default function RoundaboutApp() {
                 <LOSBadge los={overall} />
               </div>
 
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280',
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)',
                             textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
                 Einfahrten
               </div>
@@ -932,19 +951,17 @@ export default function RoundaboutApp() {
               ))}
 
               {/* Ausfahrten-Check (Ziffer 10, Abb. 5) */}
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280',
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)',
                             textTransform: 'uppercase', letterSpacing: '0.05em',
                             margin: '18px 0 8px' }}>
                 Ausfahrten-Check (Abb. 5, Seite 11)
               </div>
-              <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 8 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
                 Annahme: Q_A ist mit dem Faktor f der Herkunftsarme gewichtet, auch mit der Neigung ihrer
                 Einfahrt. Die Norm nennt für Ausfahrten keinen Faktor (Ziffer 9.2, Seiten 8–9).
               </div>
               {result!.exitOverload && (
-                <div style={{ padding: '10px 13px', borderRadius: 8, marginBottom: 10,
-                              background: '#fef2f2', border: '1px solid #fecaca',
-                              fontSize: 12, color: '#991b1b', lineHeight: 1.5 }}>
+                <div className="fehlerbox klein" style={{ marginBottom: 10 }}>
                   <strong>Ausfahrt überlastet (Q_A &gt; L_A).</strong> Der Verkehr kann den
                   Kreisel nicht abfliessen — gemäss Ziffer 10, Seite 11 sind andere Knotenformen zu suchen.
                 </div>
@@ -955,9 +972,9 @@ export default function RoundaboutApp() {
 
               {/* Methodik */}
               <div style={{ marginTop: 16, padding: '10px 13px', borderRadius: 8,
-                            background: '#f8fafc', border: '1px solid #e2e8f0',
-                            fontSize: 11, color: '#475569', lineHeight: 1.65 }}>
-                <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>
+                            background: '#f8fafc', border: '1px solid var(--kachel-rand)',
+                            fontSize: 12, color: 'var(--text)', lineHeight: 1.65 }}>
+                <div style={{ fontWeight: 700, color: 'var(--text-strong)', marginBottom: 4 }}>
                   Methodik (SN 640 024a)
                 </div>
                 <div><strong>Eingabe</strong> Typ und Abbiegeströme je Arm (Abb. 10, Seite 18): 1./2./3. Ausfahrt [Fz/h]</div>
@@ -973,42 +990,16 @@ export default function RoundaboutApp() {
             </>
           )}
 
-          {!overall && (
-            <p style={{ color: '#9ca3af', textAlign: 'center', padding: 32 }}>
-              Bitte Abbiegeströme eingeben.
-            </p>
-          )}
+          {!overall && <OffeneAngaben liste={offen.length > 0 ? offen : ['Abbiegeströme']} />}
         </div>
-      </div>
+      </div>}
 
-      <LegendBox items={LEGEND_ITEMS} />
+      <HilfeUnten rechner="sn024a" legende={LEGEND_ITEMS} quellen={karte?.quellen} />
 
-      <footer style={{ fontSize: 11, color: '#9ca3af', textAlign: 'center', marginTop: 24, lineHeight: 2 }}>
-        <div>
-          Berechnung nach VSS 40 024a «Leistungsfähigkeit, Verkehrsqualität, Belastbarkeit.
-          Knoten mit Kreisverkehr». Die Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.
-        </div>
-        <div>
-          © 2026 pnfzygrzgf-svg · Quellcode:{' '}
-          <a href="https://github.com/pnfzygrzgf-svg/KnotenCheck"
-             target="_blank" rel="noopener noreferrer"
-             style={{ color: '#9ca3af', textDecoration: 'underline' }}>
-            GitHub
-          </a>
-          {' '}· Lizenz:{' '}
-          <a href="https://www.gnu.org/licenses/agpl-3.0.html"
-             target="_blank" rel="noopener noreferrer"
-             style={{ color: '#9ca3af', textDecoration: 'underline' }}>
-            AGPL-3.0
-          </a> (Code),{' '}
-          <a href="https://creativecommons.org/licenses/by-sa/4.0/deed.de"
-             target="_blank" rel="noopener noreferrer"
-             style={{ color: '#9ca3af', textDecoration: 'underline' }}>
-            CC BY-SA 4.0
-          </a> (Inhalte)
-          {' '}— kommerzielle Nutzung untersagt.
-        </div>
-      </footer>
+      <RechnerFuss>
+        Berechnung nach VSS 40 024a «Leistungsfähigkeit, Verkehrsqualität, Belastbarkeit.
+        Knoten mit Kreisverkehr». Die Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.
+      </RechnerFuss>
     </main>
 
     {isActive && result && createPortal(
@@ -1020,10 +1011,10 @@ export default function RoundaboutApp() {
           arms={activeArms}
           result={result}
         />
+        <BerichtQuellen zeilen={karte?.quellen ?? []} />
       </div>,
       document.body
     )}
-    <Toast msg={toastMsg} />
     </>
   )
 }

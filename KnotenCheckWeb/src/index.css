@@ -22,12 +22,13 @@
   }
 }
 
+/* Grundschrift der Seiten. Die Bewertungsblätter hängen am body und erben weiter von :root */
 #root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
+  font-size: 14px;
+  line-height: normal;
+  letter-spacing: normal;
+  text-align: left;
+  color: #334155;
   min-height: 100svh;
   display: flex;
   flex-direction: column;

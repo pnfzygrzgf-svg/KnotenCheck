@@ -1,0 +1,12 @@
+{
+  "quelle": "fgsCheckWeb/src/hoehenkurven",
+  "sha256": {
+    "modell.ts": "65cb5efa92dcfc307cab01594431584703593b21d481361a5d396761ceedbf6b",
+    "projektion.ts": "8d4f4492f54b0ad4c4dfa5653ec8df8e5616ac5b7c92fb89bfa3e7c29d112c96",
+    "ableiten.ts": "2ebf867c8e147d141f68584f913b8c6dbc86b20031514a0473b553bd957d6690",
+    "holen.ts": "2960066fc0405e8bcb81770040713305369409d5a99f0086a9b7075796affb34",
+    "stand.ts": "4683dfd1a9eec1b570564ad5467103f92595cd501fa4e66cf8c1ce4433369375",
+    "Karte.ts": "9f85264f3855b417ff23946f8611b4e8f4505becd6820ba67a2294a9aca8f523",
+    "Wahl.tsx": "f15e02ce2fc66ef375449cfe2185ddce353e03b1b756f5fc59fbd58e46209465"
+  }
+}

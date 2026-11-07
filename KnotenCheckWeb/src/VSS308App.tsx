@@ -1,18 +1,24 @@
 import { useState, useMemo } from 'react'
+import UebernahmeHinweis from './karte/UebernahmeHinweis'
+import BelastungsVergleich from './karte/BelastungsVergleich'
+import { querschnitteKnoten } from './karte/vergleich'
+import { kartenBezugAus, kartenBezugLesen, type KnotenUebernahme } from './karte/rechner'
 import { createPortal } from 'react-dom'
 import { calculateVSS308, normalizeArm308 } from './engine/vss2011308Calculator'
-import { conformFixed, oneOf } from './engine/conform'
+import { conformFixed, oneOf, wahl } from './engine/conform'
+import { offenVss308 } from './engine/offeneAngaben'
 import type { ArmInput, ArmResult, StreamResult, LevelOfService, RoadType } from './engine/vss2011308Calculator'
 import { QUERUNG_ERGEBNIS, QUERUNG_LABEL, resolveQuerung, type Querung } from './engine/querung'
 import rechtsvorttrittSvg from './assets/rechtsvortritt.svg'
 import { KnotenDiagramm, type StreamKey, type Los } from './KnotenDiagramm'
 import { exportTool, importTool } from './saveLoad'
 import { useIsActiveModule } from './activeModule'
-import { LegendBox, type LegendItem } from './LegendBox'
-import { Toast } from './Toast'
+import { HilfeUnten, SoFunktionierts, type LegendItem } from './Hilfe'
+import { Meldung } from './Meldung'
 import { LOS_BG, LOS_COLOR, delayText, utilizationColor } from './uiHelpers'
-import { useToast } from './useToast'
-import { LOSBadge, NumInput, Row, SectionLabel } from './ui'
+import { useMeldung } from './useMeldung'
+import { LeereWahl, LOSBadge, NumInput, OffeneAngaben, Row, SectionLabel } from './ui'
+import { RechnerFuss } from './Fusszeile'
 
 // ── Arm-Labels (gleiche Reihenfolge wie SN 640 022) ───────────────────────────
 // [0]=A(HS), [1]=C(HS), [2]=B(NS), [3]=D(NS)
@@ -29,37 +35,28 @@ function queueText(k: number): string {
 
 type NodeType = '3arm' | '4arm' | 'equal'
 
-function defaultArm(roadType: RoadType, isHS: boolean): ArmInput {
-  return {
-    name: '',
-    roadType,
-    right:    isHS ? 100 : 80,
-    straight: isHS ? 400 : 0,
-    left:     isHS ? 100 : 80,
-    fg: 0,
-    rho: 1,
-    mittelinsel: false,
-    querung: 'keine',
-  }
+// Leerer Arm: Querung und Gruppengrösse bleiben offen, bis sie gewählt sind
+function defaultArm(roadType: RoadType): ArmInput {
+  return { name: '', roadType, right: 0, straight: 0, left: 0, fg: 0, mittelinsel: false }
 }
 
 function defaultArms(nodeType: NodeType): ArmInput[] {
   if (nodeType === '3arm') return [
-    defaultArm('HS', true),   // A
-    defaultArm('HS', true),   // C
-    defaultArm('NS', false),  // B
+    defaultArm('HS'),   // A
+    defaultArm('HS'),   // C
+    defaultArm('NS'),   // B
   ]
   if (nodeType === 'equal') return [
-    defaultArm('equal', false),  // A
-    defaultArm('equal', false),  // C
-    defaultArm('equal', false),  // B
-    defaultArm('equal', false),  // D
+    defaultArm('equal'),  // A
+    defaultArm('equal'),  // C
+    defaultArm('equal'),  // B
+    defaultArm('equal'),  // D
   ]
   return [
-    defaultArm('HS', true),   // A
-    defaultArm('HS', true),   // C
-    defaultArm('NS', false),  // B
-    defaultArm('NS', false),  // D
+    defaultArm('HS'),   // A
+    defaultArm('HS'),   // C
+    defaultArm('NS'),   // B
+    defaultArm('NS'),   // D
   ]
 }
 
@@ -89,30 +86,30 @@ function ArmCard({ arm, index, nodeType, result, onChange }: {
 
   // Querung: an NS-Armen auch Trottoirüberfahrt (gerechnet wie Fussgängerstreifen)
   const isNS     = arm.roadType === 'NS'
-  const querung  = resolveQuerung(arm.querung, arm.fg > 0, isNS)
+  const querung  = arm.querung === undefined ? null : resolveQuerung(arm.querung, arm.fg > 0, isNS)
   const isTUe    = querung === 'trottoirueberfahrt'
   const querungOptionen: Querung[] = isNS ? ['keine', 'fgs', 'trottoirueberfahrt'] : ['keine', 'fgs']
   const setQuerung = (q: Querung) => onChange({
     ...arm,
     querung: q,
-    fg: q === 'keine' ? 0 : arm.fg > 0 ? arm.fg : 100,
+    fg: q === 'keine' ? 0 : arm.fg,
     mittelinsel: q === 'trottoirueberfahrt' ? false : arm.mittelinsel,
   })
 
   const qTotal = (isHSA3 ? 0 : arm.left) + (isNSB3 ? 0 : arm.straight) + (isHSC3 ? 0 : arm.right)
 
   return (
-    <div style={{ background: '#fff', borderRadius: 10, border: `1.5px solid ${bd}`,
+    <div style={{ background: '#fff', borderRadius: 12, border: `1.5px solid ${bd}`,
                   overflow: 'hidden', boxShadow: '0 1px 4px #0001' }}>
       {/* Header */}
       <div style={{ background: bg, borderBottom: `1px solid ${bd}`, padding: '10px 14px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <span style={{ fontWeight: 800, fontSize: 17, color: col,
+          <span style={{ fontWeight: 800, fontSize: 15, color: col,
                          background: '#fff', border: `1.5px solid ${bd}`,
                          borderRadius: 6, minWidth: 28, textAlign: 'center', padding: '1px 6px' }}>
             {lbl}
           </span>
-          <span style={{ fontSize: 11, color: col, fontWeight: 600, opacity: 0.7 }}>
+          <span style={{ fontSize: 12, color: col, fontWeight: 600, opacity: 0.7 }}>
             {isHS ? 'Hauptstrasse (HS)' : isEqual ? 'Gleicher Rang' : 'Nebenstrasse (NS)'}
           </span>
         </div>
@@ -120,7 +117,7 @@ function ArmCard({ arm, index, nodeType, result, onChange }: {
           type="text" placeholder="Strassenname (optional)"
           value={arm.name}
           onChange={e => upd('name', e.target.value)}
-          style={{ width: '100%', border: `1px solid ${bd}`, background: '#fff', fontSize: 13,
+          style={{ width: '100%', border: `1px solid ${bd}`, background: '#fff', fontSize: 14,
                    fontWeight: 600, color: col, outline: 'none', borderRadius: 5,
                    padding: '4px 8px', boxSizing: 'border-box' }}
         />
@@ -148,26 +145,25 @@ function ArmCard({ arm, index, nodeType, result, onChange }: {
       <SectionLabel title="Fussgänger*innen" />
       <Row label="Querung" sub="an dieser Einfahrt">
         <select
-          value={querung}
+          value={querung ?? ''}
           onChange={e => setQuerung(e.target.value as Querung)}
           style={{ fontSize: 12, padding: '4px 6px', borderRadius: 4,
-                   border: '1px solid #d1d5db', cursor: 'pointer', color: '#374151' }}
+                   border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text)' }}
         >
+          {querung === null && <LeereWahl />}
           {querungOptionen.map(q => (
             <option key={q} value={q}>{QUERUNG_LABEL[q]}</option>
           ))}
         </select>
       </Row>
-      {querung !== 'keine' && (
+      {querung !== null && querung !== 'keine' && (
         <>
           <Row label={isTUe ? 'Fussgänger*innen auf der Trottoirüberfahrt' : 'Fussgängervolumen'} sub="[Fg/h]">
             <NumInput live value={arm.fg} onChange={v => upd('fg', v)} />
           </Row>
           {isTUe && (
-            <div style={{ margin: '2px 14px 8px', padding: '9px 11px', borderRadius: 6,
-                          background: '#fefce8', border: '1px solid #fde047',
-                          fontSize: 11, color: '#713f12', lineHeight: 1.65 }}>
-              <strong style={{ color: '#78350f' }}>Trottoirüberfahrt:</strong> Fussgänger*innen
+            <div className="hinweis klein" style={{ margin: '2px 14px 8px' }}>
+              <strong>Trottoirüberfahrt:</strong> Fussgänger*innen
               haben Vortritt (VRV Art. 41 Abs. 2). Gerechnet wie ein Fussgängerstreifen über die
               Nebenstrasse – Annahme, VSS 2011/308 kennt die Trottoirüberfahrt nicht.
             </div>
@@ -181,10 +177,8 @@ function ArmCard({ arm, index, nodeType, result, onChange }: {
             </Row>
           )}
           {!isTUe && arm.mittelinsel && (
-            <div style={{ margin: '2px 14px 8px', padding: '9px 11px', borderRadius: 6,
-                          background: '#fefce8', border: '1px solid #fde047',
-                          fontSize: 11, color: '#713f12', lineHeight: 1.65 }}>
-              <strong style={{ color: '#78350f', display: 'block', marginBottom: 3 }}>
+            <div className="hinweis klein" style={{ margin: '2px 14px 8px' }}>
+              <strong style={{ display: 'block', marginBottom: 3 }}>
                 Wirkung der Mittelinsel (Art. 47 Abs. 3 VRV)
               </strong>
               Bei Fussgängerstreifen ohne Verkehrsregelung, die durch eine Verkehrsinsel unterteilt
@@ -205,23 +199,24 @@ function ArmCard({ arm, index, nodeType, result, onChange }: {
               in zwei Etappen queren können.
             </div>
           )}
-          <div style={{ padding: '8px 14px', borderBottom: '1px solid #f3f4f6' }}>
+          <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--kachel-rand)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between',
                           alignItems: 'center', marginBottom: 5 }}>
-              <span style={{ fontSize: 13, color: '#374151' }}>Gruppengrösse ρ</span>
-              <span style={{ fontSize: 11, color: '#9ca3af' }}>
+              <span style={{ fontSize: 14, color: 'var(--text)' }}>Gruppengrösse ρ</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                 {!isTUe && arm.mittelinsel
-                  ? `Q wirksam = ${arm.fg}/2 = ${arm.fg / 2} Fg/h · S_Fg = ${900 * (arm.rho ?? 1)} Fg/h`
-                  : `S_Fg = 900 × ${arm.rho ?? 1} = ${900 * (arm.rho ?? 1)} Fg/h`}
+                  ? `Q wirksam = ${arm.fg}/2 = ${arm.fg / 2} Fg/h · S_Fg = ${arm.rho ? 900 * arm.rho : '–'} Fg/h`
+                  : `S_Fg = 900 × ${arm.rho ?? '–'} = ${arm.rho ? 900 * arm.rho : '–'} Fg/h`}
               </span>
             </div>
             <select
-              value={arm.rho ?? 1}
+              value={arm.rho ?? ''}
               onChange={e => upd('rho', Number(e.target.value))}
               style={{ width: '100%', fontSize: 12, padding: '4px 6px', borderRadius: 4,
-                       border: '1px solid #d1d5db', cursor: 'pointer', color: '#374151',
+                       border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text)',
                        boxSizing: 'border-box' }}
             >
+              {arm.rho === undefined && <LeereWahl />}
               {[
                 [1, 'Einzeln — ruhige Lage'],
                 [2, 'Paarweise — mässig belebt'],
@@ -235,7 +230,7 @@ function ArmCard({ arm, index, nodeType, result, onChange }: {
           </div>
           <div style={{ margin: '2px 14px 10px', padding: '9px 11px', borderRadius: 6,
                         background: '#f0f9ff', border: '1px solid #bae6fd',
-                        fontSize: 11, color: '#075985', lineHeight: 1.65 }}>
+                        fontSize: 12, color: '#075985', lineHeight: 1.65 }}>
             <strong style={{ color: '#0c4a6e', display: 'block', marginBottom: 3 }}>
               Warum ρ (rho)?
             </strong>
@@ -249,7 +244,7 @@ function ArmCard({ arm, index, nodeType, result, onChange }: {
             bleibt für Fahrzeuge.
             <br /><br />
             <strong style={{ color: '#0c4a6e' }}>Wie bestimmen?</strong> ρ wird vor Ort
-            beobachtet: wie viele Fg queren im Schnitt gleichzeitig? Annahme als Startwert:
+            beobachtet: wie viele Fg queren im Schnitt gleichzeitig? Annahme als Richtwert:
             ρ = 1 Wohngebiet · ρ = 2–3 Innenstadt · ρ = 4–5 stark belebte Lagen; der Bericht
             nennt keine Lagen, nur Anzahl, ρ und S (Tab. 9, S. 37). Bei Unsicherheit: ρ = 1
             wählen (konservativ, kleinste Kapazität).
@@ -262,17 +257,17 @@ function ArmCard({ arm, index, nodeType, result, onChange }: {
         <>
           <SectionLabel title="Abgeleitete Werte" />
           <Row label="Q total" sub="[Fz/h]">
-            <span style={{ fontSize: 13, color: '#374151', minWidth: 60, textAlign: 'right' }}>
+            <span style={{ fontSize: 14, color: 'var(--text)', minWidth: 60, textAlign: 'right' }}>
               {qTotal}
             </span>
           </Row>
           <Row label="β" sub="Reduktionsfaktor">
-            <span style={{ fontSize: 13, color: '#374151', minWidth: 60, textAlign: 'right' }}>
+            <span style={{ fontSize: 14, color: 'var(--text)', minWidth: 60, textAlign: 'right' }}>
               {result.beta.toFixed(3)}
             </span>
           </Row>
           <Row label="L (Kapazität)" sub="[Fz/h]">
-            <span style={{ fontSize: 13, color: '#374151', minWidth: 60, textAlign: 'right' }}>
+            <span style={{ fontSize: 14, color: 'var(--text)', minWidth: 60, textAlign: 'right' }}>
               {Math.round(result.capacity)}
             </span>
           </Row>
@@ -301,16 +296,16 @@ function ResultCard({ res }: { res: ArmResult }) {
         {res.name && <span style={{ fontSize: 12, color: col, flex: 1 }}>{res.name}</span>}
         {res.qFz > 0
           ? <LOSBadge los={res.levelOfService} />
-          : <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 'auto' }}>kein Verkehr</span>}
+          : <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 'auto' }}>kein Verkehr</span>}
       </div>
       {res.querung !== 'keine' && (
-        <div style={{ padding: '4px 12px', fontSize: 11, color: '#6b7280', background: '#fff',
-                      borderBottom: '1px solid #f3f4f6' }}>
+        <div style={{ padding: '4px 12px', fontSize: 12, color: 'var(--text-muted)', background: '#fff',
+                      borderBottom: '1px solid var(--kachel-rand)' }}>
           Querung: {QUERUNG_ERGEBNIS[res.querung]}
         </div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', fontSize: 12,
-                    color: '#374151', background: '#fff' }}>
+                    color: 'var(--text)', background: '#fff' }}>
         {[
           ['Q', `${res.qFz} Fz/h`],
           ['L', `${Math.round(res.capacity)} Fz/h`],
@@ -321,9 +316,9 @@ function ResultCard({ res }: { res: ArmResult }) {
           ['k', queueText(res.queue)],
           ['β', res.beta.toFixed(3)],
         ].map(([label, val]) => (
-          <div key={String(label)} style={{ padding: '4px 10px', borderBottom: '1px solid #f3f4f6',
-                          borderRight: '1px solid #f3f4f6' }}>
-            <span style={{ color: '#9ca3af', marginRight: 6 }}>{label}</span>
+          <div key={String(label)} style={{ padding: '4px 10px', borderBottom: '1px solid var(--kachel-rand)',
+                          borderRight: '1px solid var(--kachel-rand)' }}>
+            <span style={{ color: 'var(--text-muted)', marginRight: 6 }}>{label}</span>
             {typeof val === 'string' ? val : val}
           </div>
         ))}
@@ -340,18 +335,18 @@ function StreamsTable({ streams }: { streams: StreamResult[] }) {
 
   return (
     <div style={{ padding: '0 12px 12px' }}>
-      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
-                    color: '#6b7280', textTransform: 'uppercase', marginBottom: 6 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.06em',
+                    color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>
         Ströme
       </div>
-      <div style={{ borderRadius: 6, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+      <div style={{ borderRadius: 6, border: '1px solid var(--kachel-rand)', overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead>
             <tr style={{ background: '#f9fafb' }}>
               {['Strom', 'Q', 'β', 'L', 'x', 'w', 'LOS'].map(h => (
                 <th key={h} style={{
                   padding: '4px 7px', textAlign: h === 'Strom' ? 'left' : 'right',
-                  borderBottom: '1px solid #e5e7eb', color: '#6b7280', fontWeight: 700,
+                  borderBottom: '1px solid var(--kachel-rand)', color: 'var(--text-muted)', fontWeight: 700,
                 }}>
                   {h}
                 </th>
@@ -362,19 +357,19 @@ function StreamsTable({ streams }: { streams: StreamResult[] }) {
             {visible.map(s => {
               const col = s.roadType === 'HS' ? '#1d4ed8' : s.roadType === 'NS' ? '#c2410c' : '#4b5563'
               return (
-                <tr key={s.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                <tr key={s.id} style={{ borderBottom: '1px solid var(--kachel-rand)' }}>
                   <td style={{ padding: '3px 7px', fontWeight: 700, color: col }}>
-                    {s.id}{s.scenario === 'II' && <span title="Szenario II: paralleler Fg-Strom blockiert den Konfliktverkehr (Gl. 6)" style={{ marginLeft: 4, fontSize: 9, color: '#16a34a', fontWeight: 600 }}>Sz II</span>}
+                    {s.id}{s.scenario === 'II' && <span title="Szenario II: paralleler Fg-Strom blockiert den Konfliktverkehr (Gl. 6)" style={{ marginLeft: 4, fontSize: 12, color: '#16a34a', fontWeight: 600 }}>Sz II</span>}
                   </td>
-                  <td style={{ padding: '3px 7px', textAlign: 'right', color: '#374151' }}>{s.Q}</td>
-                  <td style={{ padding: '3px 7px', textAlign: 'right', color: '#374151' }}>{s.beta.toFixed(3)}</td>
-                  <td style={{ padding: '3px 7px', textAlign: 'right', color: '#374151' }}>{Math.round(s.capacity)}</td>
+                  <td style={{ padding: '3px 7px', textAlign: 'right', color: 'var(--text)' }}>{s.Q}</td>
+                  <td style={{ padding: '3px 7px', textAlign: 'right', color: 'var(--text)' }}>{s.beta.toFixed(3)}</td>
+                  <td style={{ padding: '3px 7px', textAlign: 'right', color: 'var(--text)' }}>{Math.round(s.capacity)}</td>
                   <td style={{ padding: '3px 7px', textAlign: 'right' }}>
                     <span style={{ color: utilizationColor(s.utilizationDegree), fontWeight: 600 }}>
                       {isFinite(s.utilizationDegree) ? s.utilizationDegree.toFixed(2) : '>1'}
                     </span>
                   </td>
-                  <td style={{ padding: '3px 7px', textAlign: 'right', color: '#374151' }}>{delayText(s.delay)}</td>
+                  <td style={{ padding: '3px 7px', textAlign: 'right', color: 'var(--text)' }}>{delayText(s.delay)}</td>
                   <td style={{ padding: '3px 7px', textAlign: 'right' }}>
                     <LOSBadge los={s.levelOfService} />
                   </td>
@@ -682,15 +677,29 @@ const LEGEND_ITEMS: LegendItem[] = [
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 
-export default function VSS308App() {
+// Aus der Karte: Namen übernommen, Ströme leer, ausser sie wurden aus dem Modell gewählt
+function typAus(u: KnotenUebernahme): NodeType {
+  return u.armCount === 3 ? '3arm' : '4arm'
+}
+function armsAus(u: KnotenUebernahme): ArmInput[] {
+  return defaultArms(typAus(u)).map((a, i) => {
+    const v = u.arme[i]
+    return { ...a, name: v.name, left: v.stroeme?.left ?? 0, straight: v.stroeme?.straight ?? 0, right: v.stroeme?.right ?? 0, ...(v.fgs ? { querung: 'fgs' as const, mittelinsel: v.fgs.insel } : {}) }
+  })
+}
+
+export default function VSS308App({ uebernahme }: { uebernahme?: KnotenUebernahme }) {
   const isActive = useIsActiveModule()  // Druckblatt nur im sichtbaren Modul
-  const [nodeName, setNodeName]   = useState('')
-  const [nodeType, setNodeType]   = useState<NodeType>('4arm')
-  const [arms, setArms]           = useState<ArmInput[]>(defaultArms('4arm'))
-  const { msg: toastMsg, show: showToast } = useToast()
+  const [nodeName, setNodeName]   = useState(uebernahme?.name ?? '')
+  const [nodeType, setNodeType]   = useState<NodeType>(uebernahme ? typAus(uebernahme) : '4arm')
+  const [armGewaehlt, setArmGewaehlt] = useState(!!uebernahme)   // Knotentyp hat keinen Startwert
+  const [arms, setArms]           = useState<ArmInput[]>(() => uebernahme ? armsAus(uebernahme) : defaultArms('4arm'))
+  const [karte, setKarte] = useState(() => uebernahme ? kartenBezugAus(uebernahme, 'vss308') : null)
+  const { meldung, melden, schliessen: meldungZu } = useMeldung()
 
   function handleNodeTypeChange(t: NodeType) {
     setNodeType(t)
+    setArmGewaehlt(true)
     setArms(defaultArms(t))
   }
 
@@ -701,34 +710,36 @@ export default function VSS308App() {
   const handleExport = () =>
     exportTool({
       tool: 'vss308', filePrefix: 'VSS308',
-      name: nodeName, showToast,
-      data: { nodeName, nodeType, arms },
+      name: nodeName, melden,
+      data: { nodeName, nodeType, arms, ...(karte ? { karte } : {}) },
     })
 
   const handleImport = () =>
     importTool('vss308', d => {
         setNodeName(typeof d.nodeName === 'string' ? d.nodeName : '')
+        setKarte(kartenBezugLesen(d.karte))
         // 'equal' (Gleicher Rang) ist vorerst ausgeblendet → auf '4arm' abbilden,
         // damit ältere gespeicherte Dateien nicht in einem unerreichbaren Modus landen.
         const saved = oneOf<NodeType>(['3arm', '4arm', 'equal'], d.nodeType, '4arm')
         const nt: NodeType = saved === 'equal' ? '4arm' : saved
         setNodeType(nt)
+        setArmGewaehlt(true)
         // Genau so viele Arme wie der Knotentyp hat; Strassentyp folgt aus der Position.
-        // querung in der Vorlage offen lassen: fehlt sie (ältere Dateien), folgt sie
-        // in normalizeArm308 aus fg (> 0 → Fussgängerstreifen, sonst keine)
-        const template = defaultArms(nt).map(a => ({ ...a, querung: undefined }))
-        const loaded = saved === nt ? conformFixed<ArmInput>(template, d.arms) : defaultArms(nt)
-        setArms(loaded.map((a, i) => normalizeArm308({
-          ...a,
-          roadType: defaultArms(nt)[i].roadType,
-          rho: oneOf([1, 2, 3, 4, 5], a.rho, 1),
-        })))
-      }, showToast)
+        // Fehlt die Querung in einer älteren Datei, folgt sie in normalizeArm308 aus fg (> 0 → Fussgängerstreifen,
+        // sonst keine). In neuen Dateien heisst das: noch nicht gewählt (siehe saveLoad.ts)
+        const leer = d.leereFelder === true
+        const loaded = saved === nt ? conformFixed<ArmInput>(defaultArms(nt), d.arms) : defaultArms(nt)
+        setArms(loaded.map((a, i) => {
+          const arm = { ...a, roadType: defaultArms(nt)[i].roadType, rho: leer ? wahl([1, 2, 3, 4, 5], a.rho) ?? undefined : oneOf([1, 2, 3, 4, 5], a.rho, 1) }
+          return leer && arm.querung === undefined ? arm : normalizeArm308(arm)
+        }))
+      }, melden)
 
   function handleReset() {
     setNodeName('')
-    setArms(prev => prev.map(arm => ({ ...arm, name: '', right: 0, straight: 0, left: 0, fg: 0, querung: 'keine' as const })))
-    showToast('Zurückgesetzt')
+    setArms(defaultArms(nodeType))
+    setArmGewaehlt(false)
+    melden('Zurückgesetzt')
   }
 
   const calcInput = useMemo(() => ({
@@ -737,6 +748,8 @@ export default function VSS308App() {
   }), [nodeType, arms])
 
   const result = useMemo(() => calculateVSS308(calcInput), [calcInput])
+  const offen = armGewaehlt ? offenVss308(nodeType === '3arm' ? arms.slice(0, 3) : arms) : ['Knotentyp']
+  const fertig = offen.length === 0
   const overall = result.overallLevelOfService
   const noTraffic = result.arms.every(a => a.qFz <= 0)
 
@@ -752,7 +765,7 @@ export default function VSS308App() {
     const q = QMAP[`${s.fromArmIndex}-${s.toArmIndex}`]
     if (!q) continue
     diagVols[q] = s.Q
-    if (s.Q > 0) diagLos[q] = s.levelOfService as Los  // ohne Verkehr keine Qualitätsfarbe
+    if (s.Q > 0 && fertig) diagLos[q] = s.levelOfService as Los  // ohne Verkehr keine Qualitätsfarbe
   }
 
   // Schematik (Querungen bereinigt wie in der Rechnung)
@@ -776,19 +789,21 @@ export default function VSS308App() {
   return (
     <>
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '16px 16px 40px' }}>
+      <Meldung text={meldung} onClose={meldungZu} />
+      {uebernahme && <UebernahmeHinweis u={uebernahme} rechner="vss308" />}
+      <SoFunktionierts rechner="vss308" />
+      {karte && <BelastungsVergleich vergleich={karte.vergleich} querschnitte={querschnitteKnoten(arms)} />}
 
 
       {/* Bezeichnung + Knotentyp-Auswahl */}
-      <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb',
-                    padding: '12px 16px', marginBottom: 16,
-                    display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      <div className="kachel" style={{ padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <input type="text" value={nodeName}
           onChange={e => setNodeName(e.target.value)}
           placeholder="Bezeichnung des Knotens"
           style={{ flexBasis: '100%', padding: '5px 10px', borderRadius: 5,
-                   border: '1px solid #d1d5db', fontSize: 14, fontWeight: 600,
-                   color: '#1e293b' }} />
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginRight: 4 }}>
+                   border: '1px solid var(--border)', fontSize: 14, fontWeight: 600,
+                   color: 'var(--text-strong)' }} />
+        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginRight: 4 }}>
           Knotentyp:
         </span>
         {([
@@ -800,44 +815,36 @@ export default function VSS308App() {
         ] as [NodeType, string][]).map(([key, label]) => (
           <button key={key}
             onClick={() => handleNodeTypeChange(key)}
-            style={{
-              padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
-              cursor: 'pointer', transition: 'background 0.15s',
-              background: nodeType === key ? '#1e3a5f' : '#f3f4f6',
-              color:      nodeType === key ? '#fff'    : '#374151',
-              border: nodeType === key ? '1.5px solid #1e3a5f' : '1.5px solid #e5e7eb',
-            }}>
+            className={`knopf${armGewaehlt && nodeType === key ? '' : ' zweit'}`}>
             {label}
           </button>
         ))}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
           <button onClick={handleExport}
-            style={{ padding: '4px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
-                     border: '1px solid #d1d5db', background: '#f9fafb', color: '#374151' }}>
-            Speichern
+            className="knopf zweit">
+            Fall speichern
           </button>
           <button onClick={handleImport}
-            style={{ padding: '4px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
-                     border: '1px solid #d1d5db', background: '#f9fafb', color: '#374151' }}>
-            Laden
+            className="knopf zweit">
+            Fall laden
           </button>
           <button onClick={handleReset}
-            style={{ padding: '4px 8px', fontSize: 11, cursor: 'pointer',
-                     background: 'none', border: 'none', color: '#9ca3af',
-                     textDecoration: 'underline' }}>
-            Zurücksetzen
+            className="knopf zweit">
+            zurücksetzen
           </button>
         </div>
       </div>
 
-      <div className="layout-grid">
+      {!armGewaehlt && <OffeneAngaben liste={offen} />}
+
+      {armGewaehlt && <div className="layout-grid">
         {/* Linke Spalte: Arm-Cards */}
         <div>
           {/* Arm-Cards */}
           <div className={`arms-grid ${nodeType !== '3arm' ? 'arms-grid-4' : ''}`}>
             {activeArms.map((arm, i) => (
               <ArmCard key={i} arm={arm} index={i} nodeType={nodeType}
-                result={result.arms[i]}
+                result={fertig ? result.arms[i] : undefined}
                 onChange={a => updateArm(i, a)} />
             ))}
           </div>
@@ -845,33 +852,33 @@ export default function VSS308App() {
 
         {/* Rechte Spalte: Ergebnis-Panel */}
         <div className="results-panel">
-          <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb',
-                        overflow: 'hidden' }}>
+          <div className="kachel" style={{ overflow: 'hidden' }}>
 
             {/* Schematik */}
-            <div style={{ padding: 12, borderBottom: '1px solid #e5e7eb', background: '#fafafa' }}>
+            <div style={{ padding: 12, borderBottom: '1px solid var(--kachel-rand)', background: '#fafafa' }}>
               {schematic}
             </div>
 
+            {!fertig && <OffeneAngaben liste={offen} />}
+
+            {fertig && <>
             {/* Drucken */}
-            <div style={{ padding: '10px 12px', borderBottom: '1px solid #e5e7eb' }}>
+            <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--kachel-rand)' }}>
               <button onClick={() => {
                 const prev = document.title
                 document.title = `KnotenCheck – VSS 2011/308${nodeName ? ' – ' + nodeName : ''}`
                 window.addEventListener('afterprint', () => { document.title = prev }, { once: true })
                 window.print()
               }}
-                style={{ width: '100%', padding: '7px 0', borderRadius: 6,
-                         border: '1px solid #1e3a5f', background: '#1e3a5f', color: '#fff',
-                         fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                Bewertungsblatt (Druckansicht)
+                className="knopf breit">
+                Bericht / PDF
               </button>
             </div>
 
             {/* Gesamt-LOS */}
-            <div style={{ padding: '14px 16px', borderBottom: '1px solid #e5e7eb',
+            <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--kachel-rand)',
                           background: LOS_BG[overall] }}>
-              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
+              <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.06em',
                             color: LOS_COLOR[overall], textTransform: 'uppercase', marginBottom: 4 }}>
                 Qualitätsstufe Knoten
               </div>
@@ -894,8 +901,8 @@ export default function VSS308App() {
 
             {/* Ergebnisse pro Arm */}
             <div style={{ padding: 12 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
-                            color: '#6b7280', textTransform: 'uppercase', marginBottom: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.06em',
+                            color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 8 }}>
                 Einfahrten (Arm als Mischstreifen)
               </div>
               {result.arms.map(r => (
@@ -905,9 +912,7 @@ export default function VSS308App() {
 
             {/* Überlast-Warnung */}
             {result.arms.some(r => !isFinite(r.delay)) && (
-              <div style={{ margin: '0 12px 8px', padding: '10px 12px', borderRadius: 6,
-                            background: '#fef2f2', border: '1.5px solid #fca5a5',
-                            fontSize: 11, color: '#7f1d1d', lineHeight: 1.65 }}>
+              <div className="fehlerbox klein" style={{ margin: '0 12px 8px' }}>
                 <strong style={{ display: 'block', marginBottom: 3 }}>
                   Überlast — Wartezeit nicht berechenbar (x ≥ 1)
                 </strong>
@@ -924,62 +929,39 @@ export default function VSS308App() {
             <StreamsTable streams={result.streams} />
 
             {/* Beta-Hinweis */}
-            <div style={{ margin: '0 12px 8px', padding: '7px 12px', borderRadius: 6,
-                          background: '#fff7ed', border: '1px solid #fed7aa',
-                          fontSize: 11, color: '#92400e', fontWeight: 600 }}>
+            <div className="hinweis klein" style={{ margin: '0 12px 8px' }}>
               ⚠ Beta — Resultate mit Vorsicht verwenden.
             </div>
 
             {/* Methodik-Hinweis */}
             <div style={{ margin: '0 12px 12px', padding: '10px 12px', borderRadius: 8,
-                          background: '#f8fafc', border: '1px solid #e2e8f0',
-                          fontSize: 11, color: '#64748b', lineHeight: 1.6 }}>
-              <strong style={{ color: '#334155' }}>Methodik:</strong> VSS 2011/308 Kap. 5
+                          background: '#f8fafc', border: '1px solid var(--kachel-rand)',
+                          fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+              <strong style={{ color: 'var(--text)' }}>Methodik:</strong> VSS 2011/308 Kap. 5
               (Menendez/Guler/Puffe). Pro Strom: β = ∏(1−y<sub>i</sub>)³
               über alle senkrechten vortrittsberechtigten Ströme (HS-Fz + Fg Ein-/Ausfahrt); HS-Linksabbieger zusätzlich (1−y_gegen)³ gegen den Gegenverkehr.
               S_Fg = 900·ρ (bei Mittelinsel Q_Fg/2, Art. 47 Abs. 3 VRV). L = S·β (Szenario I, Gl. 5, S. 60); für NS-Ströme und HS-Linksabbieger mit parallelen vortrittsberechtigten Fg-Strömen (Fussgängerstreifen auf HS-Armen, die der Strom nicht überfährt) gilt L = S·y_par + S·(1−y_par)·β (Szenario II, Gl. 6, S. 61) — der Streifen blockiert den HS-Konfliktverkehr und verschafft dem Strom Zeitfenster.
               Einfahrten: Arm als Mischstreifen (Annahme, analog SN 640 022, Ziff. 13, S. 7): x = Σ Q/L, L = ΣQ/x; nur β ist volumengewichtet.
               HS-Ströme ohne Fg: S = 1750, C = 0.5 (Rang 1). Wer Fg Vortritt gewährt, HS-Linksabbieger und NS-Ströme: S = 1650, C = 1 (Tab. 26, S. 68).
             </div>
+            </>}
 
           </div>
         </div>
-      </div>
+      </div>}
 
-      <LegendBox items={LEGEND_ITEMS} />
+      <HilfeUnten rechner="vss308" legende={LEGEND_ITEMS} quellen={karte?.quellen} />
 
-      <footer style={{ fontSize: 11, color: '#9ca3af', textAlign: 'center', marginTop: 24, lineHeight: 2 }}>
-        <div>
-          Berechnung nach «Verkehrsablauf an ungesteuerten Knoten innerorts unter Berücksichtigung
-          der verschiedenen Verkehrsarten; Ermittlung repräsentativer Richtwerte und Zusammenhänge»
-          (2015) und «Verkehrsqualität und Leistungsfähigkeit von komplexen ungesteuerten Knoten:
-          Analytisches Schätzverfahren» (2009).
-          Die Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.
-        </div>
-        <div>
-          © 2026 pnfzygrzgf-svg · Quellcode:{' '}
-          <a href="https://github.com/pnfzygrzgf-svg/KnotenCheck"
-             target="_blank" rel="noopener noreferrer"
-             style={{ color: '#9ca3af', textDecoration: 'underline' }}>
-            GitHub
-          </a>
-          {' '}· Lizenz:{' '}
-          <a href="https://www.gnu.org/licenses/agpl-3.0.html"
-             target="_blank" rel="noopener noreferrer"
-             style={{ color: '#9ca3af', textDecoration: 'underline' }}>
-            AGPL-3.0
-          </a> (Code),{' '}
-          <a href="https://creativecommons.org/licenses/by-sa/4.0/deed.de"
-             target="_blank" rel="noopener noreferrer"
-             style={{ color: '#9ca3af', textDecoration: 'underline' }}>
-            CC BY-SA 4.0
-          </a> (Inhalte)
-          {' '}— kommerzielle Nutzung untersagt.
-        </div>
-      </footer>
+      <RechnerFuss>
+        Berechnung nach «Verkehrsablauf an ungesteuerten Knoten innerorts unter Berücksichtigung
+        der verschiedenen Verkehrsarten; Ermittlung repräsentativer Richtwerte und Zusammenhänge»
+        (2015) und «Verkehrsqualität und Leistungsfähigkeit von komplexen ungesteuerten Knoten:
+        Analytisches Schätzverfahren» (2009).
+        Die Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.
+      </RechnerFuss>
     </div>
 
-    {isActive && createPortal(
+    {isActive && fertig && createPortal(
       <div className="print-portal" style={{ padding: '14mm 16mm', background: '#fff',
                                              fontFamily: 'system-ui, Arial, sans-serif' }}>
         <VSS308PrintSheet
@@ -991,7 +973,6 @@ export default function VSS308App() {
       </div>,
       document.body
     )}
-    <Toast msg={toastMsg} />
     </>
   )
 }

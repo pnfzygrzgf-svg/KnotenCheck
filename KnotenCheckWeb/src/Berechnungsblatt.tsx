@@ -5,6 +5,8 @@ import type { CSSProperties } from 'react'
 import type { SN640022Result, SN640022StreamResult, LevelOfService } from './engine/types'
 import type { IntersectionConfiguration, ArmConfiguration } from './engine/armConfiguration'
 import { armLabel, armFactor, pctPW } from './engine/armConfiguration'
+import BerichtQuellen from './karte/BerichtQuellen'
+import type { BerichtQuelle } from './karte/rechner'
 import kreuzungSvg    from './assets/kreuzung.svg'
 import einmuendungSvg from './assets/einmuendung.svg'
 
@@ -119,9 +121,10 @@ interface Props {
   cfg: IntersectionConfiguration
   result: SN640022Result
   onClose: () => void
+  quellen?: readonly BerichtQuelle[]
 }
 
-export function Berechnungsblatt({ cfg, result, onClose }: Props) {
+export function Berechnungsblatt({ cfg, result, onClose, quellen = [] }: Props) {
   const is3      = cfg.arms.length === 3
   const armOrder = is3 ? ARM_ORDER_3 : ARM_ORDER_4
   const rang2    = result.streams.filter(s => s.rang === 2)
@@ -220,7 +223,7 @@ export function Berechnungsblatt({ cfg, result, onClose }: Props) {
                   <td style={TD}>{i === 0 ? lbl : ''}</td>
                   <td style={TDC}>{sd.num}</td>
                   <td style={TDC}>{sd.streifen}</td>
-                  <td style={TDC}>{arm.gradient.replace('±', '±')}</td>
+                  <td style={TDC}>{arm.gradient}</td>
                   <td style={{ ...TD, fontSize: 10 }}>{streamNote(sd, arm, armIdx)}</td>
                 </tr>
               ))
@@ -386,6 +389,8 @@ export function Berechnungsblatt({ cfg, result, onClose }: Props) {
           </div>
         </div>
 
+        <BerichtQuellen zeilen={quellen} />
+
       </div>{/* end berechnungsblatt */}
     </div>
   )
@@ -431,7 +436,7 @@ function BelastungenFall1({ cfg, armOrder }: {
       <tbody>
         {allStreams.map(({ armIdx, def }, i) => {
           const arm   = cfg.arms[armIdx]
-          const f     = armFactor(arm)
+          const f     = armFactor(arm) ?? 1
           const fzh   = streamFzh(def.num, cfg)
           const pwe   = fzh * f
           const lbl   = armLabel(armIdx)
@@ -486,7 +491,7 @@ function BelastungenFall2({ cfg, armOrder }: {
       <tbody>
         {allStreams.map(({ armIdx, def }, i) => {
           const arm   = cfg.arms[armIdx]
-          const f     = armFactor(arm)
+          const f     = armFactor(arm) ?? 1
           const fzh   = streamFzh(def.num, cfg)
           const mix   = arm.vehicleMix
           const pctpw = mix ? pctPW(mix) : 100

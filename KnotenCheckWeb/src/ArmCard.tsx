@@ -6,7 +6,7 @@ import type {
   ArmConfiguration, GradientCategory, VehicleCategoryMix,
 } from './engine/armConfiguration'
 import type { MixedLaneCombination } from './engine/types'
-import { NumInput, Row, SectionLabel, Ckbx, ToggleBtn } from './ui'
+import { LeereWahl, NumInput, Row, SectionLabel, Ckbx, ToggleBtn } from './ui'
 
 // ── Konstanten ─────────────────────────────────────────────────────────────────
 
@@ -97,9 +97,9 @@ export function MixedLaneHint({ index, arm, opposingHSSeparateLane }: {
 
   return (
     <div style={{ margin: '0 14px 10px', padding: '10px 12px', borderRadius: 6,
-                  background: '#f8fafc', border: '1px solid #e2e8f0', fontSize: 11,
-                  color: '#475569', lineHeight: 1.6 }}>
-      <div style={{ fontWeight: 600, color: '#334155', marginBottom: 6 }}>
+                  background: '#f8fafc', border: '1px solid var(--kachel-rand)', fontSize: 12,
+                  color: 'var(--text)', lineHeight: 1.6 }}>
+      <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>
         Was bedeuten die Optionen? (SN 640 022, Ziff. 13, S. 7)
       </div>
       <div style={{ marginBottom: 4 }}>
@@ -124,16 +124,15 @@ export function MixedLaneHint({ index, arm, opposingHSSeparateLane }: {
         </div>
       </div>
       {recommendation && (
-        <div style={{ marginTop: 6, padding: '8px 10px', borderRadius: 5,
-                      background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af' }}>
+        <div className="anleitung klein" style={{ marginTop: 6 }}>
           <span style={{ fontWeight: 700 }}>Empfehlung: {recommendation.combo}</span>
           <br />{recommendation.reason}
         </div>
       )}
       {!recommendation && (
-        <div style={{ marginTop: 4, color: '#64748b' }}>
+        <div style={{ marginTop: 4, color: 'var(--text-muted)' }}>
           <strong>Standard:</strong> Keine besonderen geometrischen Bedingungen erkannt.
-          Wählen Sie «Alle» wenn der NS-Arm einstreifig ist — andernfalls entsprechend der Fahrstreifenmarkierung auf dem Arm {opposingArm} gegenüber.
+          Wähle «Alle», wenn der NS-Arm einstreifig ist — andernfalls entsprechend der Fahrstreifenmarkierung auf dem Arm {opposingArm} gegenüber.
         </div>
       )}
     </div>
@@ -162,7 +161,8 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
   const col  = isHS ? '#1d4ed8' : '#c2410c'
   const bg   = isHS ? '#eff6ff' : '#fff7ed'
   const bd   = isHS ? '#bfdbfe' : '#fed7aa'
-  const f    = armFactor(arm)
+  const f     = armFactor(arm)
+  const fText = f === null ? '–' : f.toFixed(2)
   const mix  = arm.vehicleMix
 
   const upd = <K extends keyof ArmConfiguration>(k: K, v: ArmConfiguration[K]) =>
@@ -191,18 +191,18 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
   const showGeom   = showHSGeom || showLeftLane || showNSGeom
 
   return (
-    <div style={{ border: `1px solid ${bd}`, borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
+    <div style={{ border: `1px solid ${bd}`, borderRadius: 12, overflow: 'hidden', background: '#fff' }}>
 
       {/* Kopfzeile */}
       <div style={{ background: bg, padding: '10px 14px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
           <div>
             <span style={{ fontWeight: 700, fontSize: 15, color: col }}>Arm {lbl}</span>
-            <span style={{ fontSize: 11, color: '#6b7280', marginLeft: 8 }}>
-              {Math.round(tot)} Fz/h · f = {f.toFixed(2)}
+            <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>
+              {Math.round(tot)} Fz/h · f = {fText}
             </span>
           </div>
-          <span style={{ fontSize: 11, color: col, background: isHS ? '#dbeafe' : '#ffedd5',
+          <span style={{ fontSize: 12, color: col, background: isHS ? '#dbeafe' : '#ffedd5',
                          padding: '2px 8px', borderRadius: 12, fontWeight: 600 }}>
             {isHS ? 'Hauptstrasse' : 'Nebenstrasse'}
           </span>
@@ -212,7 +212,7 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
           placeholder="Strassenname"
           style={{ width: '100%', padding: '3px 8px', borderRadius: 4,
                    border: `1px solid ${bd}`, fontSize: 12,
-                   background: '#ffffffaa', color: '#374151' }} />
+                   background: '#ffffffaa', color: 'var(--text)' }} />
       </div>
 
       {/* Verkehrsmengen */}
@@ -220,13 +220,13 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
       {movements.map(m => (
         <Row key={m.key} label={m.label}>
           <NumInput value={arm[m.key] as number} onChange={v => upd(m.key, v)} live={live} />
-          <span style={{ fontSize: 11, color: '#9ca3af', width: 30 }}>Fz/h</span>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 30 }}>Fz/h</span>
         </Row>
       ))}
 
       {geometryLocked && (
-        <div style={{ padding: '6px 14px', fontSize: 11, color: '#9ca3af',
-                      borderTop: '1px solid #f3f4f6' }}>
+        <div style={{ padding: '6px 14px', fontSize: 12, color: 'var(--text-muted)',
+                      borderTop: '1px solid var(--kachel-rand)' }}>
           Neigung &amp; Geometrie aus Basis-Konfiguration
         </div>
       )}
@@ -234,27 +234,27 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
       {!geometryLocked && (<>
       {/* Umrechnung in PWE/h — Ziffer 8 (Fall 1 / Fall 2) */}
       <SectionLabel title="Umrechnung der Verkehrsbelastungen in PWE/h der einzelnen Nebenströme" />
-      <div style={{ padding: '8px 14px 6px', borderBottom: '1px solid #f3f4f6' }}>
+      <div style={{ padding: '8px 14px 6px', borderBottom: '1px solid var(--kachel-rand)' }}>
         <div style={{ display: 'flex', gap: 6 }}>
-          <ToggleBtn small active={mix === undefined}
-            onClick={() => upd('vehicleMix', undefined)}>
+          <ToggleBtn small active={arm.fall === 1}
+            onClick={() => onChange({ ...arm, fall: 1, vehicleMix: undefined })}>
             Fall 1 — Kategorien unbekannt
           </ToggleBtn>
-          <ToggleBtn small active={mix !== undefined}
-            onClick={() => upd('vehicleMix', mix ?? { pctLW: 0, pctLZ: 0, pctMR: 0, pctFR: 0 })}>
+          <ToggleBtn small active={arm.fall === 2}
+            onClick={() => onChange({ ...arm, fall: 2, vehicleMix: mix ?? { pctLW: 0, pctLZ: 0, pctMR: 0, pctFR: 0 } })}>
             Fall 2 — Kategorien bekannt
           </ToggleBtn>
         </div>
-        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 5 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 5 }}>
           Fall 1: f pauschal nach Tab. 1. · Fall 2: f je Fahrzeugkategorie nach Tab. 2 (beide Ziff. 8, S. 4).
           In beiden Fällen ist die Neigung massgebend.
-          {mix && <> <strong style={{ color: '#6b7280' }}>Annahme:</strong> Die Anteile gelten für
+          {mix && <> <strong style={{ color: 'var(--text-muted)' }}>Annahme:</strong> Die Anteile gelten für
           alle Ströme dieses Arms; die Norm rechnet je Strom.</>}
         </div>
       </div>
       <Row label="Neigung der Zufahrt"
-           sub={`in Fahrtrichtung zum Knoten · f = ${f.toFixed(2)} (${mix ? 'Fall 2, Tab. 2' : 'Fall 1, Tab. 1'})`}>
-        <select value={arm.gradient}
+           sub={`in Fahrtrichtung zum Knoten · f = ${fText}${arm.fall ? ` (${arm.fall === 2 ? 'Fall 2, Tab. 2' : 'Fall 1, Tab. 1'})` : ''}`}>
+        <select value={arm.gradient ?? ''}
           onChange={e => {
             const g = e.target.value as GradientCategory
             // FR (Fahrräder) ist nur bei ±0 % definiert (Tab. 2) — beim Verlassen zurücksetzen,
@@ -264,8 +264,9 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
             else
               upd('gradient', g)
           }}
-          style={{ fontSize: 13, padding: '3px 6px', borderRadius: 4,
-                   border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer' }}>
+          style={{ fontSize: 14, padding: '3px 6px', borderRadius: 4,
+                   border: '1px solid var(--border)', background: '#fff', cursor: 'pointer' }}>
+          {arm.gradient === null && <LeereWahl />}
           {GRADIENT_OPTIONS.map(o => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
@@ -281,14 +282,14 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
           ]).map(r => (
             <Row key={r.key} label={r.label}>
               <NumInput value={mix[r.key]} onChange={v => updMix(r.key, v)} min={0} max={100} width={60} live={live} />
-              <span style={{ fontSize: 11, color: '#9ca3af', width: 16 }}>%</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 16 }}>%</span>
             </Row>
           ))}
           <Row label="PW – Personenwagen" sub="Ergibt sich aus den übrigen Anteilen">
-            <span style={{ fontSize: 13, fontWeight: 600, color: pwOk ? '#374151' : '#dc2626' }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: pwOk ? 'var(--text)' : '#dc2626' }}>
               {pw !== null ? Math.round(pw) : 0} %
             </span>
-            {!pwOk && <span style={{ fontSize: 11, color: '#dc2626', marginLeft: 4 }}>Summe &gt; 100 %</span>}
+            {!pwOk && <span style={{ fontSize: 12, color: '#dc2626', marginLeft: 4 }}>Summe &gt; 100 %</span>}
           </Row>
         </>
       )}
@@ -296,8 +297,8 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
       {/* Massgebende Hauptstrombelastung (Ziffer 7) — Fussnoten je Knotentyp */}
       {showGeom && (<>
       <SectionLabel title="Massgebende Hauptstrombelastung (Ziff. 7, S. 3)" />
-      <div style={{ padding: '7px 14px', fontSize: 11, color: '#9ca3af', lineHeight: 1.5,
-                    borderBottom: '1px solid #f3f4f6' }}>
+      <div style={{ padding: '7px 14px', fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5,
+                    borderBottom: '1px solid var(--kachel-rand)' }}>
         Bauliche Merkmale (Fussnoten 1–4, S. 3) bestimmen, welche Hauptströme in die massgebende
         Konfliktbelastung qpi eingehen — jede aktivierte Option senkt qpi und erhöht damit die
         Leistungsfähigkeit.
@@ -326,7 +327,7 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
             <Row label="Belastung rechter Fahrstreifen">
               <NumInput value={arm.rightLaneVolume} onChange={v => upd('rightLaneVolume', v)} live={live}
                 max={arm.straightVolume} />
-              <span style={{ fontSize: 11, color: '#9ca3af', width: 30 }}>Fz/h</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 30 }}>Fz/h</span>
             </Row>
           )}
           </>)}
@@ -347,9 +348,9 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
           )}
           {isNS4arm && !hideMixedLane && (
             <>
-              <div style={{ padding: '7px 14px 4px', borderBottom: '1px solid #f3f4f6' }}>
-                <div style={{ fontSize: 13, color: '#374151' }}>Mischstreifen-Kombination</div>
-                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>
+              <div style={{ padding: '7px 14px 4px', borderBottom: '1px solid var(--kachel-rand)' }}>
+                <div style={{ fontSize: 14, color: 'var(--text)' }}>Mischstreifen-Kombination</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>
                   Welche NS-Ströme teilen dieselbe Wartelinie (Ziff. 13, S. 7)
                 </div>
               </div>
@@ -357,15 +358,15 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
                 <div key={o.value} onClick={() => upd('mixedLaneCombination', o.value)}
                   style={{ display: 'flex', alignItems: 'center', gap: 10,
                            padding: '6px 14px', cursor: 'pointer',
-                           borderBottom: '1px solid #f3f4f6',
+                           borderBottom: '1px solid var(--kachel-rand)',
                            background: arm.mixedLaneCombination === o.value ? '#f0f9ff' : '#fff' }}>
                   <input type="radio" readOnly checked={arm.mixedLaneCombination === o.value}
                     style={{ flexShrink: 0, accentColor: '#1e3a5f' }} />
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: arm.mixedLaneCombination === o.value ? 600 : 400 }}>
+                    <div style={{ fontSize: 14, fontWeight: arm.mixedLaneCombination === o.value ? 600 : 400 }}>
                       {index === 2 ? o.labelB : o.labelD}
                     </div>
-                    <div style={{ fontSize: 11, color: '#9ca3af' }}>{o.desc}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{o.desc}</div>
                   </div>
                 </div>
               ))}

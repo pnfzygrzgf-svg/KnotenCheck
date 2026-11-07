@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import type { LevelOfService } from './engine/types'
-import { C, LOS_COLOR, LOS_BG, utilizationColor } from './uiHelpers'
+import { LOS_COLOR, LOS_BG, utilizationColor } from './uiHelpers'
 
 // ── Kleine Hilfskomponenten ────────────────────────────────────────────────────
 
@@ -28,7 +28,7 @@ export function NumInput({ value, onChange, min = 0, max = 9999, width = 72, liv
   if (value !== synced) { setSynced(value); setRaw(value === 0 ? '' : String(value)) }
   return (
     <input type="number" inputMode="decimal" min={min} max={max}
-      value={raw} placeholder="0"
+      value={raw}
       onChange={e => {
         setRaw(e.target.value)
         if (live && e.target.value !== '') {
@@ -40,17 +40,30 @@ export function NumInput({ value, onChange, min = 0, max = 9999, width = 72, liv
         setRaw(n === 0 ? '' : String(n))
         onChange(n)
       }}
-      style={{ width, textAlign: 'right', padding: '3px 6px', borderRadius: 4,
-               border: '1px solid #d1d5db', fontSize: 13 }}
+      style={{ width, textAlign: 'right', padding: '3px 6px' }}
     />
+  )
+}
+
+/** Leere Wahl einer Auswahlliste, solange nichts gewählt ist */
+export function LeereWahl() {
+  return <option value="" disabled>wählen …</option>
+}
+
+/** Steht anstelle des Ergebnisses, solange Angaben fehlen */
+export function OffeneAngaben({ liste }: { liste: string[] }) {
+  return (
+    <div style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.6, padding: '12px 8px', textAlign: 'left' }}>
+      <strong style={{ color: 'var(--text)' }}>Für die Berechnung fehlt noch:</strong>
+      <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{liste.map(x => <li key={x}>{x}</li>)}</ul>
+    </div>
   )
 }
 
 export function SectionLabel({ title }: { title: string }) {
   return (
-    <div style={{ padding: '5px 14px', fontSize: 11, fontWeight: 700, letterSpacing: '0.06em',
-                  color: '#6b7280', background: '#f9fafb', borderBottom: '1px solid #f0f0f0',
-                  textTransform: 'uppercase' }}>
+    <div style={{ padding: '5px 14px', fontSize: 12, fontWeight: 700, color: 'var(--text)',
+                  background: '#f8fafc', borderBottom: '1px solid var(--kachel-rand)' }}>
       {title}
     </div>
   )
@@ -59,10 +72,10 @@ export function SectionLabel({ title }: { title: string }) {
 export function Row({ label, sub, children }: { label: string; sub?: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '7px 14px', borderBottom: '1px solid #f3f4f6' }}>
+                  padding: '7px 14px', borderBottom: '1px solid var(--kachel-rand)' }}>
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 13, color: '#374151' }}>{label}</div>
-        {sub && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>{sub}</div>}
+        <div style={{ color: 'var(--text)' }}>{label}</div>
+        {sub && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>{sub}</div>}
       </div>
       {children}
     </div>
@@ -73,37 +86,29 @@ export function Ckbx({ checked, onChange }: { checked: boolean; onChange: (v: bo
   return (
     <input type="checkbox" checked={checked}
       onChange={e => onChange(e.target.checked)}
-      style={{ width: 16, height: 16, cursor: 'pointer', flexShrink: 0, accentColor: '#1e3a5f' }}
+      style={{ width: 16, height: 16, cursor: 'pointer', flexShrink: 0 }}
     />
   )
 }
 
-// Umschalt-Knopf (Pill): aktiv = Marine, inaktiv = grau.
+// Umschalt-Knopf: aktiv in der Produktfarbe, inaktiv als Zweitknopf.
 // small: kompakte Variante für dichte Leisten (Tabs, Parameter-Auswahl).
 export function ToggleBtn({ active, onClick, children, small }: {
   active: boolean; onClick: () => void; children: React.ReactNode; small?: boolean
 }) {
   return (
-    <button onClick={onClick}
-      style={{ padding: small ? '3px 10px' : '5px 18px', borderRadius: small ? 5 : 6,
-               fontSize: small ? 12 : 13, cursor: 'pointer',
-               fontWeight: active ? 700 : 400,
-               background: active ? C.primary : C.bgSubtle,
-               color: active ? '#fff' : C.text,
-               border: active ? `1px solid ${C.primary}` : `1px solid ${C.border}` }}>
+    <button onClick={onClick} className={`knopf${active ? '' : ' zweit'}${small ? ' klein' : ''}`}>
       {children}
     </button>
   )
 }
 
-// Sekundär-Knopf der Werkzeugleiste (Speichern / Laden)
+// Sekundär-Knopf der Werkzeugleiste (Fall speichern, Fall laden)
 export function ToolbarBtn({ onClick, children }: {
   onClick: () => void; children: React.ReactNode
 }) {
   return (
-    <button onClick={onClick}
-      style={{ padding: '4px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
-               border: `1px solid ${C.border}`, background: C.bgToolbar, color: C.text }}>
+    <button onClick={onClick} className="knopf zweit">
       {children}
     </button>
   )

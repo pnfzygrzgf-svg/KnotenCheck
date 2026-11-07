@@ -18,6 +18,10 @@ Vibecoding. Don't trust, verify!
 | [LSA-Knoten](#lsa-knoten-vss-40-023a) | Knoten mit Lichtsignalanlage, freier Fahrstreifen- und Phasenplan | VSS 40 023a u. a. | Alpha |
 | [Simulation](#simulation) | Stochastische Simulation vorfahrtgeregelter Knoten: Wartezeit-Verteilungen statt Einzelwert | SN 640 022 · HBS 2015 · VSS 2011/308 | Beta |
 
+**Karte:** Knoten lassen sich auf der Karte wählen. Form, Arme, Namen und Hauptstrasse kommen als Vorschlag aus OpenStreetMap, dazu Neigung (swissALTI3D, in Bern DTM 2023), Fussgängerstreifen, Fahrstreifen und Tempo; alles ist zu prüfen. Der passende Rechner wird vorgeschlagen. Fussgängermengen gibt es in keiner Quelle, sie bleiben Handeingabe. Abbiegeströme bleiben ebenfalls Handeingabe, ausser man wählt ausdrücklich die Modellwerte des Bundes (NPVM) für die Morgen- oder Abendspitze; sie sind berechnet, nicht gezählt, und können stark abweichen. Modellwerte und lokale Zählwerte je Arm erscheinen neben den Eingaben als Vergleich, ohne Wirkung auf die Rechnung; der Schwerverkehrsanteil der Morgen- oder Abendspitze lässt sich ebenfalls ausdrücklich übernehmen. Links führen zum SichtweitenCheck, fgsCheck und VeloroutenCheck und von dort zurück.
+
+**Keine Startwerte:** Alle Felder beginnen leer, auch Auswahlen und Einstellungen. Das Ergebnis erscheint erst, wenn alle sichtbaren Angaben gesetzt sind; bis dahin nennt der Rechner, was fehlt. Leere Stromfelder zählen als kein Verkehr, ein nicht gesetztes Häkchen als nicht vorhanden.
+
 ## Lokal starten
 
 ```bash
@@ -27,18 +31,21 @@ npm run dev      # http://localhost:5173
 npx vitest run   # Unit-Tests gegen Norm-Beispiele
 ```
 
-Der Web-Rechner ist eine React/TypeScript/Vite-Anwendung. Die Rechenlogik liegt getrennt von der Oberfläche in `KnotenCheckWeb/src/engine/` (reine TypeScript-Module mit Unit-Tests gegen die Norm-Beispiele).
+Der Web-Rechner ist eine React/TypeScript/Vite-Anwendung. Die Rechenlogik liegt getrennt von der Oberfläche in `KnotenCheckWeb/src/engine/` (reine TypeScript-Module mit Unit-Tests gegen die Norm-Beispiele). Die Knotenerkennung in `KnotenCheckWeb/src/knotenkern/` ist eine wortgleiche Kopie aus dem SichtweitenCheck; `node scripts/knotenkern_holen.mjs` holt sie, `--pruefen` vergleicht sie mit der Quelle.
 
 ## Datenspeicherung
 
-Alle Berechnungen laufen vollständig im Browser. Nach dem Laden der Seite werden keine Daten gesendet — es gibt keinen Server, dem Eingaben oder Ergebnisse übermittelt werden.
+Alle Berechnungen laufen vollständig im Browser. Es gibt keinen Server, dem Eingaben oder Ergebnisse übermittelt werden.
 
 - **Eingaben** existieren nur im Arbeitsspeicher des Browsers und gehen beim Schliessen des Tabs verloren.
-- **Speichern / Laden** schreibt eine JSON-Datei auf den lokalen Rechner resp. liest von dort — kein Upload, kein Cloud-Speicher. Beim Laden werden fehlende oder ungültige Werte durch Standardwerte ersetzt; eine Datei eines anderen Rechners wird abgewiesen.
+- **Karte:** Erst wenn du sie öffnest, ruft sie Dienste auf: swisstopo (Kartenausschnitte, Suchbegriffe der Ortssuche, Linien der Arme für die Neigung, Rechteck um den Knoten für das Verkehrsmodell), Overpass (Koordinaten des Ausschnitts, OSM-Nummer des gewählten Knotens) und je nach Ort die Stadt Bern (Linien der Arme, Rechteck um den Knoten), der Kanton Zürich und die Stadt Luzern (Liste der Zählstellen, ohne Koordinaten des Knotens). Eingeschaltete Kartenebenen fragen für den Ausschnitt zusätzlich den Bund, geodienste.ch, Overpass und bei Tempo, Vortrittszeichen, Fussgängerstreifen, Lichtsignalen und Verkehrsmengen die amtlichen Dienste des Orts. Diese Dienste sehen dabei die IP-Adresse deines Geräts. Eingaben und Ergebnisse gehen nicht mit. Die Links in andere Rechner tragen nur Lage und OSM-Nummer. Eingeschaltete Kartenebenen fragen den sichtbaren Ausschnitt für Unfälle (ASTRA), Haltestellen (BAV), Tramgleise, Strassenklassen, Bauzonen, das Verkehrsmodell und Höhenkurven bei geo.admin.ch ab.
+- **Fall speichern / Fall laden** schreibt eine JSON-Datei auf den lokalen Rechner resp. liest von dort — kein Upload, kein Cloud-Speicher. Beim Laden bleiben fehlende oder ungültige Werte leer; in älteren Dateien gelten die Werte, mit denen sie gerechnet wurden. Eine Datei eines anderen Rechners wird abgewiesen.
 - **Nutzungsstatistik:** Seitenaufrufe werden mit GoatCounter gezählt (cookielos, ohne Speicherung der IP-Adresse, keine personenbezogenen Daten) — übermittelt wird nur ein anonymer Seitenaufruf, **keine** Eingaben oder Ergebnisse. GitHub Pages loggt zusätzlich serverseitig Zugriffe (IP, User-Agent), wie jeder Webserver.
 
 ## Versionen
 
+- **0.2.2** (7. November 2026): Darstellung an die anderen Rechner angeglichen: Startseite, Leiste mit Logo und Marke, gemeinsame Fusszeile, Schrift und Farben, gelbe Hinweise statt Kurzmeldungen, je Rechner «So funktioniert's», Legende, Grundlagen und Quellen sowie Datenschutz, Bedienung auf dem Handy. Tempo je Arm auch aus amtlichen Quellen; Abbiegeströme als eigene Wahl vor der Übernahme; Belastungstabelle nach Quelle gegliedert; die Karte behält den Knoten beim Wechsel in einen Rechner.
+- **0.2.1** (7. November 2026): Karte mit Ebenen für Unfälle, Haltestellen, Tempo, Vortritt, Fussgängerstreifen, Lichtsignale, Verkehrsmengen, amtliche Vermessung und Bundesdaten; Quellentabelle in den Druckblättern. Abbiegeströme des Modells NPVM als wählbarer Vorschlag für die Morgen- oder Abendspitze, berechnet und nicht gezählt; Tempo je Arm von Hand änderbar; Quellen bei den Armwerten.
 - **0.2.0** (6. November 2026): Rechnung korrigiert. Gesamt-QS ohne unbelastete Ströme; Knoten mit Fussgänger*innen mit C = 1 und S = 1650 für Hauptstrassenströme mit Vortrittspflicht; Kreiseltyp je Einfahrt; LSA-Rückstau nach den Normtabellen und Zwischenzeit-Vorgabe 5 s; Simulation mit Lückenprüfung nach Sperren, Hauptstrom je Fahrstreifen und Rückstaukopplung. Resultate können von früheren Berechnungen abweichen.
 - **0.1.0** (1. November 2026): Neubeginn des Verlaufs nach dem Lizenzwechsel.
 
@@ -59,7 +66,7 @@ Das Verfahren gilt für Einmündungen (drei Arme) und Kreuzungen (vier Arme).
 - Dreiecksinsel, separater Rechts- und Linksabbiegestreifen
 - Mischstreifen-Kombination für Nebenstrasse
 - Qualitätsstufen A–F
-- Berechnungsblatt (Druckansicht)
+- Bericht / PDF (Berechnungsblatt)
 
 **Was die Norm nicht berücksichtigt:** Die SN 640 022 berechnet ausschliesslich die Leistungsfähigkeit für **motorisierten Individualverkehr (MIV)**. Fussgänger*innen kommen im Berechnungsverfahren nicht vor. Wer die Qualität eines Knotens für den Fussverkehr beurteilen will, braucht andere Methoden — z. B. den Rechner [Ungesteuerter Knoten mit Fussgänger*innen](#ungesteuerter-knoten-mit-fussgängerinnen-vss-2011308).
 
@@ -394,7 +401,7 @@ Fussgänger*innen, die gemeinsam queren, blockieren ein Fahrzeug gleich lang wie
 S_Fg = 900 · ρ [Fg/h]
 ```
 
-Die Lagen in der letzten Spalte sind eine Annahme als Startwert; Tab. 9 (S. 37) nennt nur Anzahl, ρ und S.
+Die Lagen in der letzten Spalte sind eine Annahme als Richtwert; Tab. 9 (S. 37) nennt nur Anzahl, ρ und S.
 
 | ρ | S_Fg | Typische Situation (Annahme) |
 |---|---|---|
@@ -439,7 +446,7 @@ An einem Knoten mit Lichtsignalanlage (LSA) regelt die Signalisierung, wer wann 
 **Funktionen des Rechners:**
 - 3-armiger (T-Knoten) und 4-armiger Knoten
 - Fahrzeugkategorien
-- Zwischenzeit: Norm-Pauschale 5 s je Phase als Vorgabe, Staffelung nach zulässiger Geschwindigkeit als gekennzeichnete Annahme
+- Zwischenzeit wählbar: Norm-Pauschale 5 s je Phase oder Staffelung nach zulässiger Geschwindigkeit als gekennzeichnete Annahme
 - Freier Fahrstreifenplan: Ströme je Arm auf bis zu zwei Fahrstreifen aufteilbar
 - Freier Phasenplan: Fahrstreifen beliebig auf 2–5 Phasen verteilen
 - Fussgängerstreifen je Phase: Querungslänge als Eingabe
@@ -495,7 +502,7 @@ Ein überlappender Fahrstreifen zählt nicht zu ΣQ_krit (Ziff. 10.4.2, S. 9), u
 
 ### Schritt 4: Umlaufzeit Z und Zwischenzeit T_Z bestimmen
 
-Die **Zwischenzeit T_Z** (Verlustzeit zwischen zwei Grünphasen) setzt die VSS 40 023a pauschal mit **5 s pro Phase** an (Ziff. 11.2, S. 10, Grundlage der Tab. 2). Das ist die Vorgabe des Rechners. Die Norm lässt nach VSS 40 834 ermittelte Zwischenzeiten zu («In diesem Fall sind ΣtGr und Σλkrit entsprechend anzupassen»). Wählbar ist zusätzlich eine geschwindigkeitsabhängige Staffelung — eine **Annahme**, keine Normvorgabe, angelehnt an die Gelbzeiten der VSS 40 837 (Tab. 1: 2/3/4/5 s bei ≤30 / 40–50 / 60 / ≥70 km/h) zuzüglich rund einer Sekunde:
+Die **Zwischenzeit T_Z** (Verlustzeit zwischen zwei Grünphasen) setzt die VSS 40 023a pauschal mit **5 s pro Phase** an (Ziff. 11.2, S. 10, Grundlage der Tab. 2). Die Norm lässt nach VSS 40 834 ermittelte Zwischenzeiten zu («In diesem Fall sind ΣtGr und Σλkrit entsprechend anzupassen»). Wählbar ist zusätzlich eine geschwindigkeitsabhängige Staffelung — eine **Annahme**, keine Normvorgabe, angelehnt an die Gelbzeiten der VSS 40 837 (Tab. 1: 2/3/4/5 s bei ≤30 / 40–50 / 60 / ≥70 km/h) zuzüglich rund einer Sekunde:
 
 | v_zul | T_Z (Annahme) |
 |---|---|
@@ -623,7 +630,7 @@ tGrSum   = Z - n · T_Z
 qKritMax = (tGrSum / Z) · 1800 PWE/h
 ```
 
-Die Spalten p2/p3/p4 der Norm (tGrSum, lambdaSum, qKritMax) entsprechen dem Normfall T_Z = 5 s (Ziff. 11.2, S. 10: «pauschal 5 s pro Phase»), der Vorgabe des Rechners. Ist die Staffelung gewählt, bestimmt v_zul je Arm das T_Z (Annahme, angelehnt an die Gelbzeiten der VSS 40 837); es gilt knoteneinheitlich das Maximum, und qKritMax wird für dieses T_Z berechnet.
+Die Spalten p2/p3/p4 der Norm (tGrSum, lambdaSum, qKritMax) entsprechen dem Normfall T_Z = 5 s (Ziff. 11.2, S. 10: «pauschal 5 s pro Phase»). Ist die Staffelung gewählt, bestimmt v_zul je Arm das T_Z (Annahme, angelehnt an die Gelbzeiten der VSS 40 837); es gilt knoteneinheitlich das Maximum, und qKritMax wird für dieses T_Z berechnet.
 
 **Beispiel qKritMax bei 2 Phasen:**
 
@@ -710,7 +717,7 @@ Jede Querung wird je Lauf einmal gewürfelt und gilt für alle Ströme. Fussgän
 ```
 Häufigkeit:  λ = (fg / ρ) / 3600                              [Gruppen/s]
 Dauer:       t_block = Fahrbahnbreite / 0.80 m/s × (Mittelinsel ? 0.5 : 1)   [s]
-             Standard: 8 m → 10 s   (mit Mittelinsel 5 s)
+             Beispiel: 8 m → 10 s   (mit Mittelinsel 5 s)
 ```
 
 *Verkehrlich:* Quert eine Fussgängergruppe den Hauptstrassen-Streifen, muss die Fahrtrichtung davor anhalten. Für Ströme, die nur diese Richtung abwarten, ist das ein **Geschenk**: Während sie steht, entsteht eine erzwungene Lücke (sofern t_block ≥ t_c). Wer auch die Gegenrichtung abwartet, gewinnt nur einen Teil; wer den Streifen selbst überfährt, wird von derselben Sperrung angehalten und gewinnt nichts. Zwei Grössen bestimmen den Effekt getrennt: **Die Dauer** einer Sperre ist die Zeit, die Fussgänger*innen zum Queren brauchen — Fahrbahnbreite geteilt durch die Gehgeschwindigkeit 0.80 m/s (VSS 40 240, bewusst langsam für ältere Menschen und Menschen mit Behinderung). Die **Gruppengrösse ρ** verlängert die Sperre *nicht* (eine Gruppe quert gemeinsam), sondern macht Sperrungen *seltener*: Bei fg = 100 Fg/h und ρ = 1 gibt es 100 Sperrungen pro Stunde, bei ρ = 2 nur noch 50. Eine **Mittelinsel** halbiert die Sperrdauer, weil nur noch die halbe Fahrbahn am Stück gequert wird (Art. 47 Abs. 3 VRV). Standardmässig wird mit 8 m Fahrbahnbreite gerechnet (→ 10 s); alternativ lässt sich eine eigene Breite eingeben (ab 8.5 m weist die Norm VSS 40 241 eine Mittelinsel an).
@@ -912,5 +919,7 @@ Der Rechner ist frei nutzbar. Wer die Weiterentwicklung unterstützen möchte, k
 Code: **[GNU Affero General Public License v3.0](LICENSE)** (AGPL-3.0-only). Nutzung, Veränderung und Weitergabe sind erlaubt, auch kommerziell; wer den Code verändert oder in eigene Software einbaut und diese weitergibt oder über ein Netzwerk anbietet (etwa als Web-App), muss sie unter derselben Lizenz mit Quellcode zugänglich machen. Eigene Inhalte (Texte, Dokumentation, eigene Grafiken): **[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.de)**. Name und Logo sind ausgenommen; Überblick in [LICENSE-INHALTE.md](LICENSE-INHALTE.md). Bis zum 31.10.2026 galt CC BY-NC 4.0.
 
 Copyright (C) 2026 pnfzygrzgf-svg
+
+Die Dateien in `KnotenCheckWeb/src/knotenkern/` stammen aus dem SichtweitenCheck und stehen unter der MIT-Lizenz (`LICENSE` dort). Dasselbe gilt für `KnotenCheckWeb/src/kartenbaustein/` aus dem fgsCheck. Die Karte nutzt [Leaflet](https://leafletjs.com/) (BSD-2-Clause). Karte und Luftbild © swisstopo, Knoten und Arme © OpenStreetMap-Mitwirkende (ODbL).
 
 Die Berechnungen dienen der Plausibilisierung. Sie ersetzen keine Überprüfung durch eine Fachperson.

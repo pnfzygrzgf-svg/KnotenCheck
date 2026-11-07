@@ -1,7 +1,7 @@
 // Eingabemodell — Port von ArmConfiguration.swift + IntersectionConfiguration.swift
 
 import type { MixedLaneCombination, SN640022LaneFlags } from './types'
-import { conform, conformFixed, oneOf } from './conform'
+import { conform, conformFixed, oneOf, wahl } from './conform'
 
 // ── Neigungsklassen (Tab. 1) ──────────────────────────────────────────────────
 
@@ -53,32 +53,36 @@ export interface ArmConfiguration {
   leftVolume: number      // Linksabbieger [Fz/h]
   straightVolume: number  // Geradeaus [Fz/h]
   rightVolume: number     // Rechtsabbieger [Fz/h]
-  gradient: GradientCategory
-  vehicleMix?: VehicleCategoryMix         // null = Fall 1
+  gradient: GradientCategory | null       // null = noch nicht gewählt
+  fall: 1 | 2 | null                      // Ziffer 8: Fall 1 ohne, Fall 2 mit Kategorien; null = noch nicht gewählt
+  vehicleMix?: VehicleCategoryMix         // nur Fall 2
   hasSeparateTurnLane: boolean            // Fn 1
   rightLaneVolume?: number                // Fn 2
   hasRightTurnTriangleIsland: boolean     // Fn 3/4
-  hasLeftTurnLane?: boolean               // Ziffer 14 / F22: separater HS-Linksabbiegestreifen (Default: vorhanden)
-  mixedLaneCombination: MixedLaneCombination  // nur NS-Arme in Kreuzung
+  hasLeftTurnLane?: boolean               // Ziffer 14 / F22: separater HS-Linksabbiegestreifen (fehlt nur in älteren Dateien: vorhanden)
+  mixedLaneCombination: MixedLaneCombination | null  // nur NS-Arme in Kreuzung; null = noch nicht gewählt
 }
 
-export function defaultArm(isHS: boolean): ArmConfiguration {
+// Leerer Arm: Die Rechner beginnen ohne Startwerte
+export function defaultArm(): ArmConfiguration {
   return {
     id: crypto.randomUUID(),
     streetName: '',
-    leftVolume:     isHS ? 100 : 80,
-    straightVolume: isHS ? 400 : 0,
-    rightVolume:    isHS ? 100 : 80,
-    gradient: '±0%',
+    leftVolume: 0, straightVolume: 0, rightVolume: 0,
+    gradient: null,
+    fall: null,
     vehicleMix: undefined,
     hasSeparateTurnLane: false,
     rightLaneVolume: undefined,
     hasRightTurnTriangleIsland: false,
-    mixedLaneCombination: 'all',
+    hasLeftTurnLane: false,
+    mixedLaneCombination: null,
   }
 }
 
-export function armFactor(arm: ArmConfiguration): number {
+// null, solange die Neigung fehlt
+export function armFactor(arm: ArmConfiguration): number | null {
+  if (arm.gradient === null) return null
   if (arm.vehicleMix) return effectiveFactor(arm.vehicleMix, arm.gradient)
   return GRADIENT_F_FZ[arm.gradient]
 }
@@ -93,9 +97,9 @@ export interface IntersectionConfiguration {
 export function defaultIntersection(armCount: 3 | 4): IntersectionConfiguration {
   const arms: ArmConfiguration[] = []
   for (let i = 0; i < armCount; i++) {
-    arms.push(defaultArm(i < 2))
+    arms.push(defaultArm())
   }
-  return { name: 'Neuer Knoten', arms }
+  return { name: '', arms }
 }
 
 // ── Geladene Daten absichern ──────────────────────────────────────────────────
@@ -104,12 +108,15 @@ const MIX_TEMPLATE: VehicleCategoryMix = { pctLW: 0, pctLZ: 0, pctMR: 0, pctFR: 
 const GRADIENTS = Object.keys(GRADIENT_F_FZ) as GradientCategory[]
 const MIXED_COMBINATIONS: readonly MixedLaneCombination[] = ['leftAndThrough', 'throughAndRight', 'all']
 
-// Arme aus einer Datei auf genau armCount Arme mit gültigen Werten bringen
-export function conformArms(value: unknown, armCount: 3 | 4): ArmConfiguration[] {
-  return conformFixed(defaultIntersection(armCount).arms, value).map(a => ({
+// Arme aus einer Datei auf genau armCount Arme mit gültigen Werten bringen. leereFelder: siehe saveLoad.ts
+export function conformArms(value: unknown, armCount: 3 | 4, leereFelder = false): ArmConfiguration[] {
+  // Der Linksabbiegestreifen hat keinen Vorlagewert: Fehlt er in einer älteren Datei, gilt «vorhanden»
+  const vorlage = defaultIntersection(armCount).arms.map(a => ({ ...a, hasLeftTurnLane: undefined }))
+  return conformFixed(vorlage, value).map(a => ({
     ...a,
-    gradient: oneOf(GRADIENTS, a.gradient, '±0%'),
-    mixedLaneCombination: oneOf(MIXED_COMBINATIONS, a.mixedLaneCombination, 'all'),
+    gradient: leereFelder ? wahl(GRADIENTS, a.gradient) : oneOf(GRADIENTS, a.gradient, '±0%'),
+    fall: leereFelder ? wahl<1 | 2>([1, 2], a.fall) : a.vehicleMix ? 2 : 1,
+    mixedLaneCombination: leereFelder ? wahl(MIXED_COMBINATIONS, a.mixedLaneCombination) : oneOf(MIXED_COMBINATIONS, a.mixedLaneCombination, 'all'),
     vehicleMix: a.vehicleMix ? conform(MIX_TEMPLATE, a.vehicleMix) : undefined,
     rightLaneVolume: typeof a.rightLaneVolume === 'number' && a.rightLaneVolume >= 0
       ? a.rightLaneVolume : undefined,
@@ -122,12 +129,26 @@ export function conformIntersection(value: unknown): IntersectionConfiguration {
   const armCount = Array.isArray(src.arms) && src.arms.length === 4 ? 4 : 3
   return {
     name: typeof src.name === 'string' ? src.name : '',
-    arms: conformArms(src.arms, armCount),
+    arms: conformArms(src.arms, armCount, src.leereFelder === true),
   }
 }
 
 export function armLabel(index: number): string {
   return ['A', 'C', 'B', 'D', 'E'][index] ?? `${index + 1}`
+}
+
+// Angaben der Arme, die für die Rechnung noch fehlen. Leere Stromfelder zählen als kein Verkehr,
+// mindestens ein Strom ist nötig. mischstreifen = false: Das Feld ist ausgeblendet (Simulation).
+export function offeneArmAngaben(arms: ArmConfiguration[], { mischstreifen = true, verkehr = true } = {}): string[] {
+  const aus: string[] = []
+  if (verkehr && !arms.some(a => a.leftVolume + a.straightVolume + a.rightVolume > 0)) aus.push('Verkehrsmengen')
+  arms.forEach((a, i) => {
+    const arm = `Arm ${armLabel(i)}`
+    if (a.fall === null) aus.push(`${arm}: Fall 1 oder Fall 2`)
+    if (a.gradient === null) aus.push(`${arm}: Neigung`)
+    if (mischstreifen && arms.length === 4 && i >= 2 && a.mixedLaneCombination === null) aus.push(`${arm}: Mischstreifen-Kombination`)
+  })
+  return aus
 }
 
 // ── SN 640 022 Lane-Flags aus Konfiguration ───────────────────────────────────
@@ -156,7 +177,9 @@ export function toSNLaneFlags(cfg: IntersectionConfiguration): SN640022LaneFlags
 export function toSNVolumes(cfg: IntersectionConfiguration): number[][] | null {
   const n = cfg.arms.length
   if (n !== 3 && n !== 4) return null
-  const f = cfg.arms.map(armFactor)
+  const faktoren = cfg.arms.map(armFactor)
+  if (faktoren.some(x => x === null)) return null
+  const f = faktoren as number[]
   const v: number[][] = Array.from({ length: n }, () => Array(n).fill(0))
 
   if (n === 3) {

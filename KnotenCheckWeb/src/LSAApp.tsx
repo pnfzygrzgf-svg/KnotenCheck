@@ -1,22 +1,29 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
+import UebernahmeHinweis from './karte/UebernahmeHinweis'
+import BerichtQuellen from './karte/BerichtQuellen'
+import BelastungsVergleich from './karte/BelastungsVergleich'
+import { querschnitteKnoten } from './karte/vergleich'
+import { kartenBezugAus, kartenBezugLesen, lsaTempo, type KnotenUebernahme } from './karte/rechner'
 import { createPortal } from 'react-dom'
 import {
   calculateLSAV2, defaultLanesAndPhases, armStreamIds, armMovements, STREAM_LABELS, suggestPhasePlan,
   tzFor, tzFromSpeed, tzModeFromFile, Z_PRACTICAL, TZ_NORM,
 } from './engine/lsaCalculatorV2'
 import { exportTool, importTool } from './saveLoad'
-import { conform, conformFixed, oneOf } from './engine/conform'
+import { conform, conformFixed, oneOf, wahl } from './engine/conform'
+import { offenLsa } from './engine/offeneAngaben'
 import { useIsActiveModule } from './activeModule'
-import { Toast } from './Toast'
+import { Meldung } from './Meldung'
 import { LOS_BG, LOS_COLOR, utilizationColor } from './uiHelpers'
-import { useToast } from './useToast'
-import { LegendBox, type LegendItem } from './LegendBox'
-import { LOSBadge, NumInput } from './ui'
+import { useMeldung } from './useMeldung'
+import { HilfeUnten, SoFunktionierts, type LegendItem } from './Hilfe'
+import { LOSBadge, NumInput, OffeneAngaben } from './ui'
 import type {
   Lane, PhaseDefinition, LevelOfService, LSAResultV2, OverlapIssue, TzMode, DesignSpeed,
 } from './engine/lsaCalculatorV2'
 import lsa4ArmSvg from './assets/LSA_4_Arm.svg?url'
 import lsa3ArmSvg from './assets/LSA_3_Arm.svg?url'
+import { RechnerFuss } from './Fusszeile'
 
 // ── Fahrzeugzusammensetzung ───────────────────────────────────────────────────
 interface VehicleMix { pctLW: number; pctMR: number; pctFR: number }
@@ -29,7 +36,7 @@ function armFactor(m?: VehicleMix): number {
 
 // ── FGS-Konfiguration ─────────────────────────────────────────────────────────
 interface FGSArmConfig { enabled: boolean; volume: number; length: number }
-const DEFAULT_FGS: FGSArmConfig = { enabled: false, volume: 0, length: 6 }
+const DEFAULT_FGS: FGSArmConfig = { enabled: false, volume: 0, length: 0 }
 
 // ── UI-Arm-Eingabe ────────────────────────────────────────────────────────────
 interface UIArmInput { name: string; left: number; straight: number; right: number; mix?: VehicleMix; vDesign?: DesignSpeed }
@@ -39,17 +46,7 @@ function toEngineArm(a: UIArmInput): ArmInput {
   return { name: a.name, left: Math.round(a.left*f), straight: Math.round(a.straight*f), right: Math.round(a.right*f) }
 }
 function defaultArms(n: 3|4): UIArmInput[] {
-  if (n === 3) return [
-    { name:'', left:0, straight:0, right:0, vDesign:50 },
-    { name:'', left:0, straight:0, right:0, vDesign:50 },
-    { name:'', left:0, straight:0, right:0, vDesign:50 },
-  ]
-  return [
-    { name:'', left:0, straight:0, right:0, vDesign:50 },
-    { name:'', left:0, straight:0, right:0, vDesign:50 },
-    { name:'', left:0, straight:0, right:0, vDesign:50 },
-    { name:'', left:0, straight:0, right:0, vDesign:50 },
-  ]
+  return Array.from({ length: n }, () => ({ name:'', left:0, straight:0, right:0 }))
 }
 
 // Ströme → Volumen aus Arm-Eingaben und FGS-Konfiguration
@@ -118,17 +115,17 @@ function StepBadge({ n, label }: { n:number|string; label:string }) {
   return (
     <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
       <div style={{ minWidth:26, height:26, borderRadius:13, background:'#1e3a5f',
-                    color:'#fff', fontSize:11, fontWeight:800, padding:'0 5px',
+                    color:'#fff', fontSize:12, fontWeight:800, padding:'0 5px',
                     display:'flex', alignItems:'center', justifyContent:'center',
                     whiteSpace:'nowrap' }}>{n}</div>
-      <span style={{ fontSize:15, fontWeight:700, color:'#1e3a5f' }}>{label}</span>
+      <span style={{ fontSize:15, fontWeight:700, color:'var(--accent)' }}>{label}</span>
     </div>
   )
 }
 
 // ── ArmCard ───────────────────────────────────────────────────────────────────
 function ArmCard({ arm, index, armCount, tzMode, onChange }: {
-  arm:UIArmInput; index:number; armCount:3|4; tzMode:TzMode; onChange:(a:UIArmInput)=>void
+  arm:UIArmInput; index:number; armCount:3|4; tzMode:TzMode|null; onChange:(a:UIArmInput)=>void
 }) {
   const labels = ['A','C','B','D']
   const lbl = labels[index]
@@ -139,41 +136,41 @@ function ArmCard({ arm, index, armCount, tzMode, onChange }: {
   const upd = <K extends keyof UIArmInput>(k:K, v:UIArmInput[K]) => onChange({...arm,[k]:v})
   const updMix = (k:keyof VehicleMix, v:number) => arm.mix && onChange({...arm, mix:{...arm.mix,[k]:v}})
   return (
-    <div style={{ background:'#fff', borderRadius:10, border:`1.5px solid ${bd}`, overflow:'hidden' }}>
+    <div style={{ background:'#fff', borderRadius:12, border:`1.5px solid ${bd}`, overflow:'hidden' }}>
       <div style={{ background:bg, borderBottom:`1px solid ${bd}`,
                     padding:'8px 12px', display:'flex', alignItems:'center', gap:8 }}>
-        <span style={{ fontWeight:800, fontSize:16, color:col, background:'#fff',
+        <span style={{ fontWeight:800, fontSize:15, color:col, background:'#fff',
                        border:`1.5px solid ${bd}`, borderRadius:5,
                        minWidth:26, textAlign:'center', padding:'1px 5px' }}>{lbl}</span>
         <input type="text" placeholder="Name (optional)" value={arm.name}
           onChange={e => upd('name', e.target.value)}
-          style={{ flex:1, border:'none', background:'transparent', fontSize:13,
+          style={{ flex:1, border:'none', background:'transparent', fontSize:14,
                    fontWeight:600, color:col, outline:'none' }} />
       </div>
-      <div style={{ fontSize:11, fontWeight:700, letterSpacing:'0.06em', color:'#6b7280',
-                    background:'#f9fafb', borderBottom:'1px solid #f0f0f0',
+      <div style={{ fontSize:12, fontWeight:700, letterSpacing:'0.06em', color:'var(--text-muted)',
+                    background:'#f9fafb', borderBottom:'1px solid var(--kachel-rand)',
                     padding:'4px 12px', textTransform:'uppercase' }}>Fz/h</div>
       {moves.map(m => {
         const num = m.id.replace('q','')
         return (
           <div key={m.id} style={{ display:'flex', alignItems:'center', gap:8,
-                                   padding:'6px 12px', borderBottom:'1px solid #f3f4f6' }}>
-            <div style={{ flex:1, fontSize:13, color:'#374151' }}>{num}: {m.label}</div>
+                                   padding:'6px 12px', borderBottom:'1px solid var(--kachel-rand)' }}>
+            <div style={{ flex:1, fontSize:14, color:'var(--text)' }}>{num}: {m.label}</div>
             <NumInput live value={(arm[m.direction as keyof UIArmInput] as number)??0}
               onChange={v => upd(m.direction as keyof UIArmInput, v)} />
           </div>
         )
       })}
       {/* Fahrzeugzusammensetzung */}
-      <div style={{ padding:'5px 12px', borderBottom:'1px solid #f3f4f6',
-                    display:'flex', alignItems:'center', gap:8, fontSize:12, color:'#6b7280' }}>
+      <div style={{ padding:'5px 12px', borderBottom:'1px solid var(--kachel-rand)',
+                    display:'flex', alignItems:'center', gap:8, fontSize:12, color:'var(--text-muted)' }}>
         <input type="checkbox" checked={arm.mix!==undefined}
           onChange={e => onChange({...arm, mix: e.target.checked
-            ? {pctLW:5,pctMR:2,pctFR:0} : undefined})}
+            ? {pctLW:0,pctMR:0,pctFR:0} : undefined})}
           style={{ cursor:'pointer', accentColor:'#1e3a5f' }} />
         Fahrzeugmix
         {arm.mix && (
-          <span style={{ marginLeft:'auto', fontWeight:600, color:'#1e3a5f' }}>
+          <span style={{ marginLeft:'auto', fontWeight:600, color:'var(--accent)' }}>
             f = {armFactor(arm.mix).toFixed(3)}
           </span>
         )}
@@ -182,31 +179,28 @@ function ArmCard({ arm, index, armCount, tzMode, onChange }: {
         <div style={{ padding:'4px 12px 8px', display:'flex', flexDirection:'column', gap:3 }}>
           {([['pctLW','LW',2],['pctMR','MR',0.5],['pctFR','FR',0.25]] as const).map(([k,lbl2,f2]) => (
             <div key={k} style={{ display:'flex', alignItems:'center', gap:6, fontSize:12 }}>
-              <span style={{ width:100, color:'#6b7280' }}>{lbl2} (f={f2})</span>
+              <span style={{ width:100, color:'var(--text-muted)' }}>{lbl2} (f={f2})</span>
               <NumInput live value={arm.mix![k]} onChange={v => updMix(k,v)} max={100} width={52} />
-              <span style={{ color:'#9ca3af' }}>%</span>
+              <span style={{ color:'var(--text-muted)' }}>%</span>
             </div>
           ))}
-          <div style={{ fontSize:11, color:'#9ca3af', marginTop:2 }}>
+          <div style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>
             PW: {pctPW(arm.mix).toFixed(0)}%
           </div>
         </div>
       )}
       {/* Annahme: zulässige Geschwindigkeit → Zwischenzeit T_Z (angelehnt an Gelbzeiten VSS 40 837 Ziffer 16, Seite 5) */}
       {tzMode === 'staffel' && <div style={{ padding:'5px 12px 8px', display:'flex', alignItems:'center', gap:5,
-                    fontSize:12, color:'#6b7280', borderTop:'1px solid #f3f4f6' }}>
+                    fontSize:12, color:'var(--text-muted)', borderTop:'1px solid var(--kachel-rand)' }}>
         <span style={{ whiteSpace:'nowrap', marginRight:2 }}>v<sub>zul</sub>:</span>
         {([30, 50, 60] as const).map(v => (
           <button key={v} onClick={() => upd('vDesign', v)}
-            style={{ padding:'2px 7px', borderRadius:4, fontSize:11, cursor:'pointer', fontWeight:600,
-                     background: (arm.vDesign ?? 50) === v ? '#1e3a5f' : '#f3f4f6',
-                     color: (arm.vDesign ?? 50) === v ? '#fff' : '#374151',
-                     border: (arm.vDesign ?? 50) === v ? '1.5px solid #1e3a5f' : '1.5px solid #e5e7eb' }}>
+            className={`knopf klein${arm.vDesign === v ? '' : ' zweit'}`}>
             {v} km/h
           </button>
         ))}
-        <span style={{ marginLeft:'auto', color:'#9ca3af', fontSize:11 }}>
-          T_Z = {tzFromSpeed(arm.vDesign ?? 50)} s
+        <span style={{ marginLeft:'auto', color:'var(--text-muted)', fontSize:12 }}>
+          T_Z = {arm.vDesign ? tzFromSpeed(arm.vDesign) : '–'} s
         </span>
       </div>}
     </div>
@@ -232,13 +226,13 @@ function LanePlanSection({ armCount, volumes, moveLane, onChange, fgsConfig, onF
       {armLabels.map((lbl,armIdx) => {
         const moves = armMovements(armCount, armIdx)
         const sumQ = (ms: typeof moves) => ms.reduce((q,m)=>q+(volumes[m.id]??0),0)
-        const fs1Q = sumQ(moves.filter(m=>(moveLane[m.id]??1)===1))
+        const fs1Q = sumQ(moves.filter(m=>moveLane[m.id]===1))
         const fs2Moves = moves.filter(m=>moveLane[m.id]===2)
         const fs2Q = fs2Moves.length>0 ? sumQ(fs2Moves) : null
         const fgs = fgsConfig[lbl] ?? DEFAULT_FGS
 
         return (
-          <div key={lbl} style={{ background:'#fff', borderRadius:10,
+          <div key={lbl} style={{ background:'#fff', borderRadius:12,
                                    border:`1.5px solid ${bd}`, overflow:'hidden' }}>
             <div style={{ background:bg, borderBottom:`1px solid ${bd}`,
                           padding:'7px 12px', display:'flex', alignItems:'center', gap:8 }}>
@@ -250,47 +244,45 @@ function LanePlanSection({ armCount, volumes, moveLane, onChange, fgsConfig, onF
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
               <thead>
                 <tr style={{ background:'#f9fafb' }}>
-                  <th style={{ padding:'4px 8px', textAlign:'left', fontWeight:600, color:'#6b7280' }}>Bewegung</th>
-                  <th style={{ padding:'4px 8px', textAlign:'right', fontWeight:600, color:'#6b7280' }}>PWE/h</th>
-                  <th style={{ padding:'4px 8px', textAlign:'center', fontWeight:600, color:'#6b7280' }}>FS1</th>
-                  <th style={{ padding:'4px 8px', textAlign:'center', fontWeight:600, color:'#6b7280' }}>FS2</th>
+                  <th style={{ padding:'4px 8px', textAlign:'left', fontWeight:600, color:'var(--text-muted)' }}>Bewegung</th>
+                  <th style={{ padding:'4px 8px', textAlign:'right', fontWeight:600, color:'var(--text-muted)' }}>PWE/h</th>
+                  <th style={{ padding:'4px 8px', textAlign:'center', fontWeight:600, color:'var(--text-muted)' }}>FS1</th>
+                  <th style={{ padding:'4px 8px', textAlign:'center', fontWeight:600, color:'var(--text-muted)' }}>FS2</th>
                 </tr>
               </thead>
               <tbody>
                 {moves.map(m => {
                   const num = m.id.replace('q','')
                   const q = volumes[m.id]??0
-                  const onFS2 = moveLane[m.id]===2
                   return (
-                    <tr key={m.id} style={{ borderTop:'1px solid #f3f4f6' }}>
-                      <td style={{ padding:'5px 8px', color:'#374151' }}>
+                    <tr key={m.id} style={{ borderTop:'1px solid var(--kachel-rand)' }}>
+                      <td style={{ padding:'5px 8px', color:'var(--text)' }}>
                         {num}. {m.label}
-                        <span style={{ fontSize:10, color:'#9ca3af', marginLeft:4 }}>{m.id}</span>
+                        <span style={{ fontSize:12, color:'var(--text-muted)', marginLeft:4 }}>{m.id}</span>
                       </td>
                       <td style={{ padding:'5px 8px', textAlign:'right',
-                                   color: q>0?'#374151':'#d1d5db', fontWeight: q>0?600:400 }}>
+                                   color: q>0?'var(--text)':'#d1d5db', fontWeight: q>0?600:400 }}>
                         {q}
                       </td>
                       <td style={{ padding:'5px 8px', textAlign:'center' }}>
                         <input type="radio" name={`fs-${lbl}-${m.id}`}
-                          checked={!onFS2} onChange={() => {
-                            const n = {...moveLane}; delete n[m.id]; onChange(n)
-                          }} style={{ accentColor:'#1e3a5f', cursor:'pointer' }} />
+                          checked={moveLane[m.id]===1} onChange={() => onChange({...moveLane,[m.id]:1})}
+                          style={{ accentColor:'#1e3a5f', cursor:'pointer' }} />
                       </td>
                       <td style={{ padding:'5px 8px', textAlign:'center' }}>
                         <input type="radio" name={`fs-${lbl}-${m.id}`}
-                          checked={onFS2} onChange={() => onChange({...moveLane,[m.id]:2})}
+                          checked={moveLane[m.id]===2} onChange={() => onChange({...moveLane,[m.id]:2})}
                           style={{ accentColor:'#1e3a5f', cursor:'pointer' }} />
                       </td>
                     </tr>
                   )
                 })}
                 {/* FGS-Zeile */}
-                <tr style={{ borderTop:'2px solid #f0f0f0', background: fgs.enabled ? '#f0fdf4' : '#fafafa' }}>
+                <tr style={{ borderTop:'2px solid var(--kachel-rand)', background: fgs.enabled ? '#f0fdf4' : '#fafafa' }}>
                   <td colSpan={4} style={{ padding:'6px 8px' }}>
                     <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
                       <label style={{ display:'flex', alignItems:'center', gap:5, cursor:'pointer',
-                                      fontSize:12, fontWeight:600, color:'#374151', whiteSpace:'nowrap' }}>
+                                      fontSize:12, fontWeight:600, color:'var(--text)', whiteSpace:'nowrap' }}>
                         <input type="checkbox" checked={fgs.enabled}
                           onChange={e => onFgsChange(lbl, {...fgs, enabled:e.target.checked})}
                           style={{ cursor:'pointer', accentColor:'#15803d' }} />
@@ -300,11 +292,11 @@ function LanePlanSection({ armCount, volumes, moveLane, onChange, fgsConfig, onF
                         <NumInput live value={fgs.volume}
                           onChange={v => onFgsChange(lbl, {...fgs, volume:v})}
                           width={60} />
-                        <span style={{ fontSize:11, color:'#6b7280' }}>Fg/h</span>
+                        <span style={{ fontSize:12, color:'var(--text-muted)' }}>Fg/h</span>
                         <NumInput live value={fgs.length}
                           onChange={v => onFgsChange(lbl, {...fgs, length:v})}
                           max={50} width={46} />
-                        <span style={{ fontSize:11, color:'#6b7280' }}>m</span>
+                        <span style={{ fontSize:12, color:'var(--text-muted)' }}>m</span>
                       </>)}
                     </div>
                   </td>
@@ -312,13 +304,13 @@ function LanePlanSection({ armCount, volumes, moveLane, onChange, fgsConfig, onF
               </tbody>
             </table>
 
-            <div style={{ padding:'6px 10px', display:'flex', gap:10, fontSize:11,
-                          borderTop:'1px solid #f3f4f6', background:'#fafafa' }}>
-              <span style={{ color:'#6b7280' }}>
+            <div style={{ padding:'6px 10px', display:'flex', gap:10, fontSize:12,
+                          borderTop:'1px solid var(--kachel-rand)', background:'#fafafa' }}>
+              <span style={{ color:'var(--text-muted)' }}>
                 FS1: <strong>{fs1Q} PWE/h</strong>
               </span>
               {fs2Q !== null && (
-                <span style={{ color:'#6b7280' }}>
+                <span style={{ color:'var(--text-muted)' }}>
                   FS2: <strong>{fs2Q} PWE/h</strong>
                 </span>
               )}
@@ -373,24 +365,20 @@ function PhasePlanSection({ lanes, phaseStates, onChange, onApplyDefault, onSugg
       <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6, flexWrap:'wrap' }}>
         <button onClick={onApplyDefault}
           title="Lädt einen fixen Standard-Phasenplan (Hauptstrasse A+C | Nebenstrasse B+D) — unabhängig von den eingegebenen Verkehrsstärken. Nützlich als Ausgangspunkt."
-          style={{ padding:'5px 12px', fontSize:12, borderRadius:6, cursor:'pointer',
-                   background:'#f3f4f6', border:'1px solid #d1d5db', color:'#374151',
-                   fontWeight:600 }}>
+          className="knopf zweit">
           Vorschlag laden
         </button>
         <button onClick={onSuggestMinimal}
           title="Berechnet die kleinstmögliche Phasenzahl, die alle aktiven Fahrstreifen konfliktfrei trennt — basierend auf den eingegebenen Verkehrsstärken (nur Ströme mit Q &gt; 0)."
-          style={{ padding:'5px 12px', fontSize:12, borderRadius:6, cursor:'pointer',
-                   background:'#eff6ff', border:'1px solid #bfdbfe', color:'#1d4ed8',
-                   fontWeight:600 }}>
+          className="knopf zweit">
           Minimaler Phasenplan
         </button>
       </div>
       <div style={{ display:'flex', gap:20, marginBottom:10, flexWrap:'wrap' }}>
-        <span style={{ fontSize:11, color:'#6b7280' }}>
+        <span style={{ fontSize:12, color:'var(--text-muted)' }}>
           <span style={{ fontWeight:600 }}>Vorschlag laden:</span> Fixer Standard HS (A+C) | NS (B{lanes.some(l=>l.armIndex===3)?'+D':''}), unabhängig von Verkehrsstärken
         </span>
-        <span style={{ fontSize:11, color:'#6b7280' }}>
+        <span style={{ fontSize:12, color:'var(--text-muted)' }}>
           <span style={{ fontWeight:600 }}>Minimaler Phasenplan:</span> Kleinstmögliche Phasenzahl für aktive Ströme (Ziffer 11, Seite 9)
         </span>
       </div>
@@ -400,7 +388,7 @@ function PhasePlanSection({ lanes, phaseStates, onChange, onApplyDefault, onSugg
           <thead>
             <tr>
               <th style={{ padding:'6px 10px', textAlign:'left', background:'#f9fafb',
-                           border:'1px solid #e5e7eb', color:'#6b7280', fontWeight:600, width:70 }}>
+                           border:'1px solid var(--kachel-rand)', color:'var(--text-muted)', fontWeight:600, width:70 }}>
                 Phase
               </th>
               {lanes.map(l => {
@@ -413,21 +401,21 @@ function PhasePlanSection({ lanes, phaseStates, onChange, onApplyDefault, onSugg
                 return (
                   <th key={l.id} style={{ padding:'5px 8px', textAlign:'center',
                                           background: l.isFGS ? '#f0fdf4' : '#f9fafb',
-                                          border:'1px solid #e5e7eb', minWidth:72 }}>
-                    <div style={{ fontWeight:700, color:col, fontSize:11 }}>
+                                          border:'1px solid var(--kachel-rand)', minWidth:72 }}>
+                    <div style={{ fontWeight:700, color:col, fontSize:12 }}>
                       {lbl} {colLabel}
                     </div>
                     {!l.isFGS && l.streamIds.length > 0 && (
-                      <div style={{ fontSize:10, color:'#6b7280', fontWeight:400 }}>
+                      <div style={{ fontSize:12, color:'var(--text-muted)', fontWeight:400 }}>
                         {l.streamIds.map(s=>s.replace('q','')).join(', ')}
                       </div>
                     )}
-                    <div style={{ fontSize:10, color:'#9ca3af' }}>{qk} {unitLabel}</div>
+                    <div style={{ fontSize:12, color:'var(--text-muted)' }}>{qk} {unitLabel}</div>
                   </th>
                 )
               })}
               <th style={{ padding:'5px 8px', background:'#f9fafb',
-                           border:'1px solid #e5e7eb', width:24 }}></th>
+                           border:'1px solid var(--kachel-rand)', width:24 }}></th>
             </tr>
           </thead>
           <tbody>
@@ -436,18 +424,18 @@ function PhasePlanSection({ lanes, phaseStates, onChange, onApplyDefault, onSugg
               const bg = pi%2===0 ? '#fff' : '#fafafa'
               return (
                 <tr key={ph.id}>
-                  <td style={{ padding:'6px 10px', border:'1px solid #e5e7eb',
-                                background:bg, fontWeight:700, color:'#374151' }}>
+                  <td style={{ padding:'6px 10px', border:'1px solid var(--kachel-rand)',
+                                background:bg, fontWeight:700, color:'var(--text)' }}>
                     <div>{pi+1}</div>
                     {pr && (
-                      <div style={{ fontSize:10, color:'#9ca3af', marginTop:2 }}>
+                      <div style={{ fontSize:12, color:'var(--text-muted)', marginTop:2 }}>
                         Q={Math.round(pr.qKrit)}
                       </div>
                     )}
                   </td>
                   {lanes.map(l => (
                     <td key={l.id} style={{ padding:'0', textAlign:'center',
-                                            border:'1px solid #e5e7eb', background:bg }}>
+                                            border:'1px solid var(--kachel-rand)', background:bg }}>
                       <label style={{ display:'block', padding:'10px 8px', cursor:'pointer' }}>
                         <input type="checkbox"
                           checked={ph.selectedLaneIds.includes(l.id)}
@@ -458,11 +446,11 @@ function PhasePlanSection({ lanes, phaseStates, onChange, onApplyDefault, onSugg
                       </label>
                     </td>
                   ))}
-                  <td style={{ padding:'4px 6px', border:'1px solid #e5e7eb', background:bg,
+                  <td style={{ padding:'4px 6px', border:'1px solid var(--kachel-rand)', background:bg,
                                 textAlign:'center' }}>
                     <button onClick={() => removePhase(ph.id)} title="Phase entfernen"
                       style={{ background:'none', border:'none', cursor:'pointer',
-                               color:'#9ca3af', fontSize:14, lineHeight:1,
+                               color:'var(--text-muted)', fontSize:14, lineHeight:1,
                                padding:'2px 4px', borderRadius:3 }}>×</button>
                   </td>
                 </tr>
@@ -478,33 +466,33 @@ function PhasePlanSection({ lanes, phaseStates, onChange, onApplyDefault, onSugg
           {result.phases.map((pr, i) => {
             const below = pr.belowMinGreen
             if (pr.empty) return (
-              <div key={pr.id} style={{ padding:'6px 10px', borderRadius:8, fontSize:11,
-                                        border:'1px dashed #d1d5db', background:'#f9fafb',
-                                        color:'#9ca3af', minWidth:160 }}>
-                <div style={{ fontWeight:700, color:'#6b7280', marginBottom:3 }}>Phase {i+1}</div>
+              <div key={pr.id} style={{ padding:'6px 10px', borderRadius:8, fontSize:12,
+                                        border:'1px dashed var(--border)', background:'#f9fafb',
+                                        color:'var(--text-muted)', minWidth:160 }}>
+                <div style={{ fontWeight:700, color:'var(--text-muted)', marginBottom:3 }}>Phase {i+1}</div>
                 Leer (kein Fahrstreifen mit Verkehr) — wird nicht berücksichtigt
               </div>
             )
             return (
               <div key={pr.id} style={{
-                padding:'6px 10px', borderRadius:8, fontSize:11,
-                border: below ? '1px solid #fca5a5' : '1px solid #e5e7eb',
+                padding:'6px 10px', borderRadius:8, fontSize:12,
+                border: below ? '1px solid #fca5a5' : '1px solid var(--kachel-rand)',
                 background: below ? '#fff5f5' : '#f8fafc',
                 minWidth:160,
               }}>
-                <div style={{ fontWeight:700, color:'#374151', marginBottom:3 }}>Phase {i+1}</div>
-                <div style={{ color:'#6b7280' }}>Q_krit: <strong>{Math.round(pr.qKrit)} PWE/h</strong></div>
-                <div style={{ color:'#6b7280' }}>
+                <div style={{ fontWeight:700, color:'var(--text)', marginBottom:3 }}>Phase {i+1}</div>
+                <div style={{ color:'var(--text-muted)' }}>Q_krit: <strong>{Math.round(pr.qKrit)} PWE/h</strong></div>
+                <div style={{ color:'var(--text-muted)' }}>
                   t_Gr_min: <strong>{pr.tGrMin.toFixed(1)} s</strong>
                   {pr.tGrMin > 4 && <span style={{ color:'#15803d' }}> (FGS)</span>}
                 </div>
-                <div style={{ color:'#6b7280' }}>Q_krit_min: <strong>{Math.round(pr.qKritMin)} PWE/h</strong></div>
-                <div style={{ color:'#6b7280' }}>
+                <div style={{ color:'var(--text-muted)' }}>Q_krit_min: <strong>{Math.round(pr.qKritMin)} PWE/h</strong></div>
+                <div style={{ color:'var(--text-muted)' }}>
                   t_Gr: <strong>{pr.tGr.toFixed(1)} s</strong>
                   {'  '}λ: <strong>{(pr.lambda*100).toFixed(1)}%</strong>
                 </div>
                 {pr.minGreenGoverns && !below && (
-                  <div style={{ color:'#6b7280', marginTop:3 }}>
+                  <div style={{ color:'var(--text-muted)', marginTop:3 }}>
                     Mindestgrünzeit massgebend (Q_krit &lt; Q_krit_min)
                   </div>
                 )}
@@ -521,9 +509,8 @@ function PhasePlanSection({ lanes, phaseStates, onChange, onApplyDefault, onSugg
 
       {/* Konflikte */}
       {result && result.conflicts.length > 0 && (
-        <div style={{ marginTop:10, padding:'8px 12px', borderRadius:8,
-                      background:'#fffbeb', border:'1px solid #fbbf24', fontSize:12 }}>
-          <div style={{ fontWeight:700, color:'#92400e', marginBottom:4 }}>
+        <div className="hinweis klein" style={{ marginTop:10 }}>
+          <div style={{ fontWeight:700, marginBottom:4 }}>
             ⚠ Unverträgliche Ströme in selber Phase:
           </div>
           {result.conflicts.map((c,i) => {
@@ -539,9 +526,7 @@ function PhasePlanSection({ lanes, phaseStates, onChange, onApplyDefault, onSugg
       )}
 
       <button onClick={addPhase}
-        style={{ marginTop:10, padding:'5px 14px', fontSize:12, borderRadius:6,
-                 cursor:'pointer', background:'#eff6ff', border:'1px solid #bfdbfe',
-                 color:'#1d4ed8', fontWeight:600 }}>
+        className="knopf zweit" style={{ marginTop:10 }}>
         + Phase hinzufügen
       </button>
     </div>
@@ -566,27 +551,25 @@ function ResultsPanelV2({ result, targetLos, tzMode, onTargetLos, onManualZ, onP
   const reserveInvalid = overloaded || overlapIssues.length>0 || lanesNoGreen.length>0
 
   return (
-    <div style={{ background:'#fff', borderRadius:10, border:'1px solid #e5e7eb', overflow:'hidden' }}>
+    <div className="kachel" style={{ overflow:'hidden' }}>
 
       {/* Bewertungsblatt + Schritt 4+5 Label */}
       <div style={{ padding:'10px 14px 0', borderBottom:'none' }}>
         <button onClick={onPrint}
-          style={{ display:'block', width:'100%', marginBottom:10, padding:'7px 0', borderRadius:6,
-                   fontSize:12, cursor:'pointer', border:'1px solid #1e3a5f',
-                   background:'#1e3a5f', color:'#fff', fontWeight:600 }}>
-          Bewertungsblatt (Druckansicht)
+          className="knopf breit" style={{ marginBottom:10 }}>
+          Bericht / PDF
         </button>
         <StepBadge n="4/5" label="Leistungsfähigkeit L und Verkehrsqualität beurteilen" />
-        <p style={{ fontSize:12, color:'#6b7280', margin:'-6px 0 8px' }}>
+        <p style={{ fontSize:12, color:'var(--text-muted)', margin:'-6px 0 8px' }}>
           Schritt 4: L, λ, X und w_m je Fahrstreifen (Ziffern 11.3 und 12, Seiten 10 und 13). Schritt 5: VQS zugeordnet vs. tatsächlich (Tab. 4, Seite 14).
           Grundlagen: S = 1800 PWE/h, {tzText(result.tZ, tzMode)}. <strong>Ohne ÖV-Privilegierung</strong> (Ziffer 11.4, Seiten 11–12).
         </p>
       </div>
 
       {/* Gesamt-VQS */}
-      <div style={{ padding:'12px 14px', borderBottom:'1px solid #e5e7eb',
+      <div style={{ padding:'12px 14px', borderBottom:'1px solid var(--kachel-rand)',
                     background:LOS_BG[overallLos] }}>
-        <div style={{ fontSize:11, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase',
+        <div style={{ fontSize:12, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase',
                       color:LOS_COLOR[overallLos], marginBottom:4 }}>Qualitätsstufe Knoten</div>
         <div style={{ display:'flex', alignItems:'center', gap:12 }}>
           <span style={{ fontSize:46, fontWeight:800, color:LOS_COLOR[overallLos], lineHeight:1 }}>
@@ -608,7 +591,7 @@ function ResultsPanelV2({ result, targetLos, tzMode, onTargetLos, onManualZ, onP
               style={{ marginLeft:4, padding:'2px 8px', borderRadius:5, fontSize:12,
                        cursor:'pointer', fontWeight:700,
                        background: targetLos===los ? LOS_BG[los] : '#f3f4f6',
-                       color: targetLos===los ? LOS_COLOR[los] : '#9ca3af',
+                       color: targetLos===los ? LOS_COLOR[los] : 'var(--text-muted)',
                        border: targetLos===los ? `1.5px solid ${LOS_COLOR[los]}` : '1.5px solid #e5e7eb' }}>
               {los}
             </button>
@@ -630,8 +613,8 @@ function ResultsPanelV2({ result, targetLos, tzMode, onTargetLos, onManualZ, onP
       </div>
 
       {/* Kennzahlen */}
-      <div style={{ padding:'10px 14px', borderBottom:'1px solid #e5e7eb',
-                    display:'flex', gap:16, flexWrap:'wrap', fontSize:13 }}>
+      <div style={{ padding:'10px 14px', borderBottom:'1px solid var(--kachel-rand)',
+                    display:'flex', gap:16, flexWrap:'wrap', fontSize:14 }}>
         {[
           ['Umlaufzeit Z', `${Z} s${zIsManual ? ' ✎' : ''}`, overloaded ? '#dc2626' : '#1e3a5f'],
           ['ΣQ_krit', `${Math.round(sumQKrit)} PWE/h`, overloaded ? '#dc2626' : '#374151'],
@@ -640,58 +623,48 @@ function ResultsPanelV2({ result, targetLos, tzMode, onTargetLos, onManualZ, onP
         ].map(([lbl,val,col]) => (
           <div key={String(lbl)} style={{ textAlign:'center' }}>
             <div style={{ fontSize:20, fontWeight:800, color:String(col) }}>{val}</div>
-            <div style={{ fontSize:10, color:'#6b7280' }}>{lbl}</div>
+            <div style={{ fontSize:12, color:'var(--text-muted)' }}>{lbl}</div>
           </div>
         ))}
       </div>
 
       {overloaded && (
-        <div style={{ margin:'8px 12px', padding:'8px 12px', borderRadius:6,
-                      background:'#fee2e2', border:'1px solid #fca5a5',
-                      fontSize:12, color:'#991b1b' }}>
+        <div className="fehlerbox klein" style={{ margin:'8px 12px' }}>
           ΣQ_krit = {Math.round(sumQKrit)} PWE/h erreicht oder übersteigt die maximale kritische
           Verkehrsstärke bei Z = {Z} s ({Math.round(maxQKrit)} PWE/h){zIsManual ? '' : ', der grössten Umlaufzeit nach Tab. 2'}.
           Knoten überlastet oder mehr Fahrstreifen nötig.
         </div>
       )}
       {overlapIssues.length>0 && (
-        <div style={{ margin:'8px 12px', padding:'8px 12px', borderRadius:6,
-                      background:'#fee2e2', border:'1px solid #fca5a5',
-                      fontSize:12, color:'#991b1b' }}>
+        <div className="fehlerbox klein" style={{ margin:'8px 12px' }}>
           {overlapIssues.map(i => <div key={i.laneId}><strong>{overlapText(i)}</strong></div>)}
           <div style={{ marginTop:3 }}>{OVERLAP_NOTE}</div>
         </div>
       )}
       {lanesNoGreen.length>0 && (
-        <div style={{ margin:'8px 12px', padding:'8px 12px', borderRadius:6,
-                      background:'#fee2e2', border:'1px solid #fca5a5',
-                      fontSize:12, color:'#991b1b' }}>
+        <div className="fehlerbox klein" style={{ margin:'8px 12px' }}>
           Ohne Grün: {lanesNoGreen.map(l=>l.label).join(', ')}. Der Fahrstreifen ist in keiner Phase eingetragen.
         </div>
       )}
       {!zIsManual && !meetsTargetLos && !overloaded && (
-        <div style={{ margin:'8px 12px', padding:'8px 12px', borderRadius:6,
-                      background:'#fff7ed', border:'1px solid #fdba74', fontSize:12, color:'#9a3412' }}>
+        <div className="hinweis klein" style={{ margin:'8px 12px' }}>
           {zTargetText(result, targetLos)}
           {zForTarget && (
             <button onClick={() => onManualZ(zForTarget.Z)}
-              style={{ marginLeft:8, padding:'2px 8px', fontSize:11, borderRadius:4, cursor:'pointer',
-                       background:'#fff', border:'1px solid #fdba74', color:'#9a3412', fontWeight:600 }}>
+              className="knopf zweit klein" style={{ marginLeft:8 }}>
               Z = {zForTarget.Z} s übernehmen
             </button>
           )}
         </div>
       )}
       {zRaised && (
-        <div style={{ margin:'8px 12px', padding:'8px 12px', borderRadius:6,
-                      background:'#fff7ed', border:'1px solid #fdba74', fontSize:12, color:'#9a3412' }}>
+        <div className="hinweis klein" style={{ margin:'8px 12px' }}>
           Die manuelle Umlaufzeit ist kürzer als Zwischenzeiten plus Mindestgrünzeiten aller Phasen —
           gerechnet wird mit dem Minimum Z = {Z} s.
         </div>
       )}
       {zAboveMax && (
-        <div style={{ margin:'8px 12px', padding:'8px 12px', borderRadius:6,
-                      background:'#fff7ed', border:'1px solid #fdba74', fontSize:12, color:'#9a3412' }}>
+        <div className="hinweis klein" style={{ margin:'8px 12px' }}>
           Z = {Z} s liegt über 120 s — solche Umlaufzeiten sind nach Ziffer 10.4.3, Seite 9 nicht zu verwenden
           (u. a. zu lange Wartezeiten für Fussgänger*innen).
         </div>
@@ -700,39 +673,39 @@ function ResultsPanelV2({ result, targetLos, tzMode, onTargetLos, onManualZ, onP
       {/* Kfz-Fahrstreifen-Tabelle */}
       {activeVehLanes.length > 0 && (
         <div style={{ padding:'8px 12px 4px' }}>
-          <div style={{ fontSize:11, fontWeight:700, letterSpacing:'0.06em',
-                        color:'#6b7280', textTransform:'uppercase', marginBottom:8 }}>
+          <div style={{ fontSize:12, fontWeight:700, letterSpacing:'0.06em',
+                        color:'var(--text-muted)', textTransform:'uppercase', marginBottom:8 }}>
             Fahrstreifen (Kfz)
           </div>
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
             <thead>
-              <tr style={{ background:'#f9fafb', color:'#6b7280', fontWeight:700 }}>
+              <tr style={{ background:'#f9fafb', color:'var(--text-muted)', fontWeight:700 }}>
                 {['Fahrstreifen','Q_krit','λ','L','X','w_m','ST_RE95','VQS'].map(h => (
                   <th key={h} style={{ padding:'4px 8px', textAlign: h==='Fahrstreifen'?'left':'right',
-                                       borderBottom:'1px solid #e5e7eb' }}>{h}</th>
+                                       borderBottom:'1px solid var(--kachel-rand)' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {activeVehLanes.map(l => (
                 <tr key={l.laneId}
-                  style={{ borderBottom:'1px solid #f3f4f6',
+                  style={{ borderBottom:'1px solid var(--kachel-rand)',
                            background: l.isCritical ? '#fffbeb' : undefined }}>
-                  <td style={{ padding:'4px 8px', color:'#374151' }}>
+                  <td style={{ padding:'4px 8px', color:'var(--text)' }}>
                     <div style={{ fontWeight: l.isCritical ? 700 : 400 }}>
                       {l.label}
                     </div>
-                    <div style={{ fontSize:10, color:'#9ca3af' }}>
+                    <div style={{ fontSize:12, color:'var(--text-muted)' }}>
                       {l.streamIds.map(id => `${id} ${STREAM_LABELS[id]??''}`).join(' · ')}
                     </div>
                     {l.isCritical && (
-                      <span style={{ fontSize:9, color:'#b45309', background:'#fef3c7',
+                      <span style={{ fontSize:12, color:'#b45309', background:'#fef3c7',
                                      padding:'1px 4px', borderRadius:3 }}>krit.</span>
                     )}
                   </td>
                   <td style={{ padding:'4px 8px', textAlign:'right' }}>
                     {Math.round(l.qKrit)}{' '}
-                    <span style={{ fontSize:10, color:'#9ca3af' }}>PWE/h</span>
+                    <span style={{ fontSize:12, color:'var(--text-muted)' }}>PWE/h</span>
                   </td>
                   <td style={{ padding:'4px 8px', textAlign:'right' }}>
                     {(l.lambda*100).toFixed(1)}%
@@ -745,14 +718,14 @@ function ResultsPanelV2({ result, targetLos, tzMode, onTargetLos, onManualZ, onP
                   <td style={{ padding:'4px 8px', textAlign:'right' }}>{delayText(l.wm)}</td>
                   <td style={{ padding:'4px 8px', textAlign:'right' }}>
                     {isFinite(l.queueM)
-                      ? <><strong>{Math.round(l.queueM)}</strong> <span style={{ fontSize:10, color:'#9ca3af' }}>m</span></>
+                      ? <><strong>{Math.round(l.queueM)}</strong> <span style={{ fontSize:12, color:'var(--text-muted)' }}>m</span></>
                       : <span style={{ color:'#dc2626' }}>—</span>}
                   </td>
                   <td style={{ padding:'4px 8px', textAlign:'right' }}>
                     <span style={{ display:'inline-flex', alignItems:'center', gap:3 }}>
                       <LOSBadge los={l.los} />
                       {!l.meetsTarget && (
-                        <span style={{ fontSize:10, color:'#dc2626' }}>✗</span>
+                        <span style={{ fontSize:12, color:'#dc2626' }}>✗</span>
                       )}
                     </span>
                   </td>
@@ -766,13 +739,13 @@ function ResultsPanelV2({ result, targetLos, tzMode, onTargetLos, onManualZ, onP
       {/* FGS-Tabelle */}
       {activeFgsLanes.length > 0 && (
         <div style={{ padding:'4px 12px 12px' }}>
-          <div style={{ fontSize:11, fontWeight:700, letterSpacing:'0.06em',
+          <div style={{ fontSize:12, fontWeight:700, letterSpacing:'0.06em',
                         color:'#15803d', textTransform:'uppercase', marginBottom:8 }}>
             Fussgängerstreifen
           </div>
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
             <thead>
-              <tr style={{ background:'#f0fdf4', color:'#6b7280', fontWeight:700 }}>
+              <tr style={{ background:'#f0fdf4', color:'var(--text-muted)', fontWeight:700 }}>
                 {['FGS','Q','λ','L (Fg/h)','X','w_m','VQS'].map(h => (
                   <th key={h} style={{ padding:'4px 8px', textAlign: h==='FGS'?'left':'right',
                                        borderBottom:'1px solid #bbf7d0' }}>{h}</th>
@@ -787,7 +760,7 @@ function ResultsPanelV2({ result, targetLos, tzMode, onTargetLos, onManualZ, onP
                   </td>
                   <td style={{ padding:'4px 8px', textAlign:'right' }}>
                     {Math.round(l.qKrit)}{' '}
-                    <span style={{ fontSize:10, color:'#9ca3af' }}>Fg/h</span>
+                    <span style={{ fontSize:12, color:'var(--text-muted)' }}>Fg/h</span>
                   </td>
                   <td style={{ padding:'4px 8px', textAlign:'right' }}>
                     {(l.lambda*100).toFixed(1)}%
@@ -802,7 +775,7 @@ function ResultsPanelV2({ result, targetLos, tzMode, onTargetLos, onManualZ, onP
                     <span style={{ display:'inline-flex', alignItems:'center', gap:3 }}>
                       <LOSBadge los={l.los} />
                       {!l.meetsTarget && (
-                        <span style={{ fontSize:10, color:'#dc2626' }}>✗</span>
+                        <span style={{ fontSize:12, color:'#dc2626' }}>✗</span>
                       )}
                     </span>
                   </td>
@@ -810,7 +783,7 @@ function ResultsPanelV2({ result, targetLos, tzMode, onTargetLos, onManualZ, onP
               ))}
             </tbody>
           </table>
-          <div style={{ fontSize:10, color:'#6b7280', marginTop:4 }}>
+          <div style={{ fontSize:12, color:'var(--text-muted)', marginTop:4 }}>
             S = 8000 Fg/h (VSS 40 834, Ziffer 4, Seite 3). Annahme: Wartezeit und VQS mit den Formeln für Motorfahrzeuge;
             Tab. 4 (Seite 14) gilt für den Individualverkehr, der Fussverkehr ist separat zu beurteilen (Ziffer 12, Seite 13).
             Gesamturteil nur Kfz.
@@ -821,20 +794,20 @@ function ResultsPanelV2({ result, targetLos, tzMode, onTargetLos, onManualZ, onP
       {/* VQS pro Strom */}
       {result.streams.filter(s => !s.isFGS).length > 0 && (
         <div style={{ padding:'4px 12px 12px' }}>
-          <div style={{ fontSize:11, fontWeight:700, letterSpacing:'0.06em',
-                        color:'#6b7280', textTransform:'uppercase', marginBottom:8 }}>
+          <div style={{ fontSize:12, fontWeight:700, letterSpacing:'0.06em',
+                        color:'var(--text-muted)', textTransform:'uppercase', marginBottom:8 }}>
             VQS pro Strom (Kfz)
           </div>
-          <div style={{ fontSize:11, color:'#6b7280', marginBottom:6 }}>
+          <div style={{ fontSize:12, color:'var(--text-muted)', marginBottom:6 }}>
             Auslastung, Rückstau, Wartezeit und VQS sind die Werte des Fahrstreifens — die Ströme eines
             Fahrstreifens teilen Grünzeit und Rückstau (Ziffer 9.3, Seite 8).
           </div>
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
             <thead>
-              <tr style={{ background:'#f9fafb', color:'#6b7280', fontWeight:700 }}>
+              <tr style={{ background:'#f9fafb', color:'var(--text-muted)', fontWeight:700 }}>
                 {['Strom','Fahrstreifen','Ausl.','L-95','Wz','VQS'].map((h,i) => (
                   <th key={h} style={{ padding:'4px 8px', textAlign: i<2 ? 'left' : 'right',
-                                       borderBottom:'1px solid #e5e7eb', whiteSpace:'nowrap' }}>
+                                       borderBottom:'1px solid var(--kachel-rand)', whiteSpace:'nowrap' }}>
                     {h === 'Ausl.' ? 'Ausl. [%]' : h === 'L-95' ? 'L-95 [m]' : h === 'Wz' ? 'Wz [s]' : h}
                   </th>
                 ))}
@@ -842,12 +815,12 @@ function ResultsPanelV2({ result, targetLos, tzMode, onTargetLos, onManualZ, onP
             </thead>
             <tbody>
               {result.streams.filter(s => !s.isFGS).map(s => (
-                <tr key={`${s.laneId}-${s.streamId}`} style={{ borderBottom:'1px solid #f3f4f6' }}>
-                  <td style={{ padding:'4px 8px', color:'#374151' }}>
-                    <span style={{ fontFamily:'monospace', color:'#1e3a5f', marginRight:6 }}>{s.streamId}</span>
-                    <span style={{ color:'#6b7280', fontSize:11 }}>{STREAM_LABELS[s.streamId] ?? s.streamId}</span>
+                <tr key={`${s.laneId}-${s.streamId}`} style={{ borderBottom:'1px solid var(--kachel-rand)' }}>
+                  <td style={{ padding:'4px 8px', color:'var(--text)' }}>
+                    <span style={{ fontFamily:'monospace', color:'var(--accent)', marginRight:6 }}>{s.streamId}</span>
+                    <span style={{ color:'var(--text-muted)', fontSize:12 }}>{STREAM_LABELS[s.streamId] ?? s.streamId}</span>
                   </td>
-                  <td style={{ padding:'4px 8px', color:'#6b7280', fontSize:11 }}>{s.laneLabel}</td>
+                  <td style={{ padding:'4px 8px', color:'var(--text-muted)', fontSize:12 }}>{s.laneLabel}</td>
                   <td style={{ padding:'4px 8px', textAlign:'right',
                                color: utilizationColor(s.X), fontWeight:600 }}>
                     {isFinite(s.X) ? `${(s.X * 100).toFixed(0)}` : '>100'}
@@ -861,7 +834,7 @@ function ResultsPanelV2({ result, targetLos, tzMode, onTargetLos, onManualZ, onP
                   <td style={{ padding:'4px 8px', textAlign:'right' }}>
                     <span style={{ display:'inline-flex', alignItems:'center', gap:3 }}>
                       <LOSBadge los={s.los} />
-                      {!s.meetsTarget && <span style={{ fontSize:10, color:'#dc2626' }}>✗</span>}
+                      {!s.meetsTarget && <span style={{ fontSize:12, color:'#dc2626' }}>✗</span>}
                     </span>
                   </td>
                 </tr>
@@ -873,9 +846,9 @@ function ResultsPanelV2({ result, targetLos, tzMode, onTargetLos, onManualZ, onP
 
       {/* Methodik */}
       <div style={{ margin:'0 12px 12px', padding:'9px 11px', borderRadius:8,
-                    background:'#f8fafc', border:'1px solid #e2e8f0',
-                    fontSize:11, color:'#475569', lineHeight:1.65 }}>
-        <div style={{ fontWeight:700, color:'#1e293b', marginBottom:4 }}>
+                    background:'#f8fafc', border:'1px solid var(--kachel-rand)',
+                    fontSize:12, color:'var(--text)', lineHeight:1.65 }}>
+        <div style={{ fontWeight:700, color:'var(--text-strong)', marginBottom:4 }}>
           Methodik (VSS 40 023a)
         </div>
         <div><strong>Grundlagen:</strong> VSS 40 023a — <em>Leistungsfähigkeit, Verkehrsqualität, Belastbarkeit; Knoten mit Lichtsignalanlagen</em>; VSS 40 837 — <em>Lichtsignalanlagen; Übergangszeiten und Mindestzeiten</em>; VSS 40 834 — <em>Lichtsignalanlagen; Phasentrennung</em>; Handbuch Lichtsignalanlagen (HB LSA), Tiefbauamt Stadt Bern, V 2.1, Anhang G — Mindestfreigabezeit FGS mind. 5 s</div>
@@ -886,7 +859,7 @@ function ResultsPanelV2({ result, targetLos, tzMode, onTargetLos, onManualZ, onP
         <div><strong>t_Gr_min</strong> nach VSS 40 837 (Ziffer 18, Seite 6): FZ = 4 s; FGS = max(5 s, 2/3·L / 1,2 m·s⁻¹). Die 5 s stammen aus dem HB LSA Stadt Bern (Tabelle 53, Seite 151), die Norm nennt 4 s</div>
         <div><strong>w_m</strong> = w₁ + w₀ (Ziffer 12, Seite 13): w₁ = Z·(1−λ)² / (2·(1−λ·X)); w₀ nach der Formel auf Seite 13, C = 0,5 (isolierte LSA)</div>
         <div><strong>VQS</strong> nach Tab. 4, Seite 14: A ≤ 20 s · B ≤ 35 s · C ≤ 50 s · D ≤ 70 s · E ≤ 100 s · F = Überlast</div>
-        <div style={{ marginTop:4, color:'#94a3b8', fontSize:10.5 }}>Ohne ÖV-Privilegierung (Ziffer 11.4, Seiten 11–12). Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.</div>
+        <div style={{ marginTop:4, color:'var(--text-muted)', fontSize:12 }}>Ohne ÖV-Privilegierung (Ziffer 11.4, Seiten 11–12). Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.</div>
       </div>
     </div>
   )
@@ -914,7 +887,7 @@ function LSAPrintSheet({ nodeName, armCount, arms, volumes, moveLane, fgsConfig,
   const activeFgsLanes = result.lanes.filter(l => l.qKrit > 0 && l.isFGS)
   const reserveInvalid = result.overloaded || result.overlapIssues.length > 0
     || activeVehLanes.some(l => l.lambda === 0)
-  const speeds = armLabels.map((lbl, i) => `${lbl} ${arms[i]?.vDesign ?? 50}`).join(' · ')
+  const speeds = armLabels.map((lbl, i) => `${lbl} ${arms[i]?.vDesign ?? '–'}`).join(' · ')
 
   const th: React.CSSProperties = { padding:'3px 6px', border:'1px solid #bbb', background:'#ececec', fontSize:9, fontWeight:700, textAlign:'right', whiteSpace:'nowrap' }
   const thL: React.CSSProperties = { ...th, textAlign:'left' }
@@ -996,7 +969,7 @@ function LSAPrintSheet({ nodeName, armCount, arms, volumes, moveLane, fgsConfig,
                 <td style={{ ...tdL, fontFamily:'monospace', color:'#1e3a5f' }}>{m.id}</td>
                 <td style={tdL}>{m.label}</td>
                 <td style={{ ...td, fontWeight:600 }}>{volumes[m.id]??0}</td>
-                <td style={td}>{moveLane[m.id]===2?'FS2':'FS1'}</td>
+                <td style={td}>{moveLane[m.id] ? `FS${moveLane[m.id]}` : '–'}</td>
               </tr>
             ))
             if (fgs?.enabled) {
@@ -1272,22 +1245,48 @@ const LEGEND_ITEMS: LegendItem[] = [
 ]
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
-export default function LSAApp() {
+// Aus der Karte: Namen übernommen, Ströme leer, ausser sie wurden aus dem Modell gewählt
+function armsAus(u: KnotenUebernahme): UIArmInput[] {
+  return defaultArms(u.armCount).map((a, i) => {
+    const v = u.arme[i]
+    return { ...a, name: v.name, ...v.stroeme, ...(v.tempo ? { vDesign: lsaTempo(v.tempo) } : {}),
+      ...(v.schwerverkehr ? { mix: { pctLW: v.schwerverkehr.lw + v.schwerverkehr.lz, pctMR: 0, pctFR: 0 } } : {}) }
+  })
+}
+function fgsAus(u: KnotenUebernahme): Record<string, FGSArmConfig> {
+  return Object.fromEntries(u.arme.filter(a => a.fgs).map(a => [a.label, { ...DEFAULT_FGS, enabled: true }]))
+}
+// Ein Fahrstreifen: alle Ströme auf FS1. Zwei mit Abbiegeangabe in OSM: FS1 ist der rechte, FS2 der linke. Sonst bleibt die Zuordnung offen
+function moveLaneAus(u: KnotenUebernahme): Record<string, 1|2> {
+  const aus: Record<string, 1|2> = {}
+  u.arme.forEach((a, i) => {
+    const s = a.streifen
+    if (s?.anzahl === 1) for (const m of armMovements(u.armCount, i)) aus[m.id] = 1
+    if (s?.anzahl !== 2 || !s.spuren) return
+    for (const m of armMovements(u.armCount, i))
+      aus[m.id] = s.spuren[0].includes(m.direction) && !s.spuren[1].includes(m.direction) ? 2 : 1
+  })
+  return aus
+}
+
+export default function LSAApp({ uebernahme }: { uebernahme?: KnotenUebernahme }) {
   const isActive = useIsActiveModule()  // Druckblatt nur im sichtbaren Modul
-  const [nodeName,    setNodeName]    = useState('')
-  const [armCount,    setArmCount]    = useState<3|4>(4)
-  const [arms,        setArms]        = useState<UIArmInput[]>(defaultArms(4))
-  const [moveLane,    setMoveLane]    = useState<Record<string,1|2>>({})
-  const [fgsConfig,   setFgsConfig]   = useState<Record<string, FGSArmConfig>>({})
+  const [nodeName,    setNodeName]    = useState(uebernahme?.name ?? '')
+  const [armCount,    setArmCount]    = useState<3|4>(uebernahme?.armCount ?? 4)
+  const [armGewaehlt, setArmGewaehlt] = useState(!!uebernahme)   // Knotentyp hat keinen Startwert
+  const [arms,        setArms]        = useState<UIArmInput[]>(() => uebernahme ? armsAus(uebernahme) : defaultArms(4))
+  const [moveLane,    setMoveLane]    = useState<Record<string,1|2>>(() => uebernahme ? moveLaneAus(uebernahme) : {})
+  const [fgsConfig,   setFgsConfig]   = useState<Record<string, FGSArmConfig>>(() => uebernahme ? fgsAus(uebernahme) : {})
   const [phaseStates, setPhaseStates] = useState<PhaseState[]>([])
-  const [targetLos,   setTargetLos]   = useState<LevelOfService>('D')
+  const [targetLos,   setTargetLos]   = useState<LevelOfService|null>(null)
   const [manualZ,     setManualZ]     = useState<number>(0)
-  const [tzMode,      setTzMode]      = useState<TzMode>('norm')
+  const [tzMode,      setTzMode]      = useState<TzMode|null>(null)
   const [loadHint,    setLoadHint]    = useState<string|null>(null)
 
   const skipArmCountEffect = useRef(false)
-  const [showGrundlagen, setShowGrundlagen] = useState(false)
-  const { msg: toastMsg, show: showToast } = useToast()
+  const letzteArmzahl = useRef(armCount)
+  const [karte, setKarte] = useState(() => uebernahme ? kartenBezugAus(uebernahme, 'lsa') : null)
+  const { meldung, melden, schliessen: meldungZu } = useMeldung()
 
   // Volumen aus Arm-Eingaben + FGS
   const volumes = useMemo(
@@ -1302,7 +1301,7 @@ export default function LSAApp() {
     for (let i=0; i<armLabels.length; i++) {
       const lbl = armLabels[i]
       const streams = armStreamIds(armCount, i)
-      const fs1 = streams.filter(s=>(moveLane[s]??1)===1)
+      const fs1 = streams.filter(s=>moveLane[s]===1)
       const fs2 = streams.filter(s=>moveLane[s]===2)
       if (fs1.length>0) result.push({
         id:`${lbl}-FS1`, armIndex:i,
@@ -1355,50 +1354,50 @@ export default function LSAApp() {
     })))
   }
 
-  // Beim Start und bei armCount-Änderung: Vorschlag laden
+  // Bei armCount-Änderung: Eingaben leeren, der Phasenplan bleibt offen. Beim Start nichts tun:
+  // Die Werte aus der Karte stehen schon im Zustand, und im StrictMode läuft der Effekt dort zweimal
   useEffect(() => {
+    if (letzteArmzahl.current === armCount) return
+    letzteArmzahl.current = armCount
     if (skipArmCountEffect.current) { skipArmCountEffect.current = false; return }
     setFgsConfig({})
     setArms(defaultArms(armCount))
     setMoveLane({})
-    const { lanes: defLanes, phases: defPhases } = defaultLanesAndPhases(armCount)
-    const armLabels = armCount===3 ? ['A','C','B'] : ['A','C','B','D']
-    const defToReal: Record<string,string> = {}
-    defLanes.forEach((dl,i) => { defToReal[dl.id] = `${armLabels[i]}-FS1` })
-    setPhaseStates(defPhases.map(dp => ({
-      id: dp.id,
-      selectedLaneIds: dp.laneIds.map(id=>defToReal[id]).filter(Boolean),
-    })))
+    setPhaseStates([])
   }, [armCount])
 
   const handleExport = () =>
     exportTool({
       tool: 'lsa', filePrefix: 'LSA',
-      name: nodeName, showToast,
-      data: { lsaSchema: 3, nodeName, armCount, arms, moveLane, fgsConfig, phaseStates, targetLos, manualZ, tzMode },
+      name: nodeName, melden,
+      data: { lsaSchema: 3, nodeName, armCount, arms, moveLane, fgsConfig, phaseStates, targetLos, manualZ, tzMode, ...(karte ? { karte } : {}) },
     })
 
   const handleImport = () =>
     importTool('lsa', d => {
       const newCount = oneOf<3|4>([3, 4], d.armCount, 4)
+      const leer = d.leereFelder === true
+      const tempi: readonly DesignSpeed[] = [30, 50, 60]
       let loadedArms = conformFixed(defaultArms(newCount), d.arms).map(a => ({
         ...a,
         mix: a.mix ? conform<VehicleMix>({ pctLW:0, pctMR:0, pctFR:0 }, a.mix) : undefined,
-        vDesign: oneOf<DesignSpeed>([30, 50, 60], a.vDesign, 50),
+        vDesign: leer ? wahl(tempi, a.vDesign) ?? undefined : oneOf(tempi, a.vDesign, 50),
       }))
       // Dateien vor lsaSchema 2: 4-Arm-Zeilen 4/6 (Arm B) und 10/12 (Arm D) waren mit
       // vertauschtem Links/Rechts beschriftet und gespeichert. Werte beim Zielarm belassen.
       const schema = typeof d.lsaSchema === 'number' ? d.lsaSchema : 1
       if (newCount === 4 && schema < 2)
         loadedArms = loadedArms.map((a, i) => i >= 2 ? { ...a, left: a.right, right: a.left } : a)
-      // FS-Zuordnung: nur Werte 1/2; FGS je Arm gegen Standardwerte; Phasen mit Lane-ID-Listen
+      // FS-Zuordnung: nur Werte 1/2; FGS je Arm gegen die Vorlage; Phasen mit Lane-ID-Listen
       const moveLane: Record<string,1|2> = {}
       for (const [k, v] of Object.entries(conform<Record<string, unknown>>({}, d.moveLane)))
         if (v === 1 || v === 2) moveLane[k] = v
+      // Ältere Dateien nannten nur FS2, die übrigen Ströme lagen auf FS1
+      if (!leer) for (let i = 0; i < newCount; i++) for (const s of armStreamIds(newCount, i)) moveLane[s] ??= 1
       const fgsConfig: Record<string, FGSArmConfig> = {}
       const fgsRaw = typeof d.fgsConfig === 'object' && d.fgsConfig !== null ? d.fgsConfig as Record<string, unknown> : {}
       for (const lbl of ['A','B','C','D'])
-        if (fgsRaw[lbl] !== undefined) fgsConfig[lbl] = conform(DEFAULT_FGS, fgsRaw[lbl])
+        if (fgsRaw[lbl] !== undefined) fgsConfig[lbl] = conform(leer ? DEFAULT_FGS : { ...DEFAULT_FGS, length: 6 }, fgsRaw[lbl])
       const phaseStates: PhaseState[] = (Array.isArray(d.phaseStates) ? d.phaseStates : [])
         .filter((ph): ph is Record<string, unknown> => typeof ph === 'object' && ph !== null)
         .map((ph, i) => ({
@@ -1408,38 +1407,38 @@ export default function LSAApp() {
         }))
       if (newCount !== armCount) skipArmCountEffect.current = true
       setNodeName(typeof d.nodeName === 'string' ? d.nodeName : '')
+      setKarte(kartenBezugLesen(d.karte))
       setArmCount(newCount)
+      setArmGewaehlt(true)
       setArms(loadedArms)
       setMoveLane(moveLane)
       setFgsConfig(fgsConfig)
       setPhaseStates(phaseStates)
-      setTargetLos(oneOf<LevelOfService>(['A','B','C','D','E','F'], d.targetLos, 'D'))
+      const stufen: readonly LevelOfService[] = ['A','B','C','D','E','F']
+      setTargetLos(leer ? wahl(stufen, d.targetLos) : oneOf(stufen, d.targetLos, 'D'))
       setManualZ(conform(0, d.manualZ))
       // Dateien ohne Angabe wurden nach Tempo gestaffelt gerechnet: Resultate bleiben, mit Hinweis
-      const newMode = tzModeFromFile(d.tzMode, loadedArms.map(a => a.vDesign))
+      const newMode = leer ? wahl<TzMode>(['norm', 'staffel'], d.tzMode) : tzModeFromFile(d.tzMode, loadedArms.map(a => a.vDesign))
       setTzMode(newMode)
       setLoadHint(d.tzMode === undefined && newMode === 'staffel'
         ? `Ältere Datei: Die Zwischenzeit bleibt wie gespeichert nach Tempo gestaffelt `
           + `(T_Z = ${tzFor('staffel', loadedArms.map(a => a.vDesign))} s, Annahme), damit die Resultate gleich bleiben. `
-          + `Neue Vorgabe ist die Norm-Pauschale von ${TZ_NORM} s je Phase (Ziffer 11.2, Seite 10); die Umschaltung liegt bei der Umlaufzeit.`
+          + `Die Norm-Pauschale beträgt ${TZ_NORM} s je Phase (Ziffer 11.2, Seite 10); die Umschaltung liegt bei der Umlaufzeit.`
         : null)
-    }, showToast)
+    }, melden)
 
   function handleReset() {
     setNodeName('')
     setArms(defaultArms(armCount))
     setMoveLane({})
     setFgsConfig({})
-    const { lanes: defLanes, phases: defPhases } = defaultLanesAndPhases(armCount)
-    const armLabels = armCount===3 ? ['A','C','B'] : ['A','C','B','D']
-    const defToReal: Record<string,string> = {}
-    defLanes.forEach((dl,i) => { defToReal[dl.id] = `${armLabels[i]}-FS1` })
-    setPhaseStates(defPhases.map(dp => ({ id: dp.id, selectedLaneIds: dp.laneIds.map(id=>defToReal[id]).filter(Boolean) })))
-    setTargetLos('D')
+    setPhaseStates([])
+    setTargetLos(null)
     setManualZ(0)
-    setTzMode('norm')
+    setTzMode(null)
     setLoadHint(null)
-    showToast('Zurückgesetzt')
+    setArmGewaehlt(false)
+    melden('Zurückgesetzt')
   }
 
   // FS-Zuordnung ändern + Phasen synchron halten
@@ -1451,7 +1450,7 @@ export default function LSAApp() {
       const lbl = armLabels[i]
       const streams = armStreamIds(armCount, i)
       const hadFs2 = streams.some(s => moveLane[s] === 2)
-      const willHaveFs2 = streams.some(s => (newMoveLane[s] ?? 1) === 2)
+      const willHaveFs2 = streams.some(s => newMoveLane[s] === 2)
       if (!hadFs2 && willHaveFs2) phaseUpdates.push({ lbl, create: true })
       else if (hadFs2 && !willHaveFs2) phaseUpdates.push({ lbl, create: false })
     }
@@ -1493,105 +1492,74 @@ export default function LSAApp() {
   }
 
   // Zwischenzeit: Norm-Pauschale oder Annahme (Staffelung, Maximum über alle Arme)
-  const tZ = useMemo(() => tzFor(tzMode, arms.map(a => a.vDesign)), [tzMode, arms])
+  const tZ = useMemo(() => (tzMode ? tzFor(tzMode, arms.map(a => a.vDesign)) : null), [tzMode, arms])
+
+  const offen = armGewaehlt
+    ? offenLsa({ armCount, arms, moveLane, fgs: fgsConfig, tzMode, targetLos, phasenplan: phases.some(p => p.laneIds.length > 0) })
+    : ['Knotentyp']
+  const fertig = offen.length === 0
 
   // Berechnung
   const result = useMemo<LSAResultV2|null>(() => {
-    if (lanes.length===0 || phases.length===0) return null
+    if (!fertig || tZ === null || targetLos === null || lanes.length===0 || phases.length===0) return null
     return calculateLSAV2({ armCount, volumes, lanes, phases, targetLos, manualZ: manualZ > 0 ? manualZ : undefined, tZ })
-  }, [armCount, volumes, lanes, phases, targetLos, tZ, manualZ])
+  }, [armCount, volumes, lanes, phases, targetLos, tZ, manualZ, fertig])
 
   return (
     <>
     <div style={{ maxWidth:1200, margin:'0 auto', padding:'16px 16px 40px' }}>
+      <Meldung text={meldung} onClose={meldungZu} />
+      {uebernahme && <UebernahmeHinweis u={uebernahme} rechner="lsa" />}
+      <SoFunktionierts rechner="lsa" />
+      {karte && <BelastungsVergleich vergleich={karte.vergleich} querschnitte={querschnitteKnoten(arms)} />}
 
 
       {/* ── Kopfzeile ─── */}
-      <div style={{ background:'#fff', borderRadius:10, border:'1px solid #e5e7eb',
-                    padding:'10px 16px', marginBottom:16,
-                    display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+      <div className="kachel" style={{ padding:'10px 16px', marginBottom:16, display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
         <input type="text" value={nodeName} onChange={e => setNodeName(e.target.value)}
           placeholder="Bezeichnung des Knotens"
           style={{ flex:1, minWidth:200, padding:'5px 10px', borderRadius:5,
-                   border:'1px solid #d1d5db', fontSize:14, fontWeight:600, color:'#1e293b' }} />
+                   border:'1px solid var(--border)', fontSize:14, fontWeight:600, color:'var(--text-strong)' }} />
         <button onClick={handleExport}
-          style={{ padding:'4px 12px', borderRadius:6, fontSize:12, cursor:'pointer',
-                   border:'1px solid #d1d5db', background:'#f9fafb', color:'#374151', whiteSpace:'nowrap' }}>
-          Speichern
+          className="knopf zweit" style={{ whiteSpace:'nowrap' }}>
+          Fall speichern
         </button>
         <button onClick={handleImport}
-          style={{ padding:'4px 12px', borderRadius:6, fontSize:12, cursor:'pointer',
-                   border:'1px solid #d1d5db', background:'#f9fafb', color:'#374151', whiteSpace:'nowrap' }}>
-          Laden
+          className="knopf zweit" style={{ whiteSpace:'nowrap' }}>
+          Fall laden
         </button>
         <button onClick={handleReset}
-          style={{ padding:'4px 8px', fontSize:11, cursor:'pointer',
-                   background:'none', border:'none', color:'#9ca3af',
-                   textDecoration:'underline', whiteSpace:'nowrap' }}>
-          Zurücksetzen
+          className="knopf zweit" style={{ whiteSpace:'nowrap' }}>
+          zurücksetzen
         </button>
-      </div>
-
-      {/* ── Grundlagen ─── */}
-      <div style={{ background:'#f8fafc', borderRadius:10, border:'1px solid #e2e8f0', marginBottom:16 }}>
-        <button onClick={() => setShowGrundlagen(v => !v)}
-          style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between',
-                   padding:'10px 16px', background:'none', border:'none', cursor:'pointer',
-                   fontSize:11, fontWeight:700, letterSpacing:'0.06em', color:'#64748b',
-                   textTransform:'uppercase' }}>
-          <span>Grundlagen und Normen</span>
-          <span style={{ fontSize:10, color:'#94a3b8' }}>{showGrundlagen ? '▲' : '▼'}</span>
-        </button>
-        {showGrundlagen && (
-          <div style={{ padding:'0 16px 12px', fontSize:12, color:'#475569',
-                        display:'flex', flexDirection:'column', gap:3 }}>
-            {([
-              ['VSS 40 023a', 'Leistungsfähigkeit, Verkehrsqualität, Belastbarkeit; Knoten mit Lichtsignalanlagen'],
-              ['VSS 40 837',  'Lichtsignalanlagen — Übergangszeiten und Mindestzeiten (Gelbzeiten Ziffer 16, Seite 5; Basis der als Annahme wählbaren T_Z-Staffelung)'],
-              ['VSS 40 834',  'Lichtsignalanlagen — Phasentrennung (S = 8000 Fg/h für FGS, Ziffer 4, Seite 3)'],
-              ['VSS SN 640 835',  'Lichtsignalanlagen — Leistungsfähigkeit (Korrekturfaktoren; nicht implementiert)'],
-              ['HB LSA Bern V 2.1', 'Anhang G — Mindestfreigabezeit FGS ≥ 5 s'],
-            ] as [string,string][]).map(([norm, desc]) => (
-              <div key={norm} style={{ display:'flex', gap:6, alignItems:'baseline', flexWrap:'wrap' }}>
-                <span style={{ fontWeight:700, color:'#1e3a5f', whiteSpace:'nowrap', minWidth:170 }}>{norm}</span>
-                <span style={{ color:'#94a3b8' }}>—</span>
-                <span>{desc}</span>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* ── Schritt 1 ─── */}
-      <div style={{ background:'#fff', borderRadius:10, border:'1px solid #e5e7eb',
-                    padding:'14px 16px', marginBottom:16 }}>
+      <div className="kachel" style={{ padding:'14px 16px', marginBottom:16 }}>
         <StepBadge n={1} label="Massgebende Verkehrsstärken je Knotenstrom bestimmen" />
-        <p style={{ fontSize:12, color:'#6b7280', margin:'0 0 12px' }}>
+        <p style={{ fontSize:12, color:'var(--text-muted)', margin:'0 0 12px' }}>
           Stündliche Spitzenstunden-Verkehrsstärken Q [Fz/h] je Knotenstrom eingeben und in PWE umrechnen (Ziffer 9, Seiten 7–8, VSS 40 023a). Schwerverkehr (LW, MR, FR) wird gemäss Ziffer 10.2, Seite 8 berücksichtigt.
         </p>
         <div style={{ display:'flex', gap:16, alignItems:'flex-start', marginBottom:14, flexWrap:'wrap' }}>
           <div style={{ flex:'1 1 auto' }}>
             <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-              <span style={{ fontSize:13, fontWeight:600, color:'#374151' }}>Knotentyp:</span>
+              <span style={{ fontSize:14, fontWeight:600, color:'var(--text)' }}>Knotentyp:</span>
               {([3,4] as const).map(n => (
-                <button key={n} onClick={()=>setArmCount(n)}
-                  style={{ padding:'5px 14px', borderRadius:6, fontSize:13, fontWeight:600,
-                           cursor:'pointer',
-                           background:armCount===n?'#1e3a5f':'#f3f4f6',
-                           color:armCount===n?'#fff':'#374151',
-                           border:armCount===n?'1.5px solid #1e3a5f':'1.5px solid #e5e7eb' }}>
+                <button key={n} onClick={()=>{ setArmCount(n); setArmGewaehlt(true) }}
+                  className={`knopf${armGewaehlt && armCount === n ? '' : ' zweit'}`}>
                   {n===3?'Einmündung (3-Arm)':'Kreuzung (4-Arm)'}
                 </button>
               ))}
             </div>
-            <div className={`arms-grid${armCount===4?' arms-grid-4':''}`}>
+            {!armGewaehlt && <OffeneAngaben liste={offen} />}
+            {armGewaehlt && <div className={`arms-grid${armCount===4?' arms-grid-4':''}`}>
               {arms.map((arm,i) => (
                 <ArmCard key={i} arm={arm} index={i} armCount={armCount} tzMode={tzMode}
                   onChange={a => setArms(prev=>prev.map((x,j)=>j===i?a:x))} />
               ))}
-            </div>
+            </div>}
           </div>
-          <div style={{ flex:'0 0 auto', textAlign:'center' }}>
+          {armGewaehlt && <div style={{ flex:'0 0 auto', textAlign:'center' }}>
             <img
               src={armCount === 4 ? lsa4ArmSvg : lsa3ArmSvg}
               alt={armCount === 4 ? 'Knotengeometrie 4-Arm' : 'Knotengeometrie 3-Arm'}
@@ -1599,22 +1567,22 @@ export default function LSAApp() {
                 width: 280,
                 height: 'auto',
                 objectFit:'contain',
-                border:'1px solid #e5e7eb', borderRadius:8,
+                border:'1px solid var(--kachel-rand)', borderRadius:8,
                 background:'#fff', padding:6,
               }}
             />
-            <div style={{ fontSize:10, color:'#6b7280', marginTop:4 }}>
+            <div style={{ fontSize:12, color:'var(--text-muted)', marginTop:4 }}>
               Arme A–{armCount===4?'D':'C'} · Ströme {armCount===4?'q1–q12':'q2–q8'} · fgs_A–{armCount===4?'D':'C'}
             </div>
-          </div>
+          </div>}
         </div>
       </div>
 
+      {armGewaehlt && <>
       {/* ── Schritt 2 ─── */}
-      <div style={{ background:'#fff', borderRadius:10, border:'1px solid #e5e7eb',
-                    padding:'14px 16px', marginBottom:16 }}>
+      <div className="kachel" style={{ padding:'14px 16px', marginBottom:16 }}>
         <StepBadge n={2} label="Fahrstreifenplan — Knotenströme zuordnen" />
-        <p style={{ fontSize:12, color:'#6b7280', margin:'0 0 12px' }}>
+        <p style={{ fontSize:12, color:'var(--text-muted)', margin:'0 0 12px' }}>
           Anzahl Fahrstreifen festlegen und Knotenströme den Fahrstreifen zuordnen (Ziffer 9.3, Seite 8).
           Bewegungen auf FS1 oder FS2 aufteilen. FGS: Fussgängerstreifen mit Querungslänge aktivieren.
           Die Verkehrsstärke eines Fahrstreifens ist die Summe der zugeordneten Ströme (Ziffer 9.3, Seite 8); ein Mischfahrstreifen muss alle seine Ströme abwickeln.
@@ -1626,59 +1594,70 @@ export default function LSAApp() {
 
       {/* ── Schritt 3 + Ergebnisse ─── */}
       <div className="layout-grid">
-        <div style={{ background:'#fff', borderRadius:10, border:'1px solid #e5e7eb',
-                      padding:'14px 16px' }}>
+        <div className="kachel" style={{ padding:'14px 16px' }}>
           <StepBadge n={3} label="Phasenplan — ΣQkrit und Umlaufzeit Z festlegen" />
-          <p style={{ fontSize:12, color:'#6b7280', margin:'0 0 8px' }}>
+          <p style={{ fontSize:12, color:'var(--text-muted)', margin:'0 0 8px' }}>
             Fahrstreifen den Phasen zuordnen (☑ = Grün in dieser Phase, Ziffer 11, Seite 9).
             Daraus werden ΣQkrit, Umlaufzeit Z und Leistungsfähigkeit L je Fahrstreifen berechnet.
             FGS-Lanes (grün) manuell zuweisen.
           </p>
           <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10,
                         padding:'6px 10px', borderRadius:6, background:'#f8fafc',
-                        border:'1px solid #e2e8f0', fontSize:12 }}>
-            <span style={{ color:'#374151', fontWeight:600 }}>Umlaufzeit Z:</span>
+                        border:'1px solid var(--kachel-rand)', fontSize:12 }}>
+            <span style={{ color:'var(--text)', fontWeight:600 }}>Umlaufzeit Z:</span>
             <input type="number" min={30} max={200} step={1}
               value={manualZ || ''}
               placeholder="Auto (Tab. 2)"
               onChange={e => setManualZ(Math.max(0, Number(e.target.value) || 0))}
               style={{ width:90, padding:'3px 7px', borderRadius:4, fontSize:12,
-                       border: manualZ > 0 ? '1.5px solid #1e3a5f' : '1px solid #d1d5db',
+                       border: manualZ > 0 ? '1.5px solid var(--accent)' : '1px solid var(--border)',
                        fontWeight: manualZ > 0 ? 700 : 400 }} />
-            <span style={{ color:'#9ca3af' }}>s</span>
+            <span style={{ color:'var(--text-muted)' }}>s</span>
             {manualZ > 0 && (
               <button onClick={() => setManualZ(0)}
-                style={{ padding:'2px 8px', fontSize:11, borderRadius:4, cursor:'pointer',
-                         background:'#f3f4f6', border:'1px solid #d1d5db', color:'#6b7280' }}>
+                className="knopf zweit klein">
                 Auto
               </button>
             )}
-            <span style={{ color: manualZ > 0 ? '#1e3a5f' : '#9ca3af', marginLeft:4 }}>
+            <span style={{ color: manualZ > 0 ? 'var(--accent)' : 'var(--text-muted)', marginLeft:4 }}>
               {manualZ > 0 ? 'Manuell — überschreibt Tab. 2' : 'Leer = automatisch aus Tab. 2 (kleinste passende Z)'}
             </span>
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10, flexWrap:'wrap',
                         padding:'6px 10px', borderRadius:6, background:'#f8fafc',
-                        border:'1px solid #e2e8f0', fontSize:12 }}>
-            <span style={{ color:'#374151', fontWeight:600 }}>Zwischenzeit:</span>
+                        border:'1px solid var(--kachel-rand)', fontSize:12 }}>
+            <span style={{ color:'var(--text)', fontWeight:600 }}>Zwischenzeit:</span>
             {([
               ['norm', `${TZ_NORM} s je Phase (Norm-Pauschale, Ziffer 11.2, Seite 10)`],
               ['staffel', `Annahme: nach Tempo gestaffelt, 3/4/5 s (Norm-Pauschale ${TZ_NORM} s)`],
             ] as const).map(([mode, label]) => (
-              <label key={mode} style={{ display:'flex', alignItems:'center', gap:4, cursor:'pointer', color:'#475569' }}>
+              <label key={mode} style={{ display:'flex', alignItems:'center', gap:4, cursor:'pointer', color:'var(--text)' }}>
                 <input type="radio" name="lsa-tz-mode" checked={tzMode===mode}
                   onChange={() => { setTzMode(mode); setLoadHint(null) }}
                   style={{ accentColor:'#1e3a5f', cursor:'pointer' }} />
                 {label}
               </label>
             ))}
-            <span style={{ marginLeft:'auto', color:'#475569', whiteSpace:'nowrap' }}>
-              T_Z = <strong>{tZ}</strong> s/Phase
+            <span style={{ marginLeft:'auto', color:'var(--text)', whiteSpace:'nowrap' }}>
+              T_Z = <strong>{tZ ?? '–'}</strong> s/Phase
             </span>
           </div>
+          <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:10, flexWrap:'wrap',
+                        padding:'6px 10px', borderRadius:6, background:'#f8fafc',
+                        border:'1px solid var(--kachel-rand)', fontSize:12 }}>
+            <span style={{ color:'var(--text)', fontWeight:600 }}>Ziel-VQS:</span>
+            {(['A','B','C','D','E','F'] as LevelOfService[]).map(los => (
+              <button key={los} onClick={() => setTargetLos(los)}
+                style={{ padding:'2px 8px', borderRadius:5, fontSize:12, cursor:'pointer', fontWeight:700,
+                         background: targetLos===los ? LOS_BG[los] : '#f3f4f6',
+                         color: targetLos===los ? LOS_COLOR[los] : 'var(--text-muted)',
+                         border: targetLos===los ? `1.5px solid ${LOS_COLOR[los]}` : '1.5px solid #e5e7eb' }}>
+                {los}
+              </button>
+            ))}
+          </div>
           {loadHint && (
-            <div style={{ marginBottom:10, padding:'8px 12px', borderRadius:6, background:'#fff7ed',
-                          border:'1px solid #fdba74', fontSize:12, color:'#9a3412' }}>
+            <div className="hinweis klein" style={{ marginBottom:10 }}>
               {loadHint}
             </div>
           )}
@@ -1689,7 +1668,7 @@ export default function LSAApp() {
         </div>
 
         <div className="results-panel">
-          {result?.hasVehicleTraffic
+          {result?.hasVehicleTraffic && targetLos && tzMode
             ? <ResultsPanelV2 result={result} targetLos={targetLos} tzMode={tzMode}
                 onTargetLos={setTargetLos} onManualZ={setManualZ}
                 onPrint={() => {
@@ -1698,45 +1677,20 @@ export default function LSAApp() {
                   window.addEventListener('afterprint', () => { document.title = prev }, { once: true })
                   window.print()
                 }} />
-            : <div style={{ padding:20, color:'#9ca3af', fontSize:13 }}>
-                {result
-                  ? 'Noch keine Verkehrsstärken eingegeben: Ohne Motorfahrzeugverkehr gibt es keine Qualitätsstufe.'
-                  : 'Fahrstreifen und Phasen definieren, um Ergebnisse zu sehen.'}
-              </div>
+            : <OffeneAngaben liste={offen.length > 0 ? offen : ['Verkehrsmengen']} />
           }
         </div>
       </div>
+      </>}
 
-      <LegendBox items={LEGEND_ITEMS} />
+      <HilfeUnten rechner="lsa" legende={LEGEND_ITEMS} quellen={karte?.quellen} />
 
-      <footer style={{ fontSize: 11, color: '#9ca3af', textAlign: 'center', marginTop: 24, lineHeight: 2 }}>
-        <div>
-          Die Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.
-        </div>
-        <div>
-          © 2026 pnfzygrzgf-svg · Quellcode:{' '}
-          <a href="https://github.com/pnfzygrzgf-svg/KnotenCheck"
-             target="_blank" rel="noopener noreferrer"
-             style={{ color: '#9ca3af', textDecoration: 'underline' }}>
-            GitHub
-          </a>
-          {' '}· Lizenz:{' '}
-          <a href="https://www.gnu.org/licenses/agpl-3.0.html"
-             target="_blank" rel="noopener noreferrer"
-             style={{ color: '#9ca3af', textDecoration: 'underline' }}>
-            AGPL-3.0
-          </a> (Code),{' '}
-          <a href="https://creativecommons.org/licenses/by-sa/4.0/deed.de"
-             target="_blank" rel="noopener noreferrer"
-             style={{ color: '#9ca3af', textDecoration: 'underline' }}>
-            CC BY-SA 4.0
-          </a> (Inhalte)
-          {' '}— kommerzielle Nutzung untersagt.
-        </div>
-      </footer>
+      <RechnerFuss>
+        Die Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.
+      </RechnerFuss>
     </div>
 
-    {isActive && result?.hasVehicleTraffic && createPortal(
+    {isActive && result?.hasVehicleTraffic && targetLos && tzMode && createPortal(
       <div className="print-portal" style={{ padding:'14mm 16mm', background:'#fff',
                                              fontFamily:'system-ui, Arial, sans-serif' }}>
         <LSAPrintSheet
@@ -1752,10 +1706,10 @@ export default function LSAApp() {
           targetLos={targetLos}
           tzMode={tzMode}
         />
+        <BerichtQuellen zeilen={karte?.quellen ?? []} />
       </div>,
       document.body
     )}
-    <Toast msg={toastMsg} />
     </>
   )
 }

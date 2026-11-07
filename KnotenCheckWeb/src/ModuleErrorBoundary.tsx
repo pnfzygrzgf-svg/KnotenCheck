@@ -19,16 +19,16 @@ export class ModuleErrorBoundary extends Component<
     return (
       <main style={{ maxWidth: 640, margin: '40px auto', padding: '20px 24px', background: '#fff',
                      borderRadius: 10, border: '1px solid #fca5a5', fontFamily: 'system-ui, sans-serif' }}>
-        <div style={{ fontWeight: 700, fontSize: 16, color: '#991b1b', marginBottom: 8 }}>
+        <div style={{ fontWeight: 700, fontSize: 15, color: '#991b1b', marginBottom: 8 }}>
           Dieser Rechner konnte nicht angezeigt werden
         </div>
-        <p style={{ fontSize: 13, color: '#374151', margin: '0 0 14px', lineHeight: 1.5 }}>
+        <p style={{ fontSize: 14, color: 'var(--text)', margin: '0 0 14px', lineHeight: 1.5 }}>
           Vermutlich enthalten die Eingaben ungültige Werte, z. B. aus einer beschädigten Datei.
           Die anderen Rechner sind nicht betroffen.
         </p>
         <button onClick={this.props.onReset}
-          style={{ padding: '8px 16px', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                   border: '1px solid #1e3a5f', background: '#1e3a5f', color: '#fff' }}>
+          style={{ padding: '8px 16px', borderRadius: 6, fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                   border: '1px solid var(--accent)', background: '#1e3a5f', color: '#fff' }}>
           Rechner zurücksetzen
         </button>
       </main>

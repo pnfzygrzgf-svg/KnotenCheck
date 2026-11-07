@@ -62,6 +62,11 @@ export function oneOf<T extends string | number>(allowed: readonly T[], value: u
   return allowed.includes(value as T) ? value as T : fallback
 }
 
+// Wert aus einer Auswahl, sonst null: noch nicht gewählt
+export function wahl<T extends string | number>(allowed: readonly T[], value: unknown): T | null {
+  return allowed.includes(value as T) ? value as T : null
+}
+
 // Arrays fester Länge: je Position gegen die Vorlage (fehlende Elemente = Vorlage)
 export function conformFixed<T>(templates: T[], value: unknown): T[] {
   const src = Array.isArray(value) ? value : []
