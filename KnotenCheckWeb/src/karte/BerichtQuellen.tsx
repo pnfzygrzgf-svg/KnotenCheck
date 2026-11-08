@@ -9,11 +9,11 @@ const TABELLE: CSSProperties = { width: '100%', borderCollapse: 'collapse', font
 const KOPF: CSSProperties = { border: '1px solid #555', padding: '2px 6px', background: '#d8d8d8', fontWeight: 700, textAlign: 'left' }
 const ZELLE: CSSProperties = { border: '1px solid #999', padding: '2px 6px', verticalAlign: 'top' }
 
-export default function BerichtQuellen({ zeilen }: { zeilen: readonly BerichtQuelle[] }) {
+export default function BerichtQuellen({ zeilen, ohneTitel = false }: { zeilen: readonly BerichtQuelle[]; ohneTitel?: boolean }) {
   if (!zeilen.length) return null
   return (
     <section style={{ breakInside: 'avoid' }}>
-      <div style={TITEL}>Quellen</div>
+      {ohneTitel ? <div style={{ fontWeight: 700, fontSize: 10, margin: '6px 0 2px' }}>Daten aus der Karte</div> : <div style={TITEL}>Quellen</div>}
       <table style={TABELLE}>
         <thead><tr>{['Quelle', 'Für', 'Anbieter', 'Stand', 'Lizenz'].map(t => <th key={t} style={KOPF}>{t}</th>)}</tr></thead>
         <tbody>{zeilen.map(z => <tr key={z.quelle}>
@@ -21,7 +21,7 @@ export default function BerichtQuellen({ zeilen }: { zeilen: readonly BerichtQue
           <td style={ZELLE}>{z.stand}</td><td style={ZELLE}>{z.lizenz}</td>
         </tr>)}</tbody>
       </table>
-      <div style={{ fontSize: 9, color: '#555' }}>Vorbelegung aus der Karte. Von Hand geänderte Werte sind hier nicht vermerkt. Abbiegeströme sind Eingaben.</div>
+      <div style={{ fontSize: 9, color: '#555' }}>Vorbelegung aus der Karte. Von Hand geänderte Werte sind hier nicht vermerkt. Modell-Abbieger sind berechnet, nicht gezählt.</div>
     </section>
   )
 }

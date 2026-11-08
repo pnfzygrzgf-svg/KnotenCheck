@@ -1,0 +1,57 @@
+/* Druckblätter: gemeinsames Gerüst (bericht/Bericht.tsx). Die Tabellen behalten ihre Stile im Blatt. */
+
+.bl-toolbar { position: sticky; top: 0; z-index: 10; display: flex; gap: 10px; align-items: center; padding: 10px 24px; background: #1e3a5f; border-bottom: 2px solid #2d5490; }
+.bl-toolbar button { font: inherit; font-size: 14px; padding: 6px 16px; border-radius: 8px; cursor: pointer; }
+.bl-toolbar .bl-drucken { background: #ffffff; color: #1e3a5f; border: none; font-weight: 700; }
+.bl-toolbar .bl-drucken:disabled { opacity: .6; cursor: wait; }
+.bl-toolbar .bl-schliessen { background: transparent; color: #ffffff; border: 1px solid #ffffff55; }
+.bl-toolbar .bl-tipp { font-size: 12px; color: #cbd5e1; }
+@media (pointer: coarse) { .bl-toolbar button { min-height: 44px; } }
+
+.bericht { max-width: 900px; margin: 0 auto; padding: 28px 32px; background: #ffffff; font-family: Arial, Helvetica, sans-serif; color: #111; font-size: 11px; line-height: 1.45; text-align: left; }
+.bericht a { color: #1e3a5f; }
+.bericht-kopf { border-bottom: 2px solid #333; padding-bottom: 8px; margin-bottom: 12px; }
+.bericht-titelzeile { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.bericht-titelzeile h1 { font-size: 15px; font-weight: 700; margin: 0; letter-spacing: normal; color: #111; }
+.bericht-stand { font-size: 10px; color: #555; }
+.bericht-angaben { font-size: 11px; margin-top: 3px; }
+.bericht-abschnitt { margin-top: 10px; }
+.bericht h2.bl-sec { font-size: 12px; font-weight: 700; margin: 12px 0 4px; color: #222; border-bottom: 1px solid #aaa; padding-bottom: 2px; letter-spacing: normal; text-transform: none; }
+.bericht h3 { font-size: 11px; font-weight: 700; margin: 8px 0 3px; }
+.bericht-unter { font-size: 10px; color: #444; margin: 2px 0 6px; }
+.bericht-hinweise { margin: 2px 0 6px; padding-left: 18px; font-size: 10px; color: #333; }
+.bericht-hinweise li + li { margin-top: 2px; }
+.bericht-gesamt { display: flex; align-items: center; gap: 10px; border: 1px solid #999; border-radius: 6px; padding: 6px 10px; margin: 4px 0 10px; font-size: 12px; }
+.bericht-gesamt-stufe { font-size: 20px; font-weight: 800; min-width: 28px; text-align: center; }
+.bericht-zwei { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.bericht-zwei > * { flex: 1 1 320px; min-width: 0; }
+.bericht-bild { max-width: 360px; }
+.herkunft { font-size: 8px; font-weight: 700; margin-left: 2px; padding: 0 2px; border-radius: 3px; }
+.herkunft-M { color: #7c2d12; background: #ffedd5; }
+.herkunft-K { color: #1e3a5f; background: #dbeafe; }
+
+.bericht-fuss { margin-top: 14px; padding-top: 4px; border-top: 1px solid #ccc; font-size: 9px; color: #555; }
+.bericht-fuss a { color: #555; }
+
+/* Kartenausschnitt im Kopf */
+.bericht-karte { margin: 8px 0 0; break-inside: avoid; }
+.bericht-karte-bild { position: relative; width: 100%; max-height: 120mm; background: #e5e7eb; overflow: hidden; }
+.bericht-karte-bild img, .bericht-karte-bild svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.bericht-ohne-bild { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #555; font-size: 11px; }
+.bericht-karte figcaption { font-size: 9px; color: #555; margin-top: 2px; }
+.bk-arm-rand { fill: none; stroke: #ffffff; stroke-width: 12; stroke-linecap: round; stroke-linejoin: round; }
+.bk-arm { fill: none; stroke: #1e3a5f; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+.bk-schild { fill: #1e3a5f; stroke: #ffffff; stroke-width: 3; }
+.bk-schild-text { fill: #ffffff; font: 700 24px Arial, sans-serif; text-anchor: middle; }
+.bk-knoten { fill: #ffffff; stroke: #1e3a5f; stroke-width: 4; }
+.bk-massstab-grund { fill: rgba(255,255,255,.85); }
+.bk-massstab { stroke: #111; stroke-width: 4; }
+.bk-massstab-text { fill: #111; font: 700 16px Arial, sans-serif; text-anchor: middle; }
+
+@media print {
+  .bericht { font-size: 9px; }
+  .bericht h2.bl-sec { font-size: 9px !important; break-after: avoid; }
+  .bericht-abschnitt { break-inside: auto; }
+  .bericht-gesamt { break-inside: avoid; }
+  .bericht-bild { max-width: 300px; }
+}

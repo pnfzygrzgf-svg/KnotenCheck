@@ -500,7 +500,7 @@ describe('Schwerverkehr und Vergleich in der Übernahme', () => {
   })
   test('Modell-Abbieger wirken nur, wenn die Spitze gewählt ist', () => {
     const x = v(), p = anfangsPaar(x)!, [a, c, b] = armeOrdnen(x, p)
-    const stand = { spitze: 'morgen' as const, matrix: { [a.key]: { [c.key]: 200, [b.key]: 30 }, [c.key]: { [a.key]: 180, [b.key]: 20 }, [b.key]: { [a.key]: 15, [c.key]: 25 } }, offen: [] }
+    const stand = { spitze: 'morgen' as const, matrix: { [a.key]: { [c.key]: 200, [b.key]: 30 }, [c.key]: { [a.key]: 180, [b.key]: 20 }, [b.key]: { [a.key]: 15, [c.key]: 25 } }, sv: {}, offen: [] }
     expect(intersectionAus(uebernahmeAus(x, p, {}, ALLES, {}, 'x', stand)!).arms[0].straightVolume).toBe(0)
     expect(intersectionAus(uebernahmeAus(x, p, {}, { ...ALLES, abbieger: 'abend' }, {}, 'x', stand)!).arms[0].straightVolume).toBe(0)
     const u = uebernahmeAus(x, p, {}, { ...ALLES, abbieger: 'morgen' }, {}, 'x', stand)!
@@ -529,9 +529,22 @@ describe('Schwerverkehr und Vergleich in der Übernahme', () => {
     expect(neben.tempo).toBe(30)
     expect(uebernahmeAus(x, p, {}, { ...ALLES, tempo: false }, {}, 'x', null, { [a.key]: 50 })!.arme[0].tempo).toBeUndefined()
   })
+  test('Schwerverkehr aus den Abbiegern nur bei gleicher Spitze, Form { lw, lz } bleibt', () => {
+    const x = v(), p = anfangsPaar(x)!, [a0] = armeOrdnen(x, p)
+    const bel = Object.fromEntries(x.arme.map(q => [q.key, b({})]))
+    const stand = { spitze: 'morgen' as const, matrix: {}, sv: { [a0.key]: { lw: 6.5, lz: 1.2 } }, offen: [] }
+    const gleich = uebernahmeAus(x, p, {}, { ...ALLES, abbieger: 'morgen', schwerverkehr: 'morgen' }, bel, 'x', stand)!
+    expect(gleich.arme[0].schwerverkehr).toEqual({ lw: 6.5, lz: 1.2 })
+    expect(gleich.arme[1].schwerverkehr).toBeUndefined()
+    expect(intersectionAus(gleich).arms[0]).toMatchObject({ fall: 2, vehicleMix: { pctLW: 6.5, pctLZ: 1.2, pctMR: 0, pctFR: 0 } })
+    expect(belegtFuer(gleich, 'sn022').join(' ')).toContain('Schwerverkehrsanteil der Zufahrt aus den Modell-Abbiegern NPVM, Morgenspitze 7–8 Uhr, nicht gezählt')
+    const anders = uebernahmeAus(x, p, {}, { ...ALLES, abbieger: 'morgen', schwerverkehr: 'abend' }, bel, 'x', stand)!
+    expect(anders.arme[0].schwerverkehr).toEqual({ lw: 2, lz: 0 })
+    expect(belegtFuer(anders, 'sn022').join(' ')).toContain('Schwerverkehrsanteil aus dem Modell NPVM, Abendspitze')
+  })
   test('Arm ohne Modellwert wird genannt', () => {
     const x = v(), p = anfangsPaar(x)!, b0 = armeOrdnen(x, p)[2]
-    const u = uebernahmeAus(x, p, {}, { ...ALLES, abbieger: 'abend' }, {}, 'x', { spitze: 'abend', matrix: {}, offen: [b0.key] })!
+    const u = uebernahmeAus(x, p, {}, { ...ALLES, abbieger: 'abend' }, {}, 'x', { spitze: 'abend', matrix: {}, sv: {}, offen: [b0.key] })!
     expect(u.hinweise.join(' ')).toContain('Arm B: kein passender Modellwert')
   })
   test('Speicherdatei behält den Vergleich', () => {

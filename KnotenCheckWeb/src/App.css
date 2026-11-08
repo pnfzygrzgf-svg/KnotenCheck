@@ -11,7 +11,7 @@ input[type=number]::-webkit-inner-spin-button { opacity: 1; }
 }
 
 .app-header-inner {
-  max-width: 1200px;   /* Platz für die fünf Reiter in einer Zeile */
+  max-width: 1280px;   /* wie die Rechner; Platz für die fünf Reiter in einer Zeile */
   margin: 0 auto;
   display: flex;
   align-items: center;
@@ -122,7 +122,7 @@ input[type=number]::-webkit-inner-spin-button { opacity: 1; }
 
 .layout-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
   gap: 16px;
   align-items: start;
 }
@@ -133,7 +133,8 @@ input[type=number]::-webkit-inner-spin-button { opacity: 1; }
 }
 
 .arms-grid-4 {
-  grid-template-columns: 1fr 1fr;
+  /* zwei Armkarten nebeneinander nur, wenn die Bezeichnungen der Ströme einzeilig bleiben */
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
 }
 
 .results-panel {

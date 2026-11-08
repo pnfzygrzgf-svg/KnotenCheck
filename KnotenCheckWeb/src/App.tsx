@@ -1,6 +1,6 @@
 // App-Shell: Header, Startseite und Modus-Wechsel zwischen den Rechner-Modulen
 
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import SN022App from './SN022App'
 import RoundaboutApp from './RoundaboutApp'
 import VSS308App from './VSS308App'
@@ -15,6 +15,7 @@ import { MARKE } from './marke'
 import Startseite from './Startseite'
 import './App.css'
 import './rechner.css'
+import './bericht/bericht.css'
 
 // Karte erst bei Bedarf laden: Startseite und Rechner bleiben ohne Leaflet und ohne Abrufe
 const KartenSeite = lazy(() => import('./karte/KartenSeite'))
@@ -44,10 +45,34 @@ export default function App() {
   // Aus der Karte übernommene Knoten je Rechner; das Modul baut sich damit neu auf
   const [uebernahmen, setUebernahmen] = useState<Partial<Record<RechnerKey, KnotenUebernahme>>>({})
 
-  function zeigen(m: Mode) {
+  // Letzter Knoten aus der Karte: Er geht beim Wechsel auch in die anderen Rechner mit, die für ihn passen. Gelesen wird über Refs,
+  // weil auch die Zurück-Taste (popstate) zeigen() aufruft
+  const letzte = useRef<{ u: KnotenUebernahme; moeglich: readonly RechnerKey[] } | null>(null)
+  const stand = useRef({ uebernahmen: {} as Partial<Record<RechnerKey, KnotenUebernahme>>, besucht: new Set<Mode>([modeAusAdresse()]) })
+  const abgelehnt = useRef<Partial<Record<RechnerKey, KnotenUebernahme>>>({})
+
+  const setzeUebernahme = useCallback((r: RechnerKey, u: KnotenUebernahme) => {
+    stand.current.uebernahmen = { ...stand.current.uebernahmen, [r]: u }
+    setUebernahmen(prev => ({ ...prev, [r]: u }))
+    setResets(x => ({ ...x, [r]: (x[r] ?? 0) + 1 }))
+  }, [])
+
+  // Nur Refs und Setter: stabil, darum auch für die Zurück-Taste
+  const zeigen = useCallback((m: Mode) => {
+    const l = letzte.current, s = stand.current
+    if (l && m !== 'home' && m !== 'karte') {
+      const r = m as RechnerKey
+      if (l.moeglich.includes(r) && s.uebernahmen[r] !== l.u && abgelehnt.current[r] !== l.u) {
+        // Ein schon geöffneter Rechner kann eigene Eingaben haben: dort erst fragen
+        if (!s.besucht.has(r) || window.confirm(`Den Knoten «${l.u.name}» aus der Karte auch im Rechner «${RECHNER_NAME[r]}» übernehmen? Die bisherigen Eingaben dort werden ersetzt.`))
+          setzeUebernahme(r, l.u)
+        else abgelehnt.current = { ...abgelehnt.current, [r]: l.u }
+      }
+    }
+    s.besucht.add(m)
     setMode(m)
     setVisited(prev => prev.has(m) ? prev : new Set(prev).add(m))
-  }
+  }, [setzeUebernahme])
   function openMode(m: Mode) {
     zeigen(m)
     if (m !== modeAusAdresse()) history.pushState(null, '', m === 'home' ? location.pathname + location.search : `#${m}`)
@@ -57,12 +82,12 @@ export default function App() {
     const zurueck = () => zeigen(modeAusAdresse())
     window.addEventListener('popstate', zurueck)
     return () => window.removeEventListener('popstate', zurueck)
-  }, [])
+  },[zeigen])
 
-  function uebernehmen(rechner: RechnerKey, u: KnotenUebernahme) {
+  function uebernehmen(rechner: RechnerKey, u: KnotenUebernahme, moeglich: readonly RechnerKey[]) {
     if (visited.has(rechner) && !window.confirm(`Die Eingaben im Rechner «${RECHNER_NAME[rechner]}» werden durch diesen Knoten ersetzt.`)) return
-    setUebernahmen(prev => ({ ...prev, [rechner]: u }))
-    setResets(r => ({ ...r, [rechner]: (r[rechner] ?? 0) + 1 }))
+    letzte.current = { u, moeglich }
+    setzeUebernahme(rechner, u)
     openMode(rechner)
   }
 

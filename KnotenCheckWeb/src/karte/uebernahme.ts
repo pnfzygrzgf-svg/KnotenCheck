@@ -110,6 +110,8 @@ export function uebernahmeAus(v: KnotenVorschlag, paar: HauptPaar | null, neigun
   if (hauptKnickt(v)) hinweise.push('In OSM knickt die Hauptstrasse ab. Die Rechner setzen gegenüberliegende Arme voraus.')
 
   const modell = auswahl.abbieger && abbieger?.spitze === auswahl.abbieger ? abbieger : null
+  // Schwerverkehr der Zufahrt aus den Abbiegern, nur wenn beide dieselbe Spitze haben; sonst der Anteil der Modellstrecke (beide Richtungen)
+  const svZufahrt = modell && auswahl.schwerverkehr === modell.spitze ? modell.sv : null
   const stroeme = modell ? armStroeme(modell.matrix, arme.map(({ arm, label }) => ({ key: arm.key, label })), v.form === 'kreisel') : null
   if (modell) for (const { arm, label } of arme) if (modell.offen.includes(arm.key)) hinweise.push(`Arm ${label}: kein passender Modellwert, seine Ströme fehlen im Vorschlag.`)
 
@@ -117,10 +119,10 @@ export function uebernahmeAus(v: KnotenVorschlag, paar: HauptPaar | null, neigun
     const n = neigungen[arm.key]
     const typ = v.form === 'kreisel' && auswahl.streifen ? kreiselTyp(arm.streifen, v.ringStreifen) : undefined
     const b = belastung[arm.key]
-    const sv = auswahl.schwerverkehr ? b?.[auswahl.schwerverkehr === 'morgen' ? 'svMorgen' : 'svAbend'] : null
+    const sv = svZufahrt ? svZufahrt[arm.key] ?? null : auswahl.schwerverkehr ? b?.[auswahl.schwerverkehr === 'morgen' ? 'svMorgen' : 'svAbend'] : null
     const hand = tempoHand[arm.key], amtlich = tempoAmtlich[arm.key], tempo = hand ?? amtlich?.tempo ?? arm.tempo
     return {
-      label, name: armName(arm), himmel: arm.himmel,
+      label, name: armName(arm), himmel: arm.himmel, linie: arm.linie,
       ...(auswahl.neigung && n?.klasse ? { neigung: n.klasse } : {}),
       ...(auswahl.fgs && arm.fgs ? { fgs: { insel: arm.fgs.insel } } : {}),
       ...(auswahl.streifen && arm.streifen ? { streifen: arm.streifen } : {}),
@@ -151,7 +153,7 @@ export function uebernahmeAus(v: KnotenVorschlag, paar: HauptPaar | null, neigun
   const mitTempo = uArme.filter(a => a.tempo)
   if (mitTempo.length) belegt.push({ art: 'tempo', text: `Tempo: ${labels(mitTempo.map(a => `${a.label} ${a.tempo} km/h (${a.tempoQuelle})`))}.` })
   const mitSv = uArme.filter(a => a.schwerverkehr)
-  if (mitSv.length) belegt.push({ art: 'schwerverkehr', text: `Schwerverkehrsanteil aus dem Modell NPVM, ${SPITZE_TEXT[auswahl.schwerverkehr!]}, nicht gezählt: ${labels(mitSv.map(a => `${a.label} ${zahlText(a.schwerverkehr!.lw + a.schwerverkehr!.lz)} %`))}.` })
+  if (mitSv.length) belegt.push({ art: 'schwerverkehr', text: `${svZufahrt ? 'Schwerverkehrsanteil der Zufahrt aus den Modell-Abbiegern NPVM' : 'Schwerverkehrsanteil aus dem Modell NPVM'}, ${SPITZE_TEXT[auswahl.schwerverkehr!]}, nicht gezählt: ${labels(mitSv.map(a => `${a.label} ${zahlText(a.schwerverkehr!.lw + a.schwerverkehr!.lz)} %`))}.` })
 
   if (modell) belegt.push({ art: 'abbieger', text: `Abbiegeströme aus dem Modell NPVM, ${SPITZE_TEXT[modell.spitze]}, berechnet, nicht gezählt. Sie können stark abweichen, vor allem kleine Ströme: bitte prüfen, eine Zählung ist genauer.` })
 

@@ -46,7 +46,8 @@ interface ModellAbruf { fuer: KnotenVorschlag; spitze: Spitze; stand: AbbiegerSt
 interface Props {
   aktiv: boolean
   onStart: () => void
-  onUebernehmen: (rechner: RechnerKey, u: KnotenUebernahme) => void
+  /** moeglich: Rechner, die für diesen Knoten passen; dorthin geht der Knoten beim Wechsel mit */
+  onUebernehmen: (rechner: RechnerKey, u: KnotenUebernahme, moeglich: readonly RechnerKey[]) => void
 }
 
 /** Annahme: So weit um den Knoten fragt die App die amtlichen Tempodienste; reicht für die 50 m, die je Arm geprüft werden */
@@ -340,7 +341,7 @@ export default function KartenSeite({ aktiv, onStart, onUebernehmen }: Props) {
               Tempo <span className="klein">amtlich, OSM oder von Hand, an {zaehle(a => tempoHand[a.key] !== undefined || amtlichJeArm[a.key] || a.tempo !== null)} von {vorschlag.arme.length} Armen</span>
             </label>
             <div className="wahl-gruppe">
-              Schwerverkehrsanteil <span className="klein">Modell NPVM, nicht gezählt, darum zu Beginn aus</span>{' '}
+              Schwerverkehrsanteil <span className="klein">Modell NPVM, nicht gezählt, darum zu Beginn aus. Sind die Abbiegeströme derselben Spitze gewählt, gilt der Anteil der Zufahrt aus den Abbiegern.</span>{' '}
               <span className="quelle-chip q-annahme">Annahme</span>
               {(['morgen', 'abend'] as Spitze[]).map(s => (
                 <label key={s} className="wahl">
@@ -416,7 +417,7 @@ export default function KartenSeite({ aktiv, onStart, onUebernehmen }: Props) {
             <p className="stroeme-stand" role="status">{stroemeStand}</p>
             <div className="knopfzeile">
               {moeglicheRechner(vorschlag).map((r, i) => (
-                <button key={r} className={i === 0 ? undefined : 'zweit'} disabled={modellLaedt} onClick={() => onUebernehmen(r, uebernahme)}>{RECHNER_NAME[r]}</button>
+                <button key={r} className={i === 0 ? undefined : 'zweit'} disabled={modellLaedt} onClick={() => onUebernehmen(r, uebernahme, moeglicheRechner(vorschlag))}>{RECHNER_NAME[r]}</button>
               ))}
             </div>
             {uebernahme.hinweise.length > 0 && <ul className="annahmen">{uebernahme.hinweise.map(h => <li key={h}>{h}</li>)}</ul>}

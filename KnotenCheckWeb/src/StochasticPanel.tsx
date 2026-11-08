@@ -18,7 +18,7 @@ export function SimHistBar({ freq, label }: { freq: number[]; label: string }) {
   })
   return (
     <div>
-      <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 3 }}>{label}</div>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 36 }}>
         {freq.map((f, i) => (
           <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column',
@@ -33,7 +33,7 @@ export function SimHistBar({ freq, label }: { freq: number[]; label: string }) {
       </div>
       <div style={{ display: 'flex', gap: 2, marginTop: 2 }}>
         {binLabels.map((lbl, i) => (
-          <div key={i} style={{ flex: 1, fontSize: 8, color: '#9ca3af',
+          <div key={i} style={{ flex: 1, fontSize: 12, color: 'var(--text-muted)',
                                 textAlign: 'center', lineHeight: 1.2,
                                 overflow: 'hidden', whiteSpace: 'nowrap' }}>
             {lbl}
@@ -50,7 +50,7 @@ export function StochasticPanel({ result }: { result: StochasticSN640022Result }
 
   return (
     <div style={{ marginTop: 16 }}>
-      <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 8 }}>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
         {result.runs} Simulationsläufe · {Math.round(result.durationMs)} ms
       </div>
 
@@ -61,16 +61,16 @@ export function StochasticPanel({ result }: { result: StochasticSN640022Result }
         return (
           <div key={s.streamNumber} style={{
             marginBottom: 10, padding: '10px 12px', borderRadius: 7,
-            background: '#fff', border: '1px solid #e5e7eb',
+            background: '#fff', border: '1px solid var(--kachel-rand)',
           }}>
             {/* Kopf */}
             <div style={{ display: 'flex', justifyContent: 'space-between',
                           alignItems: 'center', marginBottom: 6 }}>
               <div>
-                <span style={{ fontWeight: 700, fontSize: 13 }}>
+                <span style={{ fontWeight: 700, fontSize: 14 }}>
                   {streamMovementName(s.streamNumber)}
                 </span>
-                <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 8 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>
                   Rg {s.rang} · qpi = {Math.round(s.qpi)} Fz/h
                 </span>
               </div>
@@ -79,35 +79,35 @@ export function StochasticPanel({ result }: { result: StochasticSN640022Result }
 
             {/* Kennwerte */}
             <div style={{ display: 'flex', gap: 16, fontSize: 12,
-                          color: '#374151', marginBottom: 8, flexWrap: 'wrap' }}>
+                          color: 'var(--text)', marginBottom: 8, flexWrap: 'wrap' }}>
               <div>
-                <span style={{ color: '#9ca3af' }}>Mittelwert </span>
+                <span style={{ color: 'var(--text-muted)' }}>Mittelwert </span>
                 <strong>{Math.round(st.mean)} s</strong>
               </div>
               <div>
-                <span style={{ color: '#9ca3af' }}>±σ </span>
+                <span style={{ color: 'var(--text-muted)' }}>±σ </span>
                 <strong>{Math.round(st.stdDev)} s</strong>
               </div>
               <div>
-                <span style={{ color: '#9ca3af' }}>P50 </span>
+                <span style={{ color: 'var(--text-muted)' }}>P50 </span>
                 <strong>{Math.round(st.p50)} s</strong>
               </div>
               <div>
-                <span style={{ color: '#9ca3af' }}>P85 </span>
+                <span style={{ color: 'var(--text-muted)' }}>P85 </span>
                 <strong>{Math.round(st.p85)} s</strong>
               </div>
               <div>
-                <span style={{ color: '#9ca3af' }}>P95 </span>
+                <span style={{ color: 'var(--text-muted)' }}>P95 </span>
                 <strong>{Math.round(st.p95)} s</strong>
               </div>
               <div title="Auslastung der Haltelinie: Anteil der Zeit, in der ein Fahrzeug an der Haltelinie auf eine Lücke wartet">
-                <span style={{ color: '#9ca3af' }}>x ≈ </span>
+                <span style={{ color: 'var(--text-muted)' }}>x ≈ </span>
                 <strong style={{ color: s.utilization >= 1 ? '#dc2626' : undefined }}>
                   {s.utilization.toFixed(2)}
                 </strong>
               </div>
               <div>
-                <span style={{ color: '#9ca3af' }}>n = </span>
+                <span style={{ color: 'var(--text-muted)' }}>n = </span>
                 <strong>{st.n.toLocaleString()}</strong>
               </div>
             </div>
@@ -118,7 +118,7 @@ export function StochasticPanel({ result }: { result: StochasticSN640022Result }
         )
       })}
 
-      <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 4 }}>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
         Histogramm-Klassen nach den QS-Grenzen: grün = QS A–B (&lt;15 s) · gelb/orange = QS C–D (15–45 s) ·
         rot = QS E (&gt;45 s). QS F ergibt sich aus der Auslastung x ≥ 1, nicht aus der Wartezeit.
       </div>

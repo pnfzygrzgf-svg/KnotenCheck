@@ -1,7 +1,8 @@
 /* Rechnerseiten im Standard der vier Rechner, Vorbild ist karte/karte.css. Produktfarbe KnotenCheck #1e3a5f.
    Gilt nur am Bildschirm: Die Bewertungsblätter hängen am body und liegen ausserhalb von .rechner. */
 
-.rechner, .start {
+/* Auch an den Wurzeln der Blätter (am body): Bausteine wie LOSBadge stehen am Bildschirm und im Druck */
+.rechner, .start, .print-portal, .bl-overlay {
   --accent: #1e3a5f;
   --text-strong: #1e293b;
   --text: #334155;
@@ -40,6 +41,12 @@
 .rechner .meldung { position: sticky; top: 8px; z-index: 30; display: flex; justify-content: space-between; gap: 10px; align-items: flex-start;
   margin-bottom: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
 .rechner .meldung button { border: 0; background: none; cursor: pointer; font-size: 15px; line-height: 1; color: var(--text-strong); }
+
+/* Herkunft eines vorbelegten Werts (HerkunftMarke.tsx); gleiche Farben wie die Zeichen im Bericht */
+.rechner .herkunft-marke { display: inline-block; font-size: 12px; font-weight: 400; line-height: 1.4; padding: 0 6px; border-radius: 9px;
+  border: 1px solid; margin-left: 6px; white-space: nowrap; vertical-align: middle; cursor: help; }
+.rechner .herkunft-marke-M { background: #fff7ed; border-color: #fdba74; color: #9a3412; }
+.rechner .herkunft-marke-K { background: #eff6ff; border-color: #bfdbfe; color: #1e3a8a; }
 
 /* Hilfe: «So funktioniert's» oben, Legende, Grundlagen und Quellen, Datenschutz unten */
 .rechner .hilfe { padding: 8px 14px; margin-bottom: 12px; }

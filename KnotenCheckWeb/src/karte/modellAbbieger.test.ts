@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { P } from '../knotenkern/geo'
-import { armStroeme, kachelNamen, modellMatrix, type AbbiegerZeile, type Kachel } from './modellAbbieger'
+import { armStroeme, kachelNamen, modellMatrix, zufahrtSchwerverkehr, type AbbiegerZeile, type Kachel } from './modellAbbieger'
 
 const m: P = [2600000, 1200000]
 
@@ -33,7 +33,7 @@ describe('Fahrbeziehung nach den Bezeichnungen der Rechner', () => {
 describe('Modellmatrix', () => {
   // Strecken: 1 Süd, 2 Nord, 3 Ost; Knoten 10 Süd, 20 Nord, 30 Ost, 1 und 2 sind zwei Modellknoten derselben Kreuzung
   const k: Record<string, P> = { 10: [m[0], m[1] - 200], 20: [m[0], m[1] + 200], 30: [m[0] + 200, m[1]], 1: [m[0], m[1] - 5], 2: [m[0], m[1] + 5] }
-  const z = (v: number, u: number, n: number, a: number, b: number, fz: number): AbbiegerZeile => [v, u, n, a, b, fz, 0, fz * 2, 0]
+  const z = (v: number, u: number, n: number, a: number, b: number, fz: number, lw = 0, lz = 0): AbbiegerZeile => [v, u, n, a, b, fz, lw, lz, fz * 2, 0, 0]
   const kachel: Kachel = { k, a: [z(10, 1, 2, 1, 9, 100), z(10, 1, 30, 1, 3, 50), z(1, 2, 20, 9, 2, 80), z(1, 2, 30, 9, 3, 20), z(30, 1, 10, 3, 1, 40)] }
   const arme = [{ key: 's', nummern: [1] }, { key: 'n', nummern: [2] }, { key: 'o', nummern: [3] }]
 
@@ -51,6 +51,12 @@ describe('Modellmatrix', () => {
   it('zählt zwei Strecken desselben Arms hintereinander nur einmal', () => {
     const k2: Kachel = { k: { 5: [m[0], m[1] - 60], 10: [m[0], m[1] - 200], 1: [m[0], m[1] - 5], 30: [m[0] + 200, m[1]] }, a: [z(10, 5, 1, 7, 1, 100), z(5, 1, 30, 1, 3, 100)] }
     expect(modellMatrix([k2], m, [{ key: 's', nummern: [7, 1] }, { key: 'o', nummern: [3] }], 'morgen').s.o).toBeCloseTo(100)
+  })
+  it('Schwerverkehr der Zufahrt: Lastwagen und Lastzüge getrennt, Fahrten auf dem eigenen Arm zählen nicht', () => {
+    const k2: Kachel = { k: { 5: [m[0], m[1] - 60], 10: [m[0], m[1] - 200], 1: [m[0], m[1] - 5], 30: [m[0] + 200, m[1]], 20: [m[0], m[1] + 200] },
+      a: [z(10, 5, 1, 7, 1, 200, 10, 10), z(5, 1, 30, 1, 3, 150, 6, 3), z(5, 1, 20, 1, 2, 50, 2, 0)] }
+    const sv = zufahrtSchwerverkehr([k2], m, [{ key: 's', nummern: [7, 1] }, { key: 'o', nummern: [3] }, { key: 'n', nummern: [2] }], 'morgen')
+    expect(sv).toEqual({ s: { lw: 4, lz: 1.5 } })
   })
   it('ohne Strecke des Arms bleibt der Arm leer', () => {
     expect(modellMatrix([kachel], m, [{ key: 's', nummern: [] }, { key: 'n', nummern: [2] }], 'morgen').s).toEqual({})

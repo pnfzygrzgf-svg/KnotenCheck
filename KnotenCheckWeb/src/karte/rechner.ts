@@ -51,6 +51,7 @@ export interface UebernahmeArm {
   kreiselTyp?: RoundaboutType
   schwerverkehr?: { lw: number; lz: number }   // Anteile an der gewählten Spitzenstunde [%], modelliert
   stroeme?: { left: number; straight: number; right: number }   // Abbiegeströme der gewählten Spitzenstunde [Fz/h], modelliert
+  linie?: [number, number][]   // Armlinie WGS84 [lat, lon], für den Kartenausschnitt im Bericht
 }
 
 export type BelegtArt = 'neigung' | 'fgs' | 'streifen' | 'tempo' | 'schwerverkehr' | 'abbieger'
@@ -96,8 +97,9 @@ export function quellenFuer(u: KnotenUebernahme, r: RechnerKey): BerichtQuelle[]
     ...(arten.has('neigung') ? u.hoehenModelle.flatMap(m => (HOEHEN_QUELLEN[m] ? [{ ...HOEHEN_QUELLEN[m], fuer: 'Längsneigung' }] : [])) : []),
     ...(arten.has('schwerverkehr') ? [{ quelle: 'Nationales Personenverkehrsmodell (NPVM) und Aggregierte Methode Güterverkehr (AMG)', fuer: 'Schwerverkehrsanteil, modelliert',
       anbieter: 'ARE', stand: 'unbekannt', lizenz: 'freie Nutzung mit Quellenangabe © ARE', url: 'https://map.geo.admin.ch/?layers=ch.are.belastung-personenverkehr-strasse' }] : []),
+    // Die Kacheln stammen aus den Visum-Versionen der Spitzenstunden (Zenodo, über die DOI verlinkt), nicht aus dem Kartendienst des Bundes
     ...(arten.has('abbieger') ? [{ quelle: 'Nationales Personenverkehrsmodell (NPVM) 2023, Abbieger aus den Visum-Dateien', fuer: 'Abbiegeströme, modelliert', anbieter: 'ARE', stand: '2023', lizenz: 'CC BY 4.0, Quellenangabe © ARE',
-      url: 'https://map.geo.admin.ch/?layers=ch.are.belastung-personenverkehr-strasse' }] : []),
+      url: 'https://doi.org/10.5281/zenodo.23009742' }] : []),
   ]
 }
 
@@ -126,10 +128,13 @@ export const belegtFuer = (u: KnotenUebernahme, r: RechnerKey): string[] => u.be
 export const lsaTempo = (kmh: number): 30 | 50 | 60 => (kmh <= 30 ? 30 : kmh <= 50 ? 50 : 60)
 
 /** Bezug zur Karte in der Speicherdatei: Ort, OSM-Nummer und Herkunft der Vorbelegung */
-export interface KartenBezug { osmKnoten: number; lat: number; lon: number; belegt: string[]; vergleich: ArmVergleich[]; quellen: BerichtQuelle[] }
+export interface KartenBezug { osmKnoten: number; lat: number; lon: number; belegt: string[]; vergleich: ArmVergleich[]; quellen: BerichtQuelle[]
+  arme?: { label: string; linie: [number, number][] }[]   // Armlinien für den Kartenausschnitt im Bericht
+}
 
 export const kartenBezugAus = (u: KnotenUebernahme, r: RechnerKey): KartenBezug =>
-  ({ osmKnoten: u.id, lat: u.lat, lon: u.lon, belegt: belegtFuer(u, r), vergleich: u.vergleich, quellen: quellenFuer(u, r) })
+  ({ osmKnoten: u.id, lat: u.lat, lon: u.lon, belegt: belegtFuer(u, r), vergleich: u.vergleich, quellen: quellenFuer(u, r),
+     arme: u.arme.flatMap(a => (a.linie?.length ? [{ label: a.label, linie: a.linie }] : [])) })
 
 /** Bezug aus einer Datei; ältere Dateien haben keinen */
 export function kartenBezugLesen(x: unknown): KartenBezug | null {
@@ -144,5 +149,9 @@ export function kartenBezugLesen(x: unknown): KartenBezug | null {
   const quellen = (Array.isArray(k.quellen) ? k.quellen : []).filter(q => typeof q?.quelle === 'string').map(q => ({
     quelle: q.quelle, fuer: text(q.fuer), anbieter: text(q.anbieter), stand: text(q.stand), lizenz: text(q.lizenz), ...(/^https:\/\//.test(text(q.url)) ? { url: q.url } : {}),
   }))
-  return { osmKnoten: k.osmKnoten, lat: k.lat, lon: k.lon, belegt: Array.isArray(k.belegt) ? k.belegt.filter(b => typeof b === 'string') : [], vergleich, quellen }
+  const punkt = (p: unknown): p is [number, number] => Array.isArray(p) && p.length === 2 && p.every(x => typeof x === 'number' && Number.isFinite(x))
+  const arme = (Array.isArray(k.arme) ? k.arme : []).filter(a => typeof a?.label === 'string' && Array.isArray(a.linie) && a.linie.length >= 2 && a.linie.every(punkt))
+    .map(a => ({ label: a.label, linie: a.linie.map(([x, y]) => [x, y] as [number, number]) }))
+  return { osmKnoten: k.osmKnoten, lat: k.lat, lon: k.lon, belegt: Array.isArray(k.belegt) ? k.belegt.filter(b => typeof b === 'string') : [], vergleich, quellen,
+    ...(arme.length ? { arme } : {}) }
 }

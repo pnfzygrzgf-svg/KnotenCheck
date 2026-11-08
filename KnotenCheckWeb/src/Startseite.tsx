@@ -96,7 +96,7 @@ export default function Startseite({ onSelect, onKarte }: { onSelect: (r: Rechne
           <li>«Fall speichern» schreibt eine Datei auf deinen Rechner, «Fall laden» liest sie von dort, ohne Upload.</li>
           <li>Erst wenn du die Karte öffnest, holt der Browser Daten direkt bei den Diensten: swisstopo und Bund (geo.admin.ch), OpenStreetMap (Overpass), geodienste.ch
             und je nach Ort und eingeschalteten Ebenen die Geodatendienste von Städten und Kantonen. Gesendet werden Koordinaten, der Suchbegriff der Ortssuche und die
-            OSM-Nummer des Knotens, keine Eingaben und Ergebnisse. Die Dienste sehen technisch die IP-Adresse. Die vollständige Liste steht auf der Karte unter «Datenschutz».</li>
+            OSM-Nummer des Knotens, keine Eingaben und Ergebnisse. Die Dienste sehen technisch die IP-Adresse. Für «Bericht / PDF» holt der Browser dann auch das Luftbild des Ausschnitts bei swisstopo. Die vollständige Liste steht auf der Karte unter «Datenschutz».</li>
           <li>Nutzungsstatistik: Seitenaufrufe werden mit GoatCounter gezählt, ohne Cookies und ohne Speicherung der IP-Adresse. GitHub Pages protokolliert Zugriffe wie jeder Webserver.</li>
         </ul>
       </div>

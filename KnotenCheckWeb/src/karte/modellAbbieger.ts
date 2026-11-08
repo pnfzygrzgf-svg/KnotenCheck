@@ -7,7 +7,7 @@
 
 import { holeJson } from '../knotenkern/daten/holen'
 import { abstandStrecke, dist, einheit, sub, wdiff, type P } from '../knotenkern/geo'
-import { npvmLesen, npvmUrl, type ModellStrecke } from './belastung'
+import { npvmLesen, npvmUrl, type ModellStrecke, type Schwerverkehr } from './belastung'
 import type { Spitze } from './uebernahme'
 
 export const MODELL_ABBIEGER_QUELLE = '© ARE, Nationales Personenverkehrsmodell (NPVM) 2023, Abbieger aus den Visum-Dateien gelesen'
@@ -22,13 +22,14 @@ const KNOTEN_UMKREIS_M = 80
 const MAX_SCHRITTE = 8
 const ABRUF_MS = 15000
 
-/** von, über, nach, Strecke von, Strecke nach, Morgen Fz/h, davon Schwerverkehr, Abend Fz/h, davon Schwerverkehr */
-export type AbbiegerZeile = [number, number, number, number, number, number, number, number, number]
+/** von, über, nach, Strecke von, Strecke nach, Morgen Fz/h, davon Lastwagen, davon Lastzüge, Abend Fz/h, davon Lastwagen, davon Lastzüge */
+export type AbbiegerZeile = [number, number, number, number, number, number, number, number, number, number, number]
 export interface Kachel { k: Record<string, P>; a: AbbiegerZeile[] }
 export interface ArmEingabe { key: string; profil: P[] }
 export interface ArmStroeme { left: number; straight: number; right: number }
 export type AbbiegerMatrix = Record<string, Record<string, number>>
-export interface AbbiegerStand { spitze: Spitze; matrix: AbbiegerMatrix; offen: string[] }
+/** sv: Anteile von Lastwagen und Lastzügen an der Zufahrt [%], nur Arme mit Verkehr zum Knoten */
+export interface AbbiegerStand { spitze: Spitze; matrix: AbbiegerMatrix; sv: Record<string, Schwerverkehr>; offen: string[] }
 
 /** Punkt und Richtung der Linie nach m Metern */
 function aufLinie(l: P[], m: number): { p: P; r: P } {
@@ -61,10 +62,12 @@ export function kachelNamen(p: P, umkreis = 300): string[] {
   return aus
 }
 
-/** Fahrzeuge von Arm zu Arm: Verkehr jeder Zufahrt nach den Abbiegeranteilen bis zum nächsten Arm verfolgt */
-export function modellMatrix(kacheln: Kachel[], mitte: P, arme: { key: string; nummern: number[] }[], spitze: Spitze): AbbiegerMatrix {
+/** Spalten je Spitze: Fahrzeuge, Lastwagen, Lastzüge */
+const SPALTEN: Record<Spitze, [number, number, number]> = { morgen: [5, 6, 7], abend: [8, 9, 10] }
+
+/** Abbieger nach Strecke und Richtung, Lage der Knoten, Strecken der Arme */
+function netz(kacheln: Kachel[], mitte: P, arme: { key: string; nummern: number[] }[]) {
   const lage = new Map<number, P>(), wege = new Map<string, AbbiegerZeile[]>()
-  const spalte = spitze === 'morgen' ? 5 : 7
   for (const k of kacheln) {
     for (const [n, p] of Object.entries(k.k)) lage.set(Number(n), p)
     for (const z of k.a) { const s = `${z[3]}|${z[0]}|${z[1]}`; const l = wege.get(s); if (l) l.push(z); else wege.set(s, [z]) }
@@ -72,6 +75,18 @@ export function modellMatrix(kacheln: Kachel[], mitte: P, arme: { key: string; n
   const abstand = (n: number) => { const p = lage.get(n); return p ? dist(p, mitte) : Infinity }
   const armVon = new Map<number, string>()
   for (const a of arme) for (const n of a.nummern) armVon.set(n, a.key)
+  /** Strecken eines Arms, die in die Kreuzung hineinführen */
+  const zufahrten = () => [...wege].flatMap(([s, z]) => {
+    const [von, ueber, , strecke] = z[0], arm = armVon.get(strecke)
+    return arm === undefined || abstand(ueber) > KNOTEN_UMKREIS_M || abstand(ueber) >= abstand(von) ? [] : [{ s, z, arm }]
+  })
+  return { wege, abstand, armVon, zufahrten }
+}
+
+/** Fahrzeuge von Arm zu Arm: Verkehr jeder Zufahrt nach den Abbiegeranteilen bis zum nächsten Arm verfolgt */
+export function modellMatrix(kacheln: Kachel[], mitte: P, arme: { key: string; nummern: number[] }[], spitze: Spitze): AbbiegerMatrix {
+  const { wege, abstand, armVon, zufahrten } = netz(kacheln, mitte, arme)
+  const spalte = SPALTEN[spitze][0]
   const m: AbbiegerMatrix = Object.fromEntries(arme.map(a => [a.key, {}]))
 
   const weiter = (schluessel: string, fluss: number, quelle: string, schritt: number) => {
@@ -87,12 +102,21 @@ export function modellMatrix(kacheln: Kachel[], mitte: P, arme: { key: string; n
       } else if (abstand(x[2]) <= KNOTEN_UMKREIS_M) weiter(`${x[4]}|${x[1]}|${x[2]}`, teil, quelle, schritt + 1)
     }
   }
-  for (const [s, z] of wege) {
-    const [von, ueber, , strecke] = z[0], arm = armVon.get(strecke)
-    if (arm === undefined || abstand(ueber) > KNOTEN_UMKREIS_M || abstand(ueber) >= abstand(von)) continue
-    weiter(s, z.reduce((t, x) => t + x[spalte], 0), arm, 0)
-  }
+  for (const { s, z, arm } of zufahrten()) weiter(s, z.reduce((t, x) => t + x[spalte], 0), arm, 0)
   return m
+}
+
+/** Anteile von Lastwagen und Lastzügen an der Zufahrt [%, eine Nachkommastelle]; Abbieger, die auf dem eigenen Arm bleiben, zählen nicht */
+export function zufahrtSchwerverkehr(kacheln: Kachel[], mitte: P, arme: { key: string; nummern: number[] }[], spitze: Spitze): Record<string, Schwerverkehr> {
+  const { armVon, zufahrten } = netz(kacheln, mitte, arme)
+  const [fz, lw, lz] = SPALTEN[spitze], summe: Record<string, [number, number, number]> = {}
+  for (const { z, arm } of zufahrten()) for (const x of z) {
+    if (armVon.get(x[4]) === arm) continue
+    const t = summe[arm] ??= [0, 0, 0]
+    t[0] += x[fz]; t[1] += x[lw]; t[2] += x[lz]
+  }
+  const anteil = (teil: number, ganz: number) => Math.round(teil / ganz * 1000) / 10
+  return Object.fromEntries(Object.entries(summe).filter(([, t]) => t[0] > 0).map(([k, t]) => [k, { lw: anteil(t[1], t[0]), lz: anteil(t[2], t[0]) }]))
 }
 
 /** Ziel je Fahrbeziehung nach der Reihenfolge der Rechner: A West, C Ost, B Süd, D Nord */
@@ -123,6 +147,7 @@ export async function abbiegerHolen(mitte: P, arme: ArmEingabe[], spitze: Spitze
   const [roh, ...kacheln] = await Promise.all([holeJson<unknown>(npvmUrl(mitte), {}, ABRUF_MS, signal), ...kachelNamen(mitte).map(kachel)])
   const strecken = npvmLesen((roh as { daten: unknown }).daten)
   const zuordnung = arme.map(a => ({ key: a.key, nummern: armNummern(strecken, a.profil) }))
-  const matrix = modellMatrix((kacheln as (Kachel | null)[]).filter((k): k is Kachel => !!k), mitte, zuordnung, spitze)
-  return { spitze, matrix, offen: zuordnung.filter(a => !a.nummern.length || !Object.keys(matrix[a.key]).length).map(a => a.key) }
+  const da = (kacheln as (Kachel | null)[]).filter((k): k is Kachel => !!k)
+  const matrix = modellMatrix(da, mitte, zuordnung, spitze)
+  return { spitze, matrix, sv: zufahrtSchwerverkehr(da, mitte, zuordnung, spitze), offen: zuordnung.filter(a => !a.nummern.length || !Object.keys(matrix[a.key]).length).map(a => a.key) }
 }

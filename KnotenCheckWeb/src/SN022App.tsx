@@ -21,7 +21,7 @@ import { HilfeUnten, SoFunktionierts, type LegendItem } from './Hilfe'
 import { Meldung } from './Meldung'
 import { LOS_BG, LOS_COLOR, delayText, streamMovementName, utilizationColor } from './uiHelpers'
 import { useMeldung } from './useMeldung'
-import { LOSBadge, OffeneAngaben, UtilBar, ToggleBtn, ToolbarBtn } from './ui'
+import { LOSBadge, OffeneAngaben, UtilBar, ToggleBtn, ToolbarBtn, BerichtKnopf } from './ui'
 import { ArmCard } from './ArmCard'
 import { RechnerFuss } from './Fusszeile'
 
@@ -107,9 +107,8 @@ const LEGEND_ITEMS: LegendItem[] = [
 
 // ── Ergebnis-Panel ────────────────────────────────────────────────────────────
 
-function ResultsPanel({ result, onShowBerechnungsblatt }: {
+function ResultsPanel({ result }: {
   result: SN640022Result
-  onShowBerechnungsblatt: () => void
 }) {
   const [showDetails, setShowDetails] = useState(false)
   const rang2 = result.streams.filter(s => s.rang === 2)
@@ -118,12 +117,6 @@ function ResultsPanel({ result, onShowBerechnungsblatt }: {
 
   return (
     <div>
-      {/* Berechnungsblatt-Button */}
-      <button onClick={onShowBerechnungsblatt}
-        className="knopf breit" style={{ marginBottom: 12 }}>
-        Bericht / PDF
-      </button>
-
       {/* Beta-Hinweis — in beiden Tabs */}
       <div className="hinweis klein" style={{ marginBottom: 14 }}>
         ⚠ Beta — Resultate mit Vorsicht verwenden.
@@ -283,77 +276,8 @@ export default function SN022App({ uebernahme }: { uebernahme?: KnotenUebernahme
     q7: losNo(7), q8: losNo(8), q9: losNo(9), q10: losNo(10), q11: losNo(11), q12: losNo(12),
   }
 
-  const setArm = (i: number, arm: ArmConfiguration) =>
-    setCfg(prev => { const arms = [...prev.arms]; arms[i] = arm; return { ...prev, arms } })
-
-  const setArmCount = (n: 3 | 4) => {
-    setArmGewaehlt(true)
-    setCfg(prev => prev.arms.length === n ? prev : defaultIntersection(n))
-  }
-
-  return (
-    <>
-    <main style={{ maxWidth: 1100, margin: '0 auto', padding: '20px 16px' }}>
-      <Meldung text={meldung} onClose={meldungZu} />
-      {uebernahme && <UebernahmeHinweis u={uebernahme} rechner="sn022" />}
-      <SoFunktionierts rechner="sn022" />
-      {karte && <BelastungsVergleich vergleich={karte.vergleich}
-        querschnitte={querschnitteKnoten(cfg.arms.map(a => ({ left: a.leftVolume, straight: a.straightVolume, right: a.rightVolume })))} />}
-
-      {/* Knotentyp */}
-      <div className="kachel" style={{ padding: '12px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <input type="text" value={cfg.name}
-          onChange={e => setCfg(prev => ({ ...prev, name: e.target.value }))}
-          placeholder="Bezeichnung des Knotens"
-          style={{ flexBasis: '100%', padding: '5px 10px', borderRadius: 5,
-                   border: '1px solid var(--border)', fontSize: 14, fontWeight: 600,
-                   color: 'var(--text-strong)' }} />
-        <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text)' }}>Knotentyp</span>
-        {([3, 4] as const).map(n => (
-          <ToggleBtn key={n} active={armGewaehlt && cfg.arms.length === n} onClick={() => setArmCount(n)}>
-            {n === 3 ? 'T-Knoten (3 Arme)' : 'Kreuzung (4 Arme)'}
-          </ToggleBtn>
-        ))}
-        {armGewaehlt && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-          A, C = Hauptstrasse · B{cfg.arms.length === 4 ? ', D' : ''} = Nebenstrasse
-        </span>}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
-          <ToolbarBtn onClick={handleExport}>Fall speichern</ToolbarBtn>
-          <ToolbarBtn onClick={handleImport}>Fall laden</ToolbarBtn>
-          <button onClick={handleReset}
-            className="knopf zweit">
-            zurücksetzen
-          </button>
-        </div>
-      </div>
-
-      {!armGewaehlt && <OffeneAngaben liste={offen} />}
-
-      {/* Arme + Ergebnisse */}
-      {armGewaehlt && <div className="layout-grid">
-
-        {/* Arm-Karten */}
-        <div className={`arms-grid${cfg.arms.length === 4 ? ' arms-grid-4' : ''}`}>
-          {cfg.arms.map((arm, i) => (
-            <ArmCard key={arm.id} arm={arm} index={i} isHS={i < 2}
-              armCount={cfg.arms.length} live
-              opposingHSSeparateLane={
-                i === 2 ? (cfg.arms[0]?.hasSeparateTurnLane ?? false)
-              : i === 3 ? (cfg.arms[1]?.hasSeparateTurnLane ?? false)
-              : false
-              }
-              onChange={a => setArm(i, a)} />
-          ))}
-        </div>
-
-        {/* Ergebnisse (sticky auf Desktop, static auf Mobile) */}
-        <div className="results-panel kachel"
-             style={{ padding: 20 }}>
-
-          {/* Schematik */}
-          <div style={{ marginBottom: 16, borderRadius: 8, overflow: 'hidden',
-                        border: '1px solid var(--kachel-rand)', background: '#fafafa', padding: 8 }}>
-            {cfg.arms.length === 3 ? (
+  // Knotenbild mit den Qualitätsstufen: am Bildschirm und im Druckblatt
+  const knotenbild = cfg.arms.length === 3 ? (
               <KnotenDiagramm
                 volumes={diagVols}
                 separateLaneA={diagFlags.armASeparateLane}
@@ -378,11 +302,84 @@ export default function SN022App({ uebernahme }: { uebernahme?: KnotenUebernahme
                 islandB={diagFlags.armBRightIsland}
                 islandD={diagFlags.armDRightIsland}
               />
-            )}
+            )
+
+  const setArm = (i: number, arm: ArmConfiguration) =>
+    setCfg(prev => { const arms = [...prev.arms]; arms[i] = arm; return { ...prev, arms } })
+
+  const setArmCount = (n: 3 | 4) => {
+    setArmGewaehlt(true)
+    setCfg(prev => prev.arms.length === n ? prev : defaultIntersection(n))
+  }
+
+  return (
+    <>
+    <main style={{ maxWidth: 1280, margin: '0 auto', padding: '20px 16px' }}>
+      <Meldung text={meldung} onClose={meldungZu} />
+      {uebernahme && <UebernahmeHinweis u={uebernahme} rechner="sn022" />}
+      <SoFunktionierts rechner="sn022" />
+      {karte && <BelastungsVergleich vergleich={karte.vergleich}
+        querschnitte={querschnitteKnoten(cfg.arms.map(a => ({ left: a.leftVolume, straight: a.straightVolume, right: a.rightVolume })))} />}
+
+      {/* Knotentyp */}
+      <div className="kachel" style={{ padding: '12px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <input type="text" value={cfg.name}
+          onChange={e => setCfg(prev => ({ ...prev, name: e.target.value }))}
+          placeholder="Bezeichnung des Knotens"
+          style={{ flexBasis: '100%', padding: '5px 10px', borderRadius: 5,
+                   border: '1px solid var(--border)', fontSize: 14, fontWeight: 600,
+                   color: 'var(--text-strong)' }} />
+        <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text)' }}>Knotentyp</span>
+        {([3, 4] as const).map(n => (
+          <ToggleBtn key={n} active={armGewaehlt && cfg.arms.length === n} onClick={() => setArmCount(n)}>
+            {n === 3 ? 'T-Knoten (3 Arme)' : 'Kreuzung (4 Arme)'}
+          </ToggleBtn>
+        ))}
+        {armGewaehlt && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+          A, C = Hauptstrasse · B{cfg.arms.length === 4 ? ', D' : ''} = Nebenstrasse
+        </span>}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+          <BerichtKnopf onClick={openBl} bereit={!!result} />
+          <ToolbarBtn onClick={handleExport}>Fall speichern</ToolbarBtn>
+          <ToolbarBtn onClick={handleImport}>Fall laden</ToolbarBtn>
+          <button onClick={handleReset}
+            className="knopf zweit">
+            zurücksetzen
+          </button>
+        </div>
+      </div>
+
+      {!armGewaehlt && <OffeneAngaben liste={offen} />}
+
+      {/* Arme + Ergebnisse */}
+      {armGewaehlt && <div className="layout-grid">
+
+        {/* Arm-Karten */}
+        <div className={`arms-grid${cfg.arms.length === 4 ? ' arms-grid-4' : ''}`}>
+          {cfg.arms.map((arm, i) => (
+            <ArmCard key={arm.id} arm={arm} index={i} isHS={i < 2} herkunft={uebernahme?.arme[i]}
+              armCount={cfg.arms.length} live
+              opposingHSSeparateLane={
+                i === 2 ? (cfg.arms[0]?.hasSeparateTurnLane ?? false)
+              : i === 3 ? (cfg.arms[1]?.hasSeparateTurnLane ?? false)
+              : false
+              }
+              onChange={a => setArm(i, a)} />
+          ))}
+        </div>
+
+        {/* Ergebnisse (sticky auf Desktop, static auf Mobile) */}
+        <div className="results-panel kachel"
+             style={{ padding: 20 }}>
+
+          {/* Schematik */}
+          <div style={{ marginBottom: 16, borderRadius: 8, overflow: 'hidden',
+                        border: '1px solid var(--kachel-rand)', background: '#fafafa', padding: 8 }}>
+            {knotenbild}
           </div>
 
           {result
-            ? <ResultsPanel result={result} onShowBerechnungsblatt={openBl} />
+            ? <ResultsPanel result={result} />
             : <OffeneAngaben liste={offen} />
           }
 
@@ -398,7 +395,7 @@ export default function SN022App({ uebernahme }: { uebernahme?: KnotenUebernahme
       </RechnerFuss>
     </main>
     {isActive && result && showBl && createPortal(
-      <Berechnungsblatt cfg={cfg} result={result} onClose={closeBl} quellen={karte?.quellen} />,
+      <Berechnungsblatt cfg={cfg} result={result} onClose={closeBl} karte={karte} uebernahme={uebernahme} knotenbild={knotenbild} />,
       document.body
     )}
     </>

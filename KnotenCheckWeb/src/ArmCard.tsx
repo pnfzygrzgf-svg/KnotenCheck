@@ -7,6 +7,11 @@ import type {
 } from './engine/armConfiguration'
 import type { MixedLaneCombination } from './engine/types'
 import { LeereWahl, NumInput, Row, SectionLabel, Ckbx, ToggleBtn } from './ui'
+import { HerkunftMarke } from './HerkunftMarke'
+import { kartenHerkunft, streifenArt, stromArt, svFeldArt } from './bericht/herkunft'
+import type { UebernahmeArm } from './karte/rechner'
+
+const RICHTUNG = { leftVolume: 'left', straightVolume: 'straight', rightVolume: 'right' } as const
 
 // ── Konstanten ─────────────────────────────────────────────────────────────────
 
@@ -141,8 +146,10 @@ export function MixedLaneHint({ index, arm, opposingHSSeparateLane }: {
 
 // ── ArmCard ────────────────────────────────────────────────────────────────────
 
-export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, onChange, footer, geometryLocked, hideMixedLane, hideIsland, live }: {
+export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, onChange, footer, geometryLocked, hideMixedLane, hideIsland, live, herkunft }: {
   arm: ArmConfiguration; index: number; isHS: boolean; armCount: number
+  /** Arm der Übernahme aus der Karte: Marken «Modell» bzw. «Karte», solange ein Wert noch gleich ist */
+  herkunft?: UebernahmeArm
   opposingHSSeparateLane: boolean
   onChange: (a: ArmConfiguration) => void
   footer?: React.ReactNode
@@ -207,6 +214,7 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
             {isHS ? 'Hauptstrasse' : 'Nebenstrasse'}
           </span>
         </div>
+        {arm.streetName && kartenHerkunft(herkunft?.name, arm.streetName) && <div style={{ fontSize: 12, marginBottom: 4 }}>Strassenname<HerkunftMarke art="K" /></div>}
         <input type="text" value={arm.streetName}
           onChange={e => upd('streetName', e.target.value)}
           placeholder="Strassenname"
@@ -219,6 +227,7 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
       <SectionLabel title="Verkehrsmengen" />
       {movements.map(m => (
         <Row key={m.key} label={m.label}>
+          <HerkunftMarke art={stromArt(herkunft, RICHTUNG[m.key as keyof typeof RICHTUNG], arm[m.key] as number)} />
           <NumInput value={arm[m.key] as number} onChange={v => upd(m.key, v)} live={live} />
           <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 30 }}>Fz/h</span>
         </Row>
@@ -254,6 +263,7 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
       </div>
       <Row label="Neigung der Zufahrt"
            sub={`in Fahrtrichtung zum Knoten · f = ${fText}${arm.fall ? ` (${arm.fall === 2 ? 'Fall 2, Tab. 2' : 'Fall 1, Tab. 1'})` : ''}`}>
+        <HerkunftMarke art={kartenHerkunft(herkunft?.neigung, arm.gradient)} />
         <select value={arm.gradient ?? ''}
           onChange={e => {
             const g = e.target.value as GradientCategory
@@ -281,6 +291,7 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
             ...(arm.gradient === '±0%' ? [{ key: 'pctFR' as const, label: 'FR – Fahrräder' }] : []),
           ]).map(r => (
             <Row key={r.key} label={r.label}>
+              {(r.key === 'pctLW' || r.key === 'pctLZ') && <HerkunftMarke art={svFeldArt(herkunft, r.key === 'pctLW' ? 'lw' : 'lz', mix[r.key])} />}
               <NumInput value={mix[r.key]} onChange={v => updMix(r.key, v)} min={0} max={100} width={60} live={live} />
               <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 16 }}>%</span>
             </Row>
@@ -308,6 +319,7 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
           {showHSGeom && (<>
           <Row label="Rechtsabbieger auf separatem Streifen"
                sub="Der halbe Rechtsabbiegeverkehr zählt für die Nebenstrasse nicht mehr (Fussnote 1, S. 3)">
+            <HerkunftMarke art={streifenArt(herkunft, 'rechts', arm.hasSeparateTurnLane)} />
             <Ckbx checked={arm.hasSeparateTurnLane} onChange={v => upd('hasSeparateTurnLane', v)} />
           </Row>
           {!hideIsland && (
@@ -334,6 +346,7 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
           {showLeftLane && (
             <Row label="Separater Linksabbiegestreifen (HS-Linksabbieger)"
                  sub="Ohne eigenen Streifen staut der HS-Linksabbieger den durchgehenden Verkehr zurück; das senkt die Leistungsfähigkeit der Nebenströme (Ziff. 14, S. 7–8)">
+              <HerkunftMarke art={streifenArt(herkunft, 'links', arm.hasLeftTurnLane ?? true)} />
               <Ckbx checked={arm.hasLeftTurnLane ?? true} onChange={v => upd('hasLeftTurnLane', v)} />
             </Row>
           )}
@@ -365,6 +378,7 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
                   <div>
                     <div style={{ fontSize: 14, fontWeight: arm.mixedLaneCombination === o.value ? 600 : 400 }}>
                       {index === 2 ? o.labelB : o.labelD}
+                      {arm.mixedLaneCombination === o.value && <HerkunftMarke art={streifenArt(herkunft, 'misch', o.value)} />}
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{o.desc}</div>
                   </div>

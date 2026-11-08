@@ -10,7 +10,7 @@ export function LOSBadge({ los }: { los: LevelOfService }) {
   return (
     <span style={{
       display: 'inline-block', minWidth: 28, textAlign: 'center',
-      padding: '2px 8px', borderRadius: 6, fontWeight: 700, fontSize: 13,
+      padding: '2px 8px', borderRadius: 6, fontWeight: 700, fontSize: 14,
       color: LOS_COLOR[los], background: LOS_BG[los],
       border: `1px solid ${LOS_COLOR[los]}44`,
     }}>{los}</span>
@@ -122,5 +122,15 @@ export function UtilBar({ value }: { value: number }) {
       <div style={{ height: '100%', width: `${pct * 100}%`, background: col, borderRadius: 3,
                     transition: 'width 0.3s' }} />
     </div>
+  )
+}
+
+/** «Bericht / PDF» in der Werkzeugleiste neben «Fall speichern»; gesperrt, solange kein Ergebnis da ist */
+export function BerichtKnopf({ onClick, bereit }: { onClick: () => void; bereit: boolean }) {
+  return (
+    <button onClick={onClick} disabled={!bereit} className="knopf"
+      title={bereit ? 'Druckansicht öffnen, dort drucken oder als PDF speichern' : 'Erst möglich, wenn alle Angaben vollständig sind'}>
+      Bericht / PDF
+    </button>
   )
 }

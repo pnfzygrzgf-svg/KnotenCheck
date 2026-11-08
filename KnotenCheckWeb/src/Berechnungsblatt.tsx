@@ -1,12 +1,14 @@
-// Berechnungsblatt — Zusammenstellung nach SN 640 022
-// Analog Anhang I in einem Verkehrsgutachten (z.B. Egerkingen)
+// Berechnungsblatt — Zusammenstellung nach SN 640 022, im Gerüst der Berichte (bericht/Bericht.tsx)
+// Die Rechenschritte folgen Anhang I eines Verkehrsgutachtens (z.B. Egerkingen)
 
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import type { SN640022Result, SN640022StreamResult, LevelOfService } from './engine/types'
 import type { IntersectionConfiguration, ArmConfiguration } from './engine/armConfiguration'
 import { armLabel, armFactor, pctPW } from './engine/armConfiguration'
-import BerichtQuellen from './karte/BerichtQuellen'
-import type { BerichtQuelle } from './karte/rechner'
+import type { KartenBezug, KnotenUebernahme } from './karte/rechner'
+import { Abschnitt, BerichtKopf, BerichtRahmen, Gesamtergebnis, Herkunft, HerkunftLegende, HinweisListe, QuellenAbschnitt } from './bericht/Bericht'
+import { kartenHerkunft, stromHerkunft, svHerkunft, type HerkunftArt } from './bericht/herkunft'
+import { GRUNDLAGEN } from './hilfeTexte'
 import kreuzungSvg    from './assets/kreuzung.svg'
 import einmuendungSvg from './assets/einmuendung.svg'
 
@@ -17,7 +19,6 @@ const THC: CSSProperties = { ...TH, textAlign: 'center' }
 const TD: CSSProperties = { border: '1px solid #999', padding: '3px 7px' }
 const TDR: CSSProperties = { ...TD, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }
 const TDC: CSSProperties = { ...TD, textAlign: 'center' }
-const SEC: CSSProperties = { fontWeight: 700, fontSize: 11, margin: '12px 0 3px', textTransform: 'uppercase', letterSpacing: '0.06em', color: '#222', borderBottom: '1px solid #aaa', paddingBottom: 2 }
 
 const LOS_BG: Record<LevelOfService, string> = {
   A: '#bbf7d0', B: '#d9f99d', C: '#fef08a', D: '#fed7aa', E: '#fecaca', F: '#f87171',
@@ -116,93 +117,120 @@ function streamNote(sd: StreamDef, arm: ArmConfiguration, armIdx: number): strin
 }
 
 // ── Hauptkomponente ────────────────────────────────────────────────────────────
+// Reihenfolge wie in den Berichten der anderen Rechner: Ort, Ergebnis, Rechenschritte, Eingaben, Annahmen und Hinweise, Quellen
 
 interface Props {
   cfg: IntersectionConfiguration
   result: SN640022Result
   onClose: () => void
-  quellen?: readonly BerichtQuelle[]
+  karte?: KartenBezug | null
+  uebernahme?: KnotenUebernahme
+  knotenbild?: ReactNode
 }
 
-export function Berechnungsblatt({ cfg, result, onClose, quellen = [] }: Props) {
+const RICHTUNG = [['left', 'links'], ['straight', 'geradeaus'], ['right', 'rechts']] as const
+const VOLUMEN = { left: 'leftVolume', straight: 'straightVolume', right: 'rightVolume' } as const
+// Am dreiarmigen Knoten fehlt je Arm eine Richtung (Reihenfolge der Konfiguration: A, C, B)
+const OHNE_3: Record<number, 'left' | 'straight' | 'right'> = { 0: 'left', 1: 'right', 2: 'straight' }
+
+export function Berechnungsblatt({ cfg, result, onClose, karte, uebernahme, knotenbild }: Props) {
   const is3      = cfg.arms.length === 3
   const armOrder = is3 ? ARM_ORDER_3 : ARM_ORDER_4
   const rang2    = result.streams.filter(s => s.rang === 2)
   const rang3    = result.streams.filter(s => s.rang === 3)
   const rang4    = result.streams.filter(s => s.rang === 4)
   const hasFall2 = cfg.arms.some(a => a.vehicleMix !== undefined)
-  const today    = new Date().toLocaleDateString('de-CH')
+  const overall  = result.overallLevelOfService
+  const herkunft: (HerkunftArt | null)[] = []
+  const merke = (h: HerkunftArt | null) => { herkunft.push(h); return h }
+
+  const hinweise: ReactNode[] = [
+    ...(karte?.belegt ?? []),
+    ...(result.mixedLanes.length ? [<><b>Annahme:</b> {is3 ? 'Links- und Rechtseinbieger teilen sich einen Fahrstreifen.'
+      : 'Mindestens zwei Ströme je Nebenstrassen-Arm teilen sich einen Fahrstreifen.'} Die Norm kennt Mischstreifen nur, wenn Fahrstreifen im
+      Knotenbereich von mehreren Strömen benutzt werden (Ziffer 12, Seite 7). Bei getrennten Streifen sind die Einzelströme massgebend, die
+      Gesamtstufe ist dann zu streng.</>] : []),
+    'Die Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.',
+  ]
 
   return (
-    <div className="bl-overlay">
-      {/* Toolbar — nicht gedruckt */}
-      <div className="bl-toolbar no-print" style={{
-        position: 'sticky', top: 0, zIndex: 10,
-        display: 'flex', gap: 10, padding: '10px 24px',
-        background: '#1e3a5f', borderBottom: '2px solid #2d5490',
-      }}>
-        <button onClick={() => {
-          const prev = document.title
-          document.title = `KnotenCheck – SN 640 022${cfg.name ? ' – ' + cfg.name : ''}`
-          window.addEventListener('afterprint', () => { document.title = prev }, { once: true })
-          window.print()
-        }}
-          style={{ padding: '6px 16px', background: '#fff', color: '#1e3a5f',
-                   border: 'none', borderRadius: 5, fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
-          Drucken / Als PDF speichern
-        </button>
-        <button onClick={onClose}
-          style={{ padding: '6px 16px', background: 'transparent', color: '#fff',
-                   border: '1px solid #fff5', borderRadius: 5, cursor: 'pointer', fontSize: 13 }}>
-          ✕ Schliessen
-        </button>
-        <span style={{ fontSize: 11, color: '#94a3b8', alignSelf: 'center', marginLeft: 8 }}>
-          Im Browser: Drucken → «Als PDF speichern»
-        </span>
-      </div>
+    <BerichtRahmen dokumentTitel={`KnotenCheck – SN 640 022${cfg.name ? ' – ' + cfg.name : ''}`} onClose={onClose}>
+      <BerichtKopf
+        titel="Leistungsfähigkeit eines Knotens ohne Lichtsignalanlage"
+        angaben={<>
+          <b>Bezeichnung:</b> {cfg.name || '—'} · <b>Knotentyp:</b> {is3 ? 'Einmündung (3-armig)' : 'Kreuzung (4-armig)'}<br />
+          <b>Hauptstrasse:</b> Arm A{cfg.arms[0]?.streetName ? ` (${cfg.arms[0].streetName})` : ''}, Arm C{cfg.arms[1]?.streetName ? ` (${cfg.arms[1].streetName})` : ''} ·{' '}
+          <b>Nebenstrasse:</b> Arm B{cfg.arms[2]?.streetName ? ` (${cfg.arms[2].streetName})` : ''}
+          {!is3 && <>, Arm D{cfg.arms[3]?.streetName ? ` (${cfg.arms[3].streetName})` : ''}</>}
+        </>}
+        norm="SN 640 022 «Leistungsfähigkeit, Verkehrsqualität, Belastbarkeit; Knoten ohne Lichtsignalanlage» (VSS, Mai 1999)"
+        karte={karte} />
 
-      {/* Druckbares Blatt */}
-      <div className="berechnungsblatt" style={{
-        maxWidth: 900, margin: '0 auto', padding: '28px 32px',
-        background: '#fff', fontFamily: 'Arial, Helvetica, sans-serif', color: '#111',
-      }}>
+      {/* ── Ergebnis ───────────────────────────────────────────────────────── */}
+      <Abschnitt titel="Ergebnis">
+        <div className="bericht-zwei">
+          <div>
+            <Gesamtergebnis stufe={overall} farbe={overall ? LOS_BG[overall] : undefined}
+              text={overall ? <>Qualitätsstufe {overall}: schlechtester belasteter Strom bzw. Mischstreifen</> : 'Ohne Verkehr gibt es nichts zu beurteilen.'} />
+          </div>
+          {knotenbild && <div className="bericht-bild">{knotenbild}</div>}
+        </div>
+        <h3>Verkehrsqualität je Strom und Mischstreifen</h3>
+        <table style={T}>
+          <thead>
+            <tr>
+              <th style={THC}>Strom / Arm</th>
+              <th style={THC}>Belastungsreserve R [PWE/h]</th>
+              <th style={THC}>Leistungsfähigkeit L [PWE/h]</th>
+              <th style={THC}>Mittl. Wartezeit w [s]</th>
+              <th style={THC}>Qualitätsstufe</th>
+              <th style={TH}>Vergleich</th>
+            </tr>
+          </thead>
+          <tbody>
+            {result.streams.map((s, i) => {
+              const rOk = s.reserve >= 0
+              return (
+                <tr key={s.id} style={{ background: i % 2 === 0 ? '#f8f8f8' : '#fff' }}>
+                  <td style={TDC}>{s.streamNumber} &nbsp;<span style={{ color:'#666', fontSize:10 }}>({s.name})</span></td>
+                  <td style={{ ...TDR, color: rOk ? '#166534' : '#991b1b', fontWeight: rOk ? 400 : 700 }}>{nr(s.reserve)}</td>
+                  <td style={TDR}>{nr(s.capacity)}</td>
+                  <td style={TDR}>{s.volumePWE > 0 ? wStr(s.delay) : '–'}</td>
+                  {s.volumePWE > 0
+                    ? <td style={{ ...TDC, background: LOS_BG[s.levelOfService], fontWeight: 700 }}>{s.levelOfService}</td>
+                    : <td style={TDC}>–</td>}
+                  <td style={{ ...TD, fontSize: 10 }}>{s.volumePWE > 0 ? losVergleich(s.levelOfService, s.delay) : 'kein Verkehr'}</td>
+                </tr>
+              )
+            })}
+            {result.mixedLanes.map((m, i) => {
+              const rOk = m.reserve >= 0
+              const bg = (result.streams.length + i) % 2 === 0 ? '#f8f8f8' : '#fff'
+              return (
+                <tr key={m.id} style={{ background: bg }}>
+                  <td style={TD}><em>{m.name}</em></td>
+                  <td style={{ ...TDR, color: rOk ? '#166534' : '#991b1b', fontWeight: rOk ? 400 : 700 }}>{nr(m.reserve)}</td>
+                  <td style={TDR}>{nr(m.capacity)}</td>
+                  <td style={TDR}>{m.volumeFzh > 0 ? wStr(m.delay) : '–'}</td>
+                  {m.volumeFzh > 0
+                    ? <td style={{ ...TDC, background: LOS_BG[m.levelOfService], fontWeight: 700 }}>{m.levelOfService}</td>
+                    : <td style={TDC}>–</td>}
+                  <td style={{ ...TD, fontSize: 10 }}>{m.volumeFzh > 0 ? losVergleich(m.levelOfService, m.delay) : 'kein Verkehr'}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </Abschnitt>
 
-        {/* ── Kopfzeile ──────────────────────────────────────────────────────── */}
-        <div style={{ borderBottom: '2px solid #333', paddingBottom: 8, marginBottom: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>
-            Berechnung Leistungsfähigkeit von Knoten ohne Lichtsignalanlage
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3 }}>
-            <div>
-              <strong>Bezeichnung:</strong> {cfg.name || '—'} &nbsp;&nbsp;
-              <strong>Knotentyp:</strong> {is3 ? 'Einmündung (3-armig)' : 'Kreuzung (4-armig)'}
-            </div>
-            <div style={{ color: '#555' }}>
-              Norm: VSS SN 640 022 (Mai 1999) &nbsp;·&nbsp; {today}
-            </div>
-          </div>
-          <div style={{ fontSize: 10, color: '#444' }}>
-            <strong>Hauptstrasse:</strong>&nbsp;
-            Arm A{cfg.arms[0]?.streetName ? ` — ${cfg.arms[0].streetName}` : ''} &nbsp;/&nbsp;
-            Arm C{cfg.arms[1]?.streetName ? ` — ${cfg.arms[1].streetName}` : ''} &nbsp;&nbsp;
-            <strong>Nebenstrasse:</strong>&nbsp;
-            Arm B{cfg.arms[2]?.streetName ? ` — ${cfg.arms[2].streetName}` : ''}
-            {!is3 && <> &nbsp;/&nbsp; Arm D{cfg.arms[3]?.streetName ? ` — ${cfg.arms[3].streetName}` : ''}</>}
-          </div>
+      {/* ── Rechenschritte ─────────────────────────────────────────────────── */}
+      <Abschnitt titel="Rechenschritte nach SN 640 022">
+        <h3>Stromschema (Abb. 1)</h3>
+        <div className="bl-diagram" style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+          <img src={is3 ? einmuendungSvg : kreuzungSvg} alt={is3 ? 'Stromschema Einmündung' : 'Stromschema Kreuzung'} style={{ height: 180, width: 'auto' }} />
         </div>
 
-        {/* ── Stromschema ────────────────────────────────────────────────────── */}
-        <div style={SEC} className="bl-sec">Stromschema (Abb. 1)</div>
-        <div className="bl-diagram" style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-          <img
-            src={is3 ? einmuendungSvg : kreuzungSvg}
-            alt={is3 ? 'Stromschema Einmündung' : 'Stromschema Kreuzung'}
-            style={{ height: 200, width: 'auto' }}
-          />
-        </div>
-
-        {/* ── Knotengeometrie ────────────────────────────────────────────────── */}
-        <div style={SEC} className="bl-sec">Knotengeometrie</div>
+        <h3>Knotengeometrie</h3>
         <table style={T}>
           <thead>
             <tr>
@@ -231,15 +259,10 @@ export function Berechnungsblatt({ cfg, result, onClose, quellen = [] }: Props) 
           </tbody>
         </table>
 
-        {/* ── Knotenbelastungen ──────────────────────────────────────────────── */}
-        <div style={SEC} className="bl-sec">Knotenbelastungen</div>
-        {hasFall2
-          ? <BelastungenFall2 cfg={cfg} armOrder={armOrder} />
-          : <BelastungenFall1 cfg={cfg} armOrder={armOrder} />
-        }
+        <h3>Knotenbelastungen</h3>
+        {hasFall2 ? <BelastungenFall2 cfg={cfg} armOrder={armOrder} /> : <BelastungenFall1 cfg={cfg} armOrder={armOrder} />}
 
-        {/* ── Grundleistungsfähigkeit ────────────────────────────────────────── */}
-        <div style={SEC} className="bl-sec">Grundleistungsfähigkeit</div>
+        <h3>Grundleistungsfähigkeit</h3>
         <table style={T}>
           <thead>
             <tr>
@@ -257,42 +280,24 @@ export function Berechnungsblatt({ cfg, result, onClose, quellen = [] }: Props) 
             </tr>
           </thead>
           <tbody>
-            {result.streams.map((s, i) => {
-              const fzh = streamFzh(s.streamNumber, cfg)
-              return (
-                <tr key={s.id} style={{ background: i % 2 === 0 ? '#f8f8f8' : '#fff' }}>
-                  <td style={TDC}><strong>{s.streamNumber}</strong></td>
-                  <td style={TDR}>{nr(fzh)}</td>
-                  <td style={TDR}>{n1(s.volumePWE)}</td>
-                  <td style={TDR}>{n1(s.qpi)}</td>
-                  <td style={TDR}><strong>{nr(s.basicCapacity)}</strong></td>
-                </tr>
-              )
-            })}
+            {result.streams.map((s, i) => (
+              <tr key={s.id} style={{ background: i % 2 === 0 ? '#f8f8f8' : '#fff' }}>
+                <td style={TDC}><strong>{s.streamNumber}</strong></td>
+                <td style={TDR}>{nr(streamFzh(s.streamNumber, cfg))}</td>
+                <td style={TDR}>{n1(s.volumePWE)}</td>
+                <td style={TDR}>{n1(s.qpi)}</td>
+                <td style={TDR}><strong>{nr(s.basicCapacity)}</strong></td>
+              </tr>
+            ))}
           </tbody>
         </table>
 
-        {/* ── LF zweitrangige Ströme ─────────────────────────────────────────── */}
-        {rang2.length > 0 && <>
-          <div style={SEC} className="bl-sec">Leistungsfähigkeit der zweitrangigen Ströme</div>
-          <LFTable streams={rang2} />
-        </>}
+        {rang2.length > 0 && <><h3>Leistungsfähigkeit der zweitrangigen Ströme</h3><LFTable streams={rang2} /></>}
+        {rang3.length > 0 && <><h3>Leistungsfähigkeit der drittrangigen Ströme</h3><LFTable streams={rang3} /></>}
+        {rang4.length > 0 && <><h3>Leistungsfähigkeit der viertrangigen Ströme</h3><LFTable streams={rang4} /></>}
 
-        {/* ── LF drittrangige Ströme ─────────────────────────────────────────── */}
-        {rang3.length > 0 && <>
-          <div style={SEC} className="bl-sec">Leistungsfähigkeit der drittrangigen Ströme</div>
-          <LFTable streams={rang3} />
-        </>}
-
-        {/* ── LF viertrangige Ströme ─────────────────────────────────────────── */}
-        {rang4.length > 0 && <>
-          <div style={SEC} className="bl-sec">Leistungsfähigkeit der viertrangigen Ströme</div>
-          <LFTable streams={rang4} />
-        </>}
-
-        {/* ── LF Mischstreifen ───────────────────────────────────────────────── */}
         {result.mixedLanes.length > 0 && <>
-          <div style={SEC} className="bl-sec">Leistungsfähigkeit des Mischstromes</div>
+          <h3>Leistungsfähigkeit des Mischstromes</h3>
           <table style={T}>
             <thead>
               <tr>
@@ -315,86 +320,64 @@ export function Berechnungsblatt({ cfg, result, onClose, quellen = [] }: Props) 
           </table>
         </>}
 
-        {/* ── Beurteilung Verkehrsqualität ───────────────────────────────────── */}
-        <div style={SEC} className="bl-sec">Beurteilung der Verkehrsqualität</div>
+        <div style={{ fontSize: 10, color: '#555', lineHeight: 1.6 }}>
+          <div>¹⁾ q₃ bzw. q₉ nicht berücksichtigen, wenn separater Streifen für Rechtsabbieger vorhanden (Fn 1).</div>
+          <div>²⁾ Bei mehr als einem Streifen gilt Belastung auf dem rechten Fahrstreifen (Fn 2).</div>
+          <div>³⁾ q₃ und q₉ nicht berücksichtigen, wenn Dreiecksinsel vorhanden und mit Kein Vortritt oder Stop belastet (Fn 3).</div>
+          <div>⁴⁾ q₆ und q₁₂ entfallen, wenn durch Dreiecksinsel getrennt und mit Kein Vortritt oder Stop belastet (Fn 4).</div>
+        </div>
+      </Abschnitt>
+
+      {/* ── Eingaben ───────────────────────────────────────────────────────── */}
+      <Abschnitt titel="Eingaben">
         <table style={T}>
           <thead>
             <tr>
-              <th style={THC}>Strom / Arm</th>
-              <th style={THC}>Belastungsreserve R [PWE/h]</th>
-              <th style={THC}>Leistungsfähigkeit L [PWE/h]</th>
-              <th style={THC}>Mittl. Wartezeit w [s]</th>
-              <th style={THC}>Qualitätsstufe</th>
-              <th style={TH}>Vergleich</th>
+              <th style={TH}>Arm</th>
+              <th style={TH}>Strasse</th>
+              <th style={THC}>links [Fz/h]</th>
+              <th style={THC}>geradeaus [Fz/h]</th>
+              <th style={THC}>rechts [Fz/h]</th>
+              <th style={THC}>Fahrzeugarten</th>
+              <th style={THC}>Längsneigung</th>
+              <th style={TH}>Bauliche Merkmale</th>
             </tr>
           </thead>
           <tbody>
-            {/* Einzelströme */}
-            {result.streams.map((s, i) => {
-              const rOk = s.reserve >= 0
+            {armOrder.map((armIdx, i) => {
+              const arm = cfg.arms[armIdx], u = uebernahme?.arme[armIdx], hs = armIdx < 2
+              const merkmale = hs
+                ? [arm.hasSeparateTurnLane && 'Rechtsabbiegestreifen', arm.hasRightTurnTriangleIsland && 'Dreiecksinsel',
+                   arm.hasLeftTurnLane && 'Linksabbiegestreifen', arm.rightLaneVolume !== undefined && `mehrstreifig, rechter Fahrstreifen ${arm.rightLaneVolume} Fz/h`]
+                : [arm.mixedLaneCombination && `Fahrstreifen: ${MISCH_TEXT[arm.mixedLaneCombination]}`, arm.hasRightTurnTriangleIsland && 'Dreiecksinsel']
               return (
-                <tr key={s.id} style={{ background: i % 2 === 0 ? '#f8f8f8' : '#fff' }}>
-                  <td style={TDC}>{s.streamNumber} &nbsp;<span style={{ color:'#666', fontSize:10 }}>({s.name})</span></td>
-                  <td style={{ ...TDR, color: rOk ? '#166534' : '#991b1b', fontWeight: rOk ? 400 : 700 }}>
-                    {nr(s.reserve)}
-                  </td>
-                  <td style={TDR}>{nr(s.capacity)}</td>
-                  <td style={TDR}>{s.volumePWE > 0 ? wStr(s.delay) : '–'}</td>
-                  {s.volumePWE > 0 ? (
-                    <td style={{ ...TDC, background: LOS_BG[s.levelOfService], fontWeight: 700 }}>
-                      {s.levelOfService}
-                    </td>
-                  ) : <td style={TDC}>–</td>}
-                  <td style={{ ...TD, fontSize: 10 }}>
-                    {s.volumePWE > 0 ? losVergleich(s.levelOfService, s.delay) : 'kein Verkehr'}
-                  </td>
-                </tr>
-              )
-            })}
-            {/* Mischstreifen */}
-            {result.mixedLanes.map((m, i) => {
-              const rOk = m.reserve >= 0
-              const bg = (result.streams.length + i) % 2 === 0 ? '#f8f8f8' : '#fff'
-              return (
-                <tr key={m.id} style={{ background: bg }}>
-                  <td style={TD}><em>{m.name}</em></td>
-                  <td style={{ ...TDR, color: rOk ? '#166534' : '#991b1b', fontWeight: rOk ? 400 : 700 }}>
-                    {nr(m.reserve)}
-                  </td>
-                  <td style={TDR}>{nr(m.capacity)}</td>
-                  <td style={TDR}>{m.volumeFzh > 0 ? wStr(m.delay) : '–'}</td>
-                  {m.volumeFzh > 0 ? (
-                    <td style={{ ...TDC, background: LOS_BG[m.levelOfService], fontWeight: 700 }}>
-                      {m.levelOfService}
-                    </td>
-                  ) : <td style={TDC}>–</td>}
-                  <td style={{ ...TD, fontSize: 10 }}>
-                    {m.volumeFzh > 0 ? losVergleich(m.levelOfService, m.delay) : 'kein Verkehr'}
-                  </td>
+                <tr key={arm.id} style={{ background: i % 2 === 0 ? '#f8f8f8' : '#fff' }}>
+                  <td style={TD}>{armLabel(armIdx)}</td>
+                  <td style={TD}>{arm.streetName || '—'}<Herkunft art={merke(kartenHerkunft(u?.name, arm.streetName))} /></td>
+                  {RICHTUNG.map(([r]) => is3 && OHNE_3[armIdx] === r
+                    ? <td key={r} style={TDC}>–</td>
+                    : <td key={r} style={TDR}>{arm[VOLUMEN[r]]}<Herkunft art={merke(stromHerkunft(uebernahme, armIdx, r, arm[VOLUMEN[r]]))} /></td>)}
+                  <td style={TDC}>{arm.vehicleMix
+                    ? <>Fall 2: LW {arm.vehicleMix.pctLW} %, LZ {arm.vehicleMix.pctLZ} %, MR {arm.vehicleMix.pctMR} %, FR {arm.vehicleMix.pctFR} %<Herkunft art={merke(svHerkunft(uebernahme, armIdx, arm.vehicleMix.pctLW, arm.vehicleMix.pctLZ))} /></>
+                    : 'Fall 1'}</td>
+                  <td style={TDC}>{arm.gradient ?? '—'}<Herkunft art={merke(kartenHerkunft(u?.neigung, arm.gradient))} /></td>
+                  <td style={{ ...TD, fontSize: 10 }}>{merkmale.filter(Boolean).join(', ') || '—'}</td>
                 </tr>
               )
             })}
           </tbody>
         </table>
+        <HerkunftLegende arten={herkunft} />
+      </Abschnitt>
 
-        {/* ── Fussnoten ──────────────────────────────────────────────────────── */}
-        <div style={{ fontSize: 10, color: '#555', lineHeight: 1.6, borderTop: '1px solid #ccc', paddingTop: 6 }}>
-          <div>¹⁾ q₃ bzw. q₉ nicht berücksichtigen, wenn separater Streifen für Rechtsabbieger vorhanden (Fn 1).</div>
-          <div>²⁾ Bei mehr als einem Streifen gilt Belastung auf dem rechten Fahrstreifen (Fn 2).</div>
-          <div>³⁾ q₃ und q₉ nicht berücksichtigen, wenn Dreiecksinsel vorhanden und mit Kein Vortritt oder Stop belastet (Fn 3).</div>
-          <div>⁴⁾ q₆ und q₁₂ entfallen, wenn durch Dreiecksinsel getrennt und mit Kein Vortritt oder Stop belastet (Fn 4).</div>
-          <div style={{ marginTop: 4 }}>
-            Berechnung nach VSS SN 640 022 (Mai 1999) — KnotenCheck Web (Beta).
-            Resultate ersetzen keine Überprüfung durch eine Fachperson.
-          </div>
-        </div>
-
-        <BerichtQuellen zeilen={quellen} />
-
-      </div>{/* end berechnungsblatt */}
-    </div>
+      <HinweisListe hinweise={hinweise} />
+      <QuellenAbschnitt normen={GRUNDLAGEN.sn022} daten={karte?.quellen ?? []} />
+    </BerichtRahmen>
   )
 }
+
+const MISCH_TEXT = { all: 'alle Ströme auf einem Streifen', leftAndThrough: 'links und kreuzen gemeinsam, rechts eigener Streifen',
+  throughAndRight: 'kreuzen und rechts gemeinsam, links eigener Streifen' } as const
 
 // ── Hilfsfunktion Beurteilung ──────────────────────────────────────────────────
 

@@ -1,9 +1,11 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, type CSSProperties, type ReactNode } from 'react'
 import UebernahmeHinweis from './karte/UebernahmeHinweis'
-import BerichtQuellen from './karte/BerichtQuellen'
 import BelastungsVergleich from './karte/BelastungsVergleich'
 import { querschnitteKnoten } from './karte/vergleich'
-import { intersectionAus, kartenBezugAus, kartenBezugLesen, type KnotenUebernahme } from './karte/rechner'
+import { intersectionAus, kartenBezugAus, kartenBezugLesen, type KartenBezug, type KnotenUebernahme } from './karte/rechner'
+import { Abschnitt, BerichtKopf, BerichtRahmen, Herkunft, HerkunftLegende, HinweisListe, QuellenAbschnitt } from './bericht/Bericht'
+import { kartenHerkunft, stromHerkunft, svHerkunft, type HerkunftArt } from './bericht/herkunft'
+import { GRUNDLAGEN } from './hilfeTexte'
 import { createPortal } from 'react-dom'
 import einmuendungSvg from './assets/einmuendung.svg'
 import kreuzungSvg    from './assets/kreuzung.svg'
@@ -16,7 +18,7 @@ import type {
   GapOverrides, PedestrianConfig, PedestrianLegConfig, SimInterval,
 } from './engine/stochasticSN640022'
 import {
-  defaultIntersection, toSNVolumes, toSNRawVolumes, toSNLaneFlags,
+  defaultIntersection, toSNVolumes, toSNRawVolumes, toSNLaneFlags, armLabel,
 } from './engine/armConfiguration'
 import type { ArmConfiguration, IntersectionConfiguration } from './engine/armConfiguration'
 import type { SN640022LaneFlags } from './engine/types'
@@ -31,7 +33,7 @@ import { Meldung } from './Meldung'
 import { simLOS, streamMovementName } from './uiHelpers'
 import { useMeldung } from './useMeldung'
 import { HilfeUnten, SoFunktionierts, type LegendItem } from './Hilfe'
-import { LeereWahl, NumInput, OffeneAngaben, Row, Ckbx, LOSBadge, ToggleBtn, ToolbarBtn } from './ui'
+import { LeereWahl, NumInput, OffeneAngaben, Row, Ckbx, LOSBadge, ToggleBtn, ToolbarBtn, BerichtKnopf } from './ui'
 import { ArmCard } from './ArmCard'
 import { StochasticPanel } from './StochasticPanel'
 import { RechnerFuss } from './Fusszeile'
@@ -374,24 +376,26 @@ function IntervalCard({ iv, baseArms, armCount, index, onUpdate, onRemove }: {
 
 // ── Multi-Intervall-Ergebnis ───────────────────────────────────────────────────
 
-function MultiIntervalPanel({ result }: { result: StochasticMultiResult }) {
+// Im Druckblatt (alle) ohne Reiter, dafür mit den Einzelheiten aller Intervalle
+function MultiIntervalPanel({ result, alle = false }: { result: StochasticMultiResult; alle?: boolean }) {
   const [activeTab, setActiveTab] = useState(0)
   const iv = result.intervals
+  const aktiv = (i: number) => !alle && i === activeTab
 
   return (
     <div>
       {/* Tab-Leiste */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 12, flexWrap: 'wrap' }}>
+      {!alle && <div style={{ display: 'flex', gap: 4, marginBottom: 12, flexWrap: 'wrap' }}>
         {iv.map((r, i) => (
           <ToggleBtn key={i} small active={activeTab === i} onClick={() => setActiveTab(i)}>
             {r.label}
           </ToggleBtn>
         ))}
-      </div>
+      </div>}
 
       {/* Ganglinie-Tabelle */}
       <div style={{ marginBottom: 16, overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead>
             <tr style={{ background: '#1e3a5f', color: '#fff' }}>
               <th style={{ padding: '5px 8px', textAlign: 'left' }}>Intervall</th>
@@ -407,17 +411,17 @@ function MultiIntervalPanel({ result }: { result: StochasticMultiResult }) {
               r.result.streams.filter(s => s.stats !== null).map((s, sIdx) => (
                 <tr key={`${iIdx}-${s.streamNumber}`}
                   style={{ background: sIdx % 2 === 0 ? '#f8fafc' : '#fff',
-                           borderBottom: '1px solid #e5e7eb',
-                           fontWeight: iIdx === activeTab ? 600 : 400 }}>
+                           borderBottom: '1px solid var(--kachel-rand)',
+                           fontWeight: aktiv(iIdx) ? 600 : 400 }}>
                   {sIdx === 0 && (
                     <td rowSpan={r.result.streams.filter(x => x.stats !== null).length}
                       style={{ padding: '4px 8px', verticalAlign: 'middle',
-                               borderRight: '1px solid #e5e7eb', color: iIdx === activeTab ? '#1e3a5f' : '#6b7280',
-                               fontWeight: iIdx === activeTab ? 700 : 400 }}>
+                               borderRight: '1px solid var(--kachel-rand)', color: aktiv(iIdx) ? 'var(--accent)' : 'var(--text-muted)',
+                               fontWeight: aktiv(iIdx) ? 700 : 400 }}>
                       {r.label}
                     </td>
                   )}
-                  <td style={{ padding: '4px 8px', color: '#374151', whiteSpace: 'nowrap' }}>
+                  <td style={{ padding: '4px 8px', color: 'var(--text)', whiteSpace: 'nowrap' }}>
                     {streamMovementName(s.streamNumber)}
                   </td>
                   <td style={{ padding: '4px 8px', textAlign: 'right' }}>
@@ -432,7 +436,7 @@ function MultiIntervalPanel({ result }: { result: StochasticMultiResult }) {
                   {sIdx === 0 && (
                     <td rowSpan={r.result.streams.filter(x => x.stats !== null).length}
                       style={{ padding: '4px 8px', textAlign: 'right', verticalAlign: 'middle',
-                               color: r.carryOver > 0 ? '#ea580c' : '#6b7280' }}>
+                               color: r.carryOver > 0 ? '#ea580c' : 'var(--text-muted)' }}>
                       {r.carryOver > 0 ? `${r.carryOver} Fz` : '–'}
                     </td>
                   )}
@@ -443,14 +447,18 @@ function MultiIntervalPanel({ result }: { result: StochasticMultiResult }) {
         </table>
       </div>
 
-      {/* Detail-Panel für aktives Tab */}
-      <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280',
-                    textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-        Detail: {iv[activeTab]?.label}
-      </div>
-      {iv[activeTab] && <StochasticPanel result={iv[activeTab].result} />}
+      {/* Detail-Panel für aktives Tab (im Druckblatt alle Intervalle) */}
+      {(alle ? iv.map((_, i) => i) : [activeTab]).map(i => iv[i] && (
+        <div key={i}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)',
+                        textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8, marginTop: alle && i > 0 ? 12 : 0 }}>
+            Detail: {iv[i].label}
+          </div>
+          <StochasticPanel result={iv[i].result} />
+        </div>
+      ))}
 
-      <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 8 }}>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
         Carry-over: Fahrzeuge, die am Ende eines Intervalls noch warten und ins nächste übergehen.
         Gesamtlaufzeit: {Math.round(result.totalDurationMs)} ms
       </div>
@@ -473,7 +481,7 @@ function RunConfigSummary({ result }: { result: StochasticSN640022Result | Stoch
   const sigma = rc.tcSigma ?? 0.5
   return (
     <div style={{ padding: '8px 12px', borderRadius: 6, background: '#f0f9ff',
-                  border: '1px solid #bae6fd', fontSize: 11, color: '#0369a1',
+                  border: '1px solid #bae6fd', fontSize: 12, color: '#0369a1',
                   marginBottom: 12, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
       <span>Modell: {(rc.useCowan ?? true) ? 'Cowan M3' : 'Exponential'}</span>
       <span>·</span>
@@ -491,6 +499,183 @@ function RunConfigSummary({ result }: { result: StochasticSN640022Result | Stoch
         <><span>·</span><span>{result.intervals.length} Intervalle</span></>
       )}
     </div>
+  )
+}
+
+// ── Druckblatt ────────────────────────────────────────────────────────────────
+// Gerüst wie in den anderen Rechnern (bericht/Bericht.tsx): Kopf, Ergebnis, Eingaben, Annahmen und Hinweise, Quellen.
+// Eigene Rechenschritt-Tabellen hat die Simulation nicht.
+
+/** Eingaben, mit denen ein Lauf gestartet wurde; die Fussgänger*innen und Einstellungen stehen im Resultat (config) */
+export interface SimLauf {
+  arms:       ArmConfiguration[]
+  intervalle: { label: string; T: number; arms: ArmConfiguration[] }[] | null   // T in Minuten
+}
+
+const BT: CSSProperties = { width: '100%', borderCollapse: 'collapse', fontSize: 11, marginBottom: 10 }
+const BTH: CSSProperties = { border: '1px solid #555', padding: '3px 7px', background: '#d8d8d8', fontWeight: 700, textAlign: 'left', whiteSpace: 'nowrap' }
+const BTHC: CSSProperties = { ...BTH, textAlign: 'center' }
+const BTD: CSSProperties = { border: '1px solid #999', padding: '3px 7px' }
+const BTDR: CSSProperties = { ...BTD, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }
+const BTDC: CSSProperties = { ...BTD, textAlign: 'center' }
+const zeile = (i: number): CSSProperties => ({ background: i % 2 === 0 ? '#f8f8f8' : '#fff' })
+
+// Ausgabe A, B, C, (D); die Konfiguration hat die Reihenfolge A, C, B, D
+const BL_ORDER_3 = [0, 2, 1]
+const BL_ORDER_4 = [0, 2, 1, 3]
+const BL_PED_KEY: PedArmKey[] = ['armA', 'armC', 'armB', 'armD']
+const BL_RICHTUNG = [['left', 'links'], ['straight', 'geradeaus'], ['right', 'rechts']] as const
+const BL_VOLUMEN = { left: 'leftVolume', straight: 'straightVolume', right: 'rightVolume' } as const
+// Am dreiarmigen Knoten fehlt je Arm eine Richtung
+const BL_OHNE_3: Record<number, 'left' | 'straight' | 'right'> = { 0: 'left', 1: 'right', 2: 'straight' }
+const GAP_KURZ: Record<GapKey, string> = { mainLeft: 'HS-Linksabbieger', sideRight: 'NS-Rechtseinbiegen', sideCross: 'NS-Kreuzen', sideLeft: 'NS-Linkseinbiegen' }
+
+function querungText(leg: PedestrianLegConfig | undefined, armIdx: number): { text: string; querung: Querung } {
+  if (!leg) return { text: QUERUNG_ERGEBNIS.keine, querung: 'keine' }
+  const l = normalizePedestrianLeg(leg, armIdx >= 2)
+  if (l.querung === 'keine' || !(l.fg > 0)) return { text: QUERUNG_ERGEBNIS.keine, querung: 'keine' }
+  const breite = l.fahrbahnbreite ?? DEFAULT_FAHRBAHNBREITE
+  return {
+    querung: l.querung,
+    text: `${QUERUNG_ERGEBNIS[l.querung]}: ${l.fg} Fg/h, Gruppengrösse ρ = ${l.rho}, ${l.querung === 'trottoirueberfahrt' ? 'Breite der Einmündung' : 'Fahrbahnbreite'} ${breite} m`
+      + `${l.mittelinsel ? ', Mittelinsel' : ''} · Sperrzeit ${pedBlockingTime(l).toFixed(1)} s je Gruppe`,
+  }
+}
+
+export function SimulationBlatt({ result, lauf, nodeName, armCount, veraltet, karte, uebernahme, onClose }: {
+  result:      StochasticSN640022Result | StochasticMultiResult
+  lauf?:       SimLauf | null
+  nodeName:    string
+  armCount:    3 | 4
+  veraltet:    boolean
+  karte?:      KartenBezug | null
+  uebernahme?: KnotenUebernahme
+  onClose:     () => void
+}) {
+  const arms  = lauf?.arms ?? null
+  const n     = (arms?.length ?? armCount) as 3 | 4
+  const is3   = n === 3
+  const order = is3 ? BL_ORDER_3 : BL_ORDER_4
+  const multi = 'intervals' in result
+  const rc    = result.config
+  const herkunft: (HerkunftArt | null)[] = []
+  const merke = (h: HerkunftArt | null) => { herkunft.push(h); return h }
+  const strName = (i: number) => arms?.[i]?.streetName ? ` (${arms[i].streetName})` : ''
+
+  const stroeme = (arm: ArmConfiguration, armIdx: number) => BL_RICHTUNG.map(([r]) => is3 && BL_OHNE_3[armIdx] === r
+    ? <td key={r} style={BTDC}>–</td>
+    : <td key={r} style={BTDR}>{arm[BL_VOLUMEN[r]]}<Herkunft art={merke(stromHerkunft(uebernahme, armIdx, r, arm[BL_VOLUMEN[r]]))} /></td>)
+
+  const runs = multi ? result.intervals[0]?.result.runs : result.runs
+  const gaps = (Object.keys(rc.gapOverrides ?? {}) as GapKey[]).filter(k => rc.gapOverrides?.[k])
+  const stau = (v: number | undefined) => v !== undefined && isFinite(v) && v > 0 ? `${v} Fz` : 'unbegrenzt'
+
+  const hinweise: ReactNode[] = [
+    ...(karte?.belegt ?? []),
+    'Stochastische Simulation auf Basis der SN 640 022 mit Grenz-/Folgezeitlücken nach HBS 2015.',
+    ...(arms ? [] : ['Die Verkehrsstärken des Laufs sind nicht gespeichert; das Blatt zeigt darum nur die Einstellungen der Simulation.']),
+    'Jeder Lauf streut, darum weichen die Zahlen bei jedem Start leicht ab.',
+    'Die Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.',
+  ]
+
+  return (
+    <BerichtRahmen dokumentTitel={`KnotenCheck – Simulation${nodeName ? ' – ' + nodeName : ''}`} onClose={onClose}>
+      <BerichtKopf
+        titel="Simulation Wartezeiten"
+        angaben={<>
+          <b>Bezeichnung:</b> {nodeName || '—'} · <b>Knotentyp:</b> {is3 ? 'T-Knoten (3 Arme)' : 'Kreuzung (4 Arme)'}<br />
+          <b>Hauptstrasse:</b> Arm A{strName(0)}, Arm C{strName(1)} · <b>Nebenstrasse:</b> Arm B{strName(2)}
+          {!is3 && <>, Arm D{strName(3)}</>}
+        </>}
+        norm="SN 640 022 (Rangfolge der Ströme, massgebende Hauptstrombelastung) mit Grenz- und Folgezeitlücken nach HBS 2015, Kapitel S5"
+        karte={karte} />
+
+      {veraltet && (
+        <div className="bericht-gesamt" style={{ background: '#ffedd5', borderColor: '#fdba74', color: '#9a3412' }}>
+          Hinweis: Die Eingaben wurden nach dieser Simulation geändert. Das Blatt zeigt den Stand der letzten Simulation.
+        </div>
+      )}
+
+      <Abschnitt titel="Ergebnis">
+        {multi ? <MultiIntervalPanel result={result} alle /> : <StochasticPanel result={result} />}
+      </Abschnitt>
+
+      <Abschnitt titel="Eingaben" untertitel="Konfiguration, mit der gerechnet wurde">
+        <RunConfigSummary result={result} />
+        <ul className="bericht-hinweise">
+          {runs !== undefined && <li>Simulationsläufe: {runs}</li>}
+          <li>Stauraum Nebenstrasse: Arm B {stau(rc.storageB)}{!is3 && <>, Arm D {stau(rc.storageD)}</>}</li>
+          {gaps.length > 0 && <li>Angepasste Zeitlücken: {gaps.map(k => {
+            const g = rc.gapOverrides![k]!, d = GAP_PARAMS[k]
+            return `${GAP_KURZ[k]} t_c = ${g.tc ?? d.tc} s, t_f = ${g.tf ?? d.tf} s`
+          }).join(' · ')}</li>}
+        </ul>
+        {arms && <>
+          <table style={BT}>
+            <thead>
+              <tr>
+                <th style={BTH}>Arm</th>
+                <th style={BTH}>Strasse</th>
+                {!multi && BL_RICHTUNG.map(([r, t]) => <th key={r} style={BTHC}>{t} [Fz/h]</th>)}
+                <th style={BTHC}>Fahrzeugarten</th>
+                <th style={BTHC}>Längsneigung</th>
+                <th style={BTH}>Fussgänger*innen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {order.map((armIdx, i) => {
+                const arm = arms[armIdx], u = uebernahme?.arme[armIdx]
+                if (!arm) return null
+                const q = querungText(rc.pedestrians?.[BL_PED_KEY[armIdx]], armIdx)
+                return (
+                  <tr key={armIdx} style={zeile(i)}>
+                    <td style={BTD}>{armLabel(armIdx)}</td>
+                    <td style={BTD}>{arm.streetName || '—'}<Herkunft art={merke(kartenHerkunft(u?.name, arm.streetName))} /></td>
+                    {!multi && stroeme(arm, armIdx)}
+                    <td style={BTDC}>{arm.vehicleMix
+                      ? <>Fall 2: LW {arm.vehicleMix.pctLW} %, LZ {arm.vehicleMix.pctLZ} %, MR {arm.vehicleMix.pctMR} %, FR {arm.vehicleMix.pctFR} %<Herkunft art={merke(svHerkunft(uebernahme, armIdx, arm.vehicleMix.pctLW, arm.vehicleMix.pctLZ))} /></>
+                      : 'Fall 1'}</td>
+                    <td style={BTDC}>{arm.gradient ?? '—'}<Herkunft art={merke(kartenHerkunft(u?.neigung, arm.gradient))} /></td>
+                    <td style={{ ...BTD, fontSize: 10 }}>{q.text}<Herkunft art={merke(kartenHerkunft<Querung>(u?.fgs ? 'fgs' : undefined, q.querung))} /></td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          {multi && lauf?.intervalle && <>
+            <h3>Verkehrsstärken je Intervall</h3>
+            <table style={BT}>
+              <thead>
+                <tr>
+                  <th style={BTH}>Intervall</th>
+                  <th style={BTHC}>Dauer</th>
+                  <th style={BTH}>Arm</th>
+                  {BL_RICHTUNG.map(([r, t]) => <th key={r} style={BTHC}>{t} [Fz/h]</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {lauf.intervalle.map((iv, ivIdx) => order.map((armIdx, i) => {
+                  const arm = iv.arms[armIdx]
+                  if (!arm) return null
+                  return (
+                    <tr key={`${ivIdx}-${armIdx}`} style={zeile(ivIdx)}>
+                      {i === 0 && <td style={BTD} rowSpan={order.length}>{iv.label}</td>}
+                      {i === 0 && <td style={BTDC} rowSpan={order.length}>{iv.T} min</td>}
+                      <td style={BTD}>{armLabel(armIdx)}</td>
+                      {stroeme(arm, armIdx)}
+                    </tr>
+                  )
+                }))}
+              </tbody>
+            </table>
+          </>}
+          <HerkunftLegende arten={herkunft} />
+        </>}
+      </Abschnitt>
+
+      <HinweisListe hinweise={hinweise} />
+      <QuellenAbschnitt normen={GRUNDLAGEN.simulation} daten={karte?.quellen ?? []} />
+    </BerichtRahmen>
   )
 }
 
@@ -521,6 +706,10 @@ export default function SimulationApp({ uebernahme }: { uebernahme?: KnotenUeber
     StochasticSN640022Result | StochasticMultiResult | null
   >(null)
   const [running,       setRunning]       = useState(false)
+  const [lauf,          setLauf]          = useState<SimLauf | null>(null)   // Eingaben des angezeigten Resultats
+  const [showBl, setShowBl] = useState(false)
+  const openBl  = useCallback(() => setShowBl(true),  [])
+  const closeBl = useCallback(() => setShowBl(false), [])
   // Offen, weil die Felder darin Pflicht sind
   const [showAdvanced,  setShowAdvanced]  = useState(true)
   const [showGapConfig, setShowGapConfig] = useState(true)
@@ -573,6 +762,7 @@ export default function SimulationApp({ uebernahme }: { uebernahme?: KnotenUeber
     if (offen.length > 0) return
     const fullConfig: StochasticConfig = { ...simConfig, gapOverrides, pedestrians }
     let req: SimRequest
+    let laufDaten: SimLauf
     if (useIntervals && intervals.length >= 1) {
       // Volumen je Intervall mit Basis-Geometrie kombinieren → konsistent mit den
       // aus baseArms abgeleiteten Lane-Flags.
@@ -589,12 +779,15 @@ export default function SimulationApp({ uebernahme }: { uebernahme?: KnotenUeber
       })
       const flags = simFlags({ name: '', arms: baseArms })
       req = { kind: 'multi', intervals: ivs, flags, config: fullConfig }
+      laufDaten = { arms: baseArms, intervalle: intervals.map((iv, nr) => ({
+        label: ivs[nr].label, T: iv.T!, arms: mergeIntervalArms(baseArms, iv.arms) })) }
     } else {
       const icfg: IntersectionConfiguration = { name: '', arms: baseArms }
       const volumes = toSNVolumes(icfg)
       const raw     = toSNRawVolumes(icfg)
       if (!volumes || !raw) return
       req = { kind: 'single', volumes, raw, flags: simFlags(icfg), config: fullConfig }
+      laufDaten = { arms: baseArms, intervalle: null }
     }
 
     workerRef.current?.terminate()
@@ -607,6 +800,7 @@ export default function SimulationApp({ uebernahme }: { uebernahme?: KnotenUeber
       if (e.data.ok) {
         setResult(e.data.result)
         setResultKey(startedWith)
+        setLauf(laufDaten)
       } else {
         melden(`Die Simulation ist fehlgeschlagen: ${e.data.error}`, true)
       }
@@ -712,7 +906,7 @@ export default function SimulationApp({ uebernahme }: { uebernahme?: KnotenUeber
   const isMultiResult = result !== null && 'intervals' in result
 
   return (
-    <main style={{ maxWidth: 1200, margin: '0 auto', padding: '20px 16px',
+    <main style={{ maxWidth: 1280, margin: '0 auto', padding: '20px 16px',
                    fontFamily: 'system-ui, sans-serif' }}>
       <Meldung text={meldung} onClose={meldungZu} />
       {uebernahme && <UebernahmeHinweis u={uebernahme} rechner="simulation" />}
@@ -736,9 +930,9 @@ export default function SimulationApp({ uebernahme }: { uebernahme?: KnotenUeber
         ))}
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+          <BerichtKnopf onClick={openBl} bereit={!!result && !running} />
           <ToolbarBtn onClick={handleExport}>Fall speichern</ToolbarBtn>
           <ToolbarBtn onClick={handleImport}>Fall laden</ToolbarBtn>
-          {result && !running && <ToolbarBtn onClick={() => window.print()}>Bericht / PDF</ToolbarBtn>}
         </div>
       </div>
 
@@ -759,7 +953,7 @@ export default function SimulationApp({ uebernahme }: { uebernahme?: KnotenUeber
             const pedKey: PedArmKey = i === 0 ? 'armA' : i === 1 ? 'armC' : i === 2 ? 'armB' : 'armD'
             const leg = pedestrians[pedKey] ?? defaultLeg()
             return (
-              <ArmCard key={arm.id} arm={arm} index={i} isHS={i < 2}
+              <ArmCard key={arm.id} arm={arm} index={i} isHS={i < 2} herkunft={uebernahme?.arme[i]}
                 armCount={armCount} hideMixedLane hideIsland live
                 opposingHSSeparateLane={i >= 2 ? (baseArms[i === 2 ? 0 : 1]?.hasSeparateTurnLane ?? false) : false}
                 onChange={a => setArm(i, a)}
@@ -949,6 +1143,32 @@ export default function SimulationApp({ uebernahme }: { uebernahme?: KnotenUeber
 
         {/* ─── Ergebnis-Panel ─── */}
         <div>
+          {/* Leer-Zustand: Schema zuerst, damit es beim Erfassen sichtbar ist (die Liste der fehlenden Angaben folgt darunter) */}
+          {!result && !running && (
+            <div style={{ padding: '16px', borderRadius: 12, background: '#f8fafc',
+                          border: '1px solid var(--kachel-rand)', textAlign: 'center', color: 'var(--text-muted)',
+                          fontSize: 14, marginBottom: 16 }}>
+              <img
+                src={armCount === 3 ? einmuendungSvg : kreuzungSvg}
+                alt={armCount === 3 ? 'T-Knoten Schema' : 'Kreuzung Schema'}
+                style={{ width: '100%', maxHeight: 220, objectFit: 'contain',
+                         marginBottom: 12, display: 'block' }}
+              />
+              Simulation starten um Wartezeit-Verteilungen, Histogramme und Percentile (P50/P85/P95)
+              je Verkehrsstrom zu berechnen.
+              {[pedestrians.armA, pedestrians.armC, pedestrians.armB, pedestrians.armD].some(l => l?.enabled) ? (
+                <div style={{ marginTop: 8, fontSize: 12, color: '#15803d' }}>
+                  Fussgänger*innen aktiv — Blocking-Events werden simuliert.
+                </div>
+              ) : null}
+              {Object.keys(gapOverrides).length > 0 ? (
+                <div style={{ marginTop: 4, fontSize: 12, color: '#b45309' }}>
+                  Benutzerdefinierte tc/tf-Werte aktiv.
+                </div>
+              ) : null}
+            </div>
+          )}
+
           {/* Run-Button */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
             <button onClick={handleRun} disabled={running || offen.length > 0}
@@ -973,32 +1193,6 @@ export default function SimulationApp({ uebernahme }: { uebernahme?: KnotenUeber
           </div>
 
           {offen.length > 0 && !running && <OffeneAngaben liste={offen} />}
-
-          {/* Leer-Zustand */}
-          {!result && !running && (
-            <div style={{ padding: '16px', borderRadius: 12, background: '#f8fafc',
-                          border: '1px solid var(--kachel-rand)', textAlign: 'center', color: 'var(--text-muted)',
-                          fontSize: 14 }}>
-              <img
-                src={armCount === 3 ? einmuendungSvg : kreuzungSvg}
-                alt={armCount === 3 ? 'T-Knoten Schema' : 'Kreuzung Schema'}
-                style={{ width: '100%', maxHeight: 220, objectFit: 'contain',
-                         marginBottom: 12, display: 'block' }}
-              />
-              Simulation starten um Wartezeit-Verteilungen, Histogramme und Percentile (P50/P85/P95)
-              je Verkehrsstrom zu berechnen.
-              {[pedestrians.armA, pedestrians.armC, pedestrians.armB, pedestrians.armD].some(l => l?.enabled) ? (
-                <div style={{ marginTop: 8, fontSize: 12, color: '#15803d' }}>
-                  Fussgänger*innen aktiv — Blocking-Events werden simuliert.
-                </div>
-              ) : null}
-              {Object.keys(gapOverrides).length > 0 ? (
-                <div style={{ marginTop: 4, fontSize: 12, color: '#b45309' }}>
-                  Benutzerdefinierte tc/tf-Werte aktiv.
-                </div>
-              ) : null}
-            </div>
-          )}
 
           {/* Eingaben seit dem Lauf geändert → Resultat passt nicht mehr zur Anzeige links */}
           {result && !running && resultKey !== inputKey && (
@@ -1029,36 +1223,10 @@ export default function SimulationApp({ uebernahme }: { uebernahme?: KnotenUeber
         durch eine Fachperson.
       </RechnerFuss>
 
-      {/* Druckansicht: Resultat mit der Konfiguration, mit der es gerechnet wurde */}
-      {isActive && result && createPortal(
-        <div className="print-portal" style={{ padding: '14mm 16mm', background: '#fff',
-                                               fontFamily: 'system-ui, sans-serif', color: '#111' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-                        borderBottom: '2px solid #1e3a5f', paddingBottom: 6, marginBottom: 10 }}>
-            <div>
-              <div style={{ fontSize: 16, fontWeight: 800, color: '#1e3a5f' }}>Simulation Wartezeiten</div>
-              <div style={{ fontSize: 12 }}>{nodeName} · {armCount === 3 ? 'T-Knoten (3 Arme)' : 'Kreuzung (4 Arme)'}</div>
-            </div>
-            <div style={{ fontSize: 11, textAlign: 'right' }}>
-              <div style={{ fontWeight: 700 }}>KnotenCheck</div>
-              <div>{new Date().toLocaleDateString('de-CH', { day: '2-digit', month: '2-digit', year: 'numeric' })}</div>
-            </div>
-          </div>
-          {resultKey !== inputKey && (
-            <div style={{ fontSize: 11, color: '#9a3412', marginBottom: 8 }}>
-              Hinweis: Die Eingaben wurden nach dieser Simulation geändert.
-            </div>
-          )}
-          <RunConfigSummary result={result} />
-          {isMultiResult
-            ? <MultiIntervalPanel result={result as StochasticMultiResult} />
-            : <StochasticPanel result={result as StochasticSN640022Result} />}
-          <div style={{ fontSize: 9, color: '#666', marginTop: 10 }}>
-            Stochastische Simulation auf Basis der SN 640 022 mit Grenz-/Folgezeitlücken nach HBS 2015.
-            Die Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.
-          </div>
-          <BerichtQuellen zeilen={karte?.quellen ?? []} />
-        </div>,
+      {/* Druckblatt: Resultat mit den Eingaben, mit denen es gerechnet wurde */}
+      {isActive && result && showBl && createPortal(
+        <SimulationBlatt result={result} lauf={lauf} nodeName={nodeName} armCount={armCount}
+          veraltet={resultKey !== inputKey} karte={karte} uebernahme={uebernahme} onClose={closeBl} />,
         document.body,
       )}
     </main>
