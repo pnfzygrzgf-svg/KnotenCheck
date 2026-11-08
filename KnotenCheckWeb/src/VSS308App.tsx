@@ -20,7 +20,10 @@ import { useMeldung } from './useMeldung'
 import { LeereWahl, LOSBadge, NumInput, OffeneAngaben, Row, SectionLabel, BerichtKnopf } from './ui'
 import { RechnerFuss } from './Fusszeile'
 import { Abschnitt, BerichtKopf, BerichtRahmen, Gesamtergebnis, Herkunft, HerkunftLegende, HinweisListe, QuellenAbschnitt } from './bericht/Bericht'
-import { kartenHerkunft, stromArt, stromHerkunft, type HerkunftArt } from './bericht/herkunft'
+import { kartenHerkunft, schaetzArt, stromArt, stromHerkunft, type HerkunftArt } from './bericht/herkunft'
+import type { ArmStroeme } from './engine/armmengen'
+import ArmmengenSchaetzung from './schaetzung/ArmmengenSchaetzung'
+import { schaetzungGilt, schaetzungLesen, type Schaetzung } from './schaetzung/schaetzung'
 import { HerkunftMarke } from './HerkunftMarke'
 import { GRUNDLAGEN } from './hilfeTexte'
 
@@ -66,7 +69,7 @@ function defaultArms(nodeType: NodeType): ArmInput[] {
 
 // ── ArmCard ───────────────────────────────────────────────────────────────────
 
-function ArmCard({ arm, index, nodeType, result, onChange, herkunft }: {
+function ArmCard({ arm, index, nodeType, result, onChange, herkunft, schaetzung }: {
   arm: ArmInput
   index: number
   nodeType: NodeType
@@ -74,6 +77,8 @@ function ArmCard({ arm, index, nodeType, result, onChange, herkunft }: {
   onChange: (a: ArmInput) => void
   /** Arm der Kartenübernahme (gleicher Index); Marken zeigen, welche Werte noch übernommen sind */
   herkunft?: UebernahmeArm
+  /** Aus Armmengen geschätzte Ströme dieses Arms */
+  schaetzung?: ArmStroeme
 }) {
   const lbl = armLabel(index)
   const isHS    = arm.roadType === 'HS'
@@ -138,19 +143,19 @@ function ArmCard({ arm, index, nodeType, result, onChange, herkunft }: {
       <SectionLabel title="Abbiegeströme [Fz/h]" />
       {!isHSA3 && (
         <Row label="Linksabbiegen">
-          <HerkunftMarke art={stromArt(herkunft, 'left', arm.left)} />
+          <HerkunftMarke art={schaetzArt(schaetzung, 'left', arm.left) ?? stromArt(herkunft, 'left', arm.left)} />
           <NumInput live value={arm.left} onChange={v => upd('left', v)} />
         </Row>
       )}
       {!isNSB3 && (
         <Row label="Geradeaus">
-          <HerkunftMarke art={stromArt(herkunft, 'straight', arm.straight)} />
+          <HerkunftMarke art={schaetzArt(schaetzung, 'straight', arm.straight) ?? stromArt(herkunft, 'straight', arm.straight)} />
           <NumInput live value={arm.straight} onChange={v => upd('straight', v)} />
         </Row>
       )}
       {!isHSC3 && (
         <Row label="Rechtsabbiegen">
-          <HerkunftMarke art={stromArt(herkunft, 'right', arm.right)} />
+          <HerkunftMarke art={schaetzArt(schaetzung, 'right', arm.right) ?? stromArt(herkunft, 'right', arm.right)} />
           <NumInput live value={arm.right} onChange={v => upd('right', v)} />
         </Row>
       )}
@@ -433,7 +438,7 @@ const xFarbe = (x: number) => x >= 1 ? '#b91c1c' : x >= 0.9 ? '#c2410c' : '#3741
 const OHNE_3: Record<number, 'left' | 'straight' | 'right'> = { 0: 'left', 1: 'right', 2: 'straight' }
 const RICHTUNGEN = ['left', 'straight', 'right'] as const
 
-export function Bewertungsblatt308({ nodeName, nodeType, arms, result, onClose, karte, uebernahme, knotenbild }: {
+export function Bewertungsblatt308({ nodeName, nodeType, arms, result, onClose, karte, uebernahme, schaetzung, knotenbild }: {
   nodeName: string
   nodeType: NodeType
   arms: ArmInput[]
@@ -442,6 +447,7 @@ export function Bewertungsblatt308({ nodeName, nodeType, arms, result, onClose, 
   karte?: KartenBezug | null
   /** Vorbelegung aus der Karte; Arme in derselben Reihenfolge wie im Rechner (armsAus) */
   uebernahme?: KnotenUebernahme
+  schaetzung?: Schaetzung | null
   knotenbild?: ReactNode
 }) {
   const overall = result.overallLevelOfService
@@ -460,6 +466,7 @@ export function Bewertungsblatt308({ nodeName, nodeType, arms, result, onClose, 
 
   const hinweise: ReactNode[] = [
     ...(karte?.belegt ?? []),
+    ...(schaetzung && schaetzungGilt(schaetzung, arms) ? [schaetzung.text] : []),
     <><b>Annahme Einfahrten:</b> Jede Einfahrt gilt als Mischstreifen (analog SN 640 022, Ziff. 13, S. 7): x = Σ Q/L, L = ΣQ/x; nur β ist volumengewichtet.</>,
     ...(normArms.some(a => a.querung === 'trottoirueberfahrt') ? [<><b>Annahme Trottoirüberfahrt:</b> Fussgänger*innen haben Vortritt
       (VRV Art. 41 Abs. 2). Gerechnet wie ein Fussgängerstreifen über die Nebenstrasse (ohne Mittelinsel), VSS 2011/308 kennt die
@@ -654,7 +661,7 @@ export function Bewertungsblatt308({ nodeName, nodeType, arms, result, onClose, 
                   <td style={{ ...BL_TD, textAlign: 'center', fontWeight: 600 }}>{roadLabel(arm.roadType)}</td>
                   {RICHTUNGEN.map(r => is3 && OHNE_3[i] === r
                     ? <td key={r} style={BL_TD}>—</td>
-                    : <td key={r} style={BL_TD}>{arm[r]}<Herkunft art={merke(stromHerkunft(uebernahme, i, r, arm[r]))} /></td>)}
+                    : <td key={r} style={BL_TD}>{arm[r]}<Herkunft art={merke(schaetzArt(schaetzung?.stroeme[i], r, arm[r]) ?? stromHerkunft(uebernahme, i, r, arm[r]))} /></td>)}
                   <td style={BL_TDL}>{arm.querung === 'keine' ? '—' : QUERUNG_ERGEBNIS[arm.querung]}<Herkunft art={merke(fgsAusKarte ? 'K' : null)} /></td>
                   <td style={BL_TD}>{arm.fg || '—'}</td>
                   <td style={BL_TD}>{arm.fg > 0 ? (arm.rho ?? 1) : '—'}</td>
@@ -708,13 +715,17 @@ function armsAus(u: KnotenUebernahme): ArmInput[] {
   })
 }
 
-export default function VSS308App({ uebernahme }: { uebernahme?: KnotenUebernahme }) {
+export default function VSS308App({ uebernahme: kartenUebernahme }: { uebernahme?: KnotenUebernahme }) {
   const isActive = useIsActiveModule()  // Druckblatt nur im sichtbaren Modul
+  // Die Übernahme aus der Karte gilt, bis man zurücksetzt oder eine Datei lädt
+  const [mitKarte, setMitKarte] = useState(true)
+  const uebernahme = mitKarte ? kartenUebernahme : undefined
   const [nodeName, setNodeName]   = useState(uebernahme?.name ?? '')
   const [nodeType, setNodeType]   = useState<NodeType>(uebernahme ? typAus(uebernahme) : '4arm')
   const [armGewaehlt, setArmGewaehlt] = useState(!!uebernahme)   // Knotentyp hat keinen Startwert
   const [arms, setArms]           = useState<ArmInput[]>(() => uebernahme ? armsAus(uebernahme) : defaultArms('4arm'))
   const [karte, setKarte] = useState(() => uebernahme ? kartenBezugAus(uebernahme, 'vss308') : null)
+  const [schaetzung, setSchaetzung] = useState<Schaetzung | null>(null)
   const [showBl, setShowBl] = useState(false)
   const openBl  = useCallback(() => setShowBl(true),  [])
   const closeBl = useCallback(() => setShowBl(false), [])
@@ -724,6 +735,7 @@ export default function VSS308App({ uebernahme }: { uebernahme?: KnotenUebernahm
     setNodeType(t)
     setArmGewaehlt(true)
     setArms(defaultArms(t))
+    setSchaetzung(null)
   }
 
   function updateArm(index: number, arm: ArmInput) {
@@ -734,19 +746,21 @@ export default function VSS308App({ uebernahme }: { uebernahme?: KnotenUebernahm
     exportTool({
       tool: 'vss308', filePrefix: 'VSS308',
       name: nodeName, melden,
-      data: { nodeName, nodeType, arms, ...(karte ? { karte } : {}) },
+      data: { nodeName, nodeType, arms, ...(karte ? { karte } : {}), ...(schaetzung ? { schaetzung } : {}) },
     })
 
   const handleImport = () =>
     importTool('vss308', d => {
         setNodeName(typeof d.nodeName === 'string' ? d.nodeName : '')
         setKarte(kartenBezugLesen(d.karte))
+        setMitKarte(false)
         // 'equal' (Gleicher Rang) ist vorerst ausgeblendet → auf '4arm' abbilden,
         // damit ältere gespeicherte Dateien nicht in einem unerreichbaren Modus landen.
         const saved = oneOf<NodeType>(['3arm', '4arm', 'equal'], d.nodeType, '4arm')
         const nt: NodeType = saved === 'equal' ? '4arm' : saved
         setNodeType(nt)
         setArmGewaehlt(true)
+        setSchaetzung(schaetzungLesen(d.schaetzung, nt === '3arm' ? 3 : 4))
         // Genau so viele Arme wie der Knotentyp hat; Strassentyp folgt aus der Position.
         // Fehlt die Querung in einer älteren Datei, folgt sie in normalizeArm308 aus fg (> 0 → Fussgängerstreifen,
         // sonst keine). In neuen Dateien heisst das: noch nicht gewählt (siehe saveLoad.ts)
@@ -762,6 +776,9 @@ export default function VSS308App({ uebernahme }: { uebernahme?: KnotenUebernahm
     setNodeName('')
     setArms(defaultArms(nodeType))
     setArmGewaehlt(false)
+    setSchaetzung(null)
+    setKarte(null)
+    setMitKarte(false)
     melden('Zurückgesetzt')
   }
 
@@ -861,6 +878,12 @@ export default function VSS308App({ uebernahme }: { uebernahme?: KnotenUebernahm
 
       {!armGewaehlt && <OffeneAngaben liste={offen} />}
 
+      {armGewaehlt && <ArmmengenSchaetzung key={activeArms.length} labels={activeArms.map((_, i) => armLabel(i))} namen={activeArms.map(a => a.name)}
+        kreisel={false} hauptstrasse stand={schaetzung} onAnwenden={s => {
+          setSchaetzung(s)
+          setArms(prev => prev.map((a, i) => (i < s.stroeme.length ? { ...a, ...s.stroeme[i] } : a)))
+        }} />}
+
       {armGewaehlt && <div className="layout-grid">
         {/* Linke Spalte: Arm-Cards */}
         <div>
@@ -869,7 +892,7 @@ export default function VSS308App({ uebernahme }: { uebernahme?: KnotenUebernahm
             {activeArms.map((arm, i) => (
               <ArmCard key={i} arm={arm} index={i} nodeType={nodeType}
                 result={fertig ? result.arms[i] : undefined}
-                onChange={a => updateArm(i, a)} herkunft={uebernahme?.arme[i]} />
+                onChange={a => updateArm(i, a)} herkunft={uebernahme?.arme[i]} schaetzung={schaetzung?.stroeme[i]} />
             ))}
           </div>
         </div>
@@ -974,7 +997,7 @@ export default function VSS308App({ uebernahme }: { uebernahme?: KnotenUebernahm
 
     {isActive && fertig && showBl && createPortal(
       <Bewertungsblatt308 nodeName={nodeName} nodeType={nodeType} arms={activeArms} result={result}
-        onClose={closeBl} karte={karte} uebernahme={uebernahme} knotenbild={schematic} />,
+        onClose={closeBl} karte={karte} uebernahme={uebernahme} schaetzung={schaetzung} knotenbild={schematic} />,
       document.body
     )}
     </>

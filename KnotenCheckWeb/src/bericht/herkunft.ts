@@ -1,10 +1,15 @@
-// Herkunft eines Werts im Druckblatt: aus dem Modell (M) oder aus der Karte (K). Ein Wert gilt nur so lange als übernommen,
+// Herkunft eines Werts im Druckblatt: aus dem Modell (M), aus der Karte (K) oder aus gezählten Armmengen geschätzt (S). Ein Wert gilt nur so lange als übernommen,
 // wie er noch gleich ist wie bei der Übernahme; von Hand geänderte Werte tragen kein Zeichen.
 
 import { eigenerLinks, eigenerRechts, kombination, type KnotenUebernahme, type UebernahmeArm } from '../karte/rechner'
 import type { MixedLaneCombination } from '../engine/types'
+import type { ArmStroeme } from '../engine/armmengen'
 
-export type HerkunftArt = 'M' | 'K'
+export type HerkunftArt = 'M' | 'K' | 'S'
+
+/** Abbiegestrom aus der Schätzung aus Armmengen: S, solange er dem geschätzten Wert entspricht */
+export const schaetzArt = (s: ArmStroeme | undefined, art: 'left' | 'straight' | 'right', wert: number): HerkunftArt | null =>
+  (s && s[art] === wert ? 'S' : null)
 
 /** Abbiegestrom eines Arms (Rechner-Reihenfolge wie die Übernahme): M, wenn er noch dem Modellwert entspricht */
 export function stromHerkunft(u: KnotenUebernahme | undefined, arm: number, art: 'left' | 'straight' | 'right', wert: number): HerkunftArt | null {

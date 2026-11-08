@@ -1,7 +1,7 @@
 // Absicherung geladener Dateien: Vorlage mit Standardwerten
 import { describe, test, expect } from 'vitest'
 import { conform, conformFixed, oneOf } from '../conform'
-import { conformIntersection, toSNVolumes } from '../armConfiguration'
+import { armFactor, conformArms, conformIntersection, toSNVolumes } from '../armConfiguration'
 
 describe('conform', () => {
   test('falscher Typ, fehlend, null, NaN → Vorlagewert', () => {
@@ -29,6 +29,15 @@ describe('conform', () => {
 })
 
 describe('conformIntersection (SN 640 022 / Simulation)', () => {
+  test('Fahrräder gibt es nur bei ±0 %: sonst beim Laden auf 0, der Faktor bleibt grösser 0', () => {
+    const arme = conformArms([
+      { gradient: '+4%', fall: 2, vehicleMix: { pctFR: 100, pctMR: 0, pctLW: 0, pctLZ: 0 }, straightVolume: 500 },
+      { gradient: '±0%', fall: 2, vehicleMix: { pctFR: 10, pctMR: 0, pctLW: 0, pctLZ: 0 }, straightVolume: 500 },
+    ], 3, true)
+    expect(arme[0].vehicleMix?.pctFR).toBe(0)
+    expect(armFactor(arme[0])).toBeGreaterThan(0)
+    expect(arme[1].vehicleMix?.pctFR).toBe(10)
+  })
   test('beschädigte Datei ergibt rechenbare Konfiguration', () => {
     const cfg = conformIntersection({
       name: 42,

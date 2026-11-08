@@ -100,7 +100,7 @@ export function StochasticPanel({ result }: { result: StochasticSN640022Result }
                 <span style={{ color: 'var(--text-muted)' }}>P95 </span>
                 <strong>{Math.round(st.p95)} s</strong>
               </div>
-              <div title="Auslastung der Haltelinie: Anteil der Zeit, in der ein Fahrzeug an der Haltelinie auf eine Lücke wartet">
+              <div title="Auslastung der Haltelinie: Anteil der Zeit, in der sie belegt ist (Warten auf eine Lücke und Folgezeitlücke t_f nach jeder Abfahrt)">
                 <span style={{ color: 'var(--text-muted)' }}>x ≈ </span>
                 <strong style={{ color: s.utilization >= 1 ? '#dc2626' : undefined }}>
                   {s.utilization.toFixed(2)}
@@ -117,6 +117,17 @@ export function StochasticPanel({ result }: { result: StochasticSN640022Result }
           </div>
         )
       })}
+
+      {(result.overflow ?? []).map(o => (
+        <div key={o.arm} style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 7, fontSize: 12,
+          background: o.share > 0 ? '#fff7ed' : '#fff', border: `1px solid ${o.share > 0 ? '#fdba74' : 'var(--kachel-rand)'}` }}>
+          <strong>Stauraum Arm {o.arm} ({o.storage} Fz):</strong>{' '}
+          {o.share > 0
+            ? <>{o.share < 0.005 ? 'unter 1' : Math.round(o.share * 100)} % der Fahrzeuge treffen ihn bei Ankunft voll an.
+              Die Warteschlange reicht dann über den Stauraum hinaus; die Fahrzeuge warten dahinter weiter und sind in den Wartezeiten enthalten.</>
+            : 'Kein Fahrzeug trifft ihn voll an.'}
+        </div>
+      ))}
 
       <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
         Histogramm-Klassen nach den QS-Grenzen: grün = QS A–B (&lt;15 s) · gelb/orange = QS C–D (15–45 s) ·

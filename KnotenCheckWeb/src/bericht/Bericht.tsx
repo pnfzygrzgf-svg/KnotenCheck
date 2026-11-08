@@ -103,7 +103,7 @@ export function QuellenAbschnitt({ normen, daten }: { normen: ReactNode[]; daten
 
 /** Zeichen der Herkunft hinter einem Wert */
 export function Herkunft({ art }: { art: HerkunftArt | null }) {
-  return art ? <sup className={`herkunft herkunft-${art}`} title={art === 'M' ? 'Modellwert, nicht gezählt' : 'aus der Karte'}>{art}</sup> : null
+  return art ? <sup className={`herkunft herkunft-${art}`} title={art === 'M' ? 'Modellwert, nicht gezählt' : art === 'S' ? 'aus Armmengen geschätzt, nicht gezählt' : 'aus der Karte'}>{art}</sup> : null
 }
 
 /** Erklärung der Zeichen unter einer Tabelle; nur die Zeichen, die vorkommen */
@@ -114,6 +114,7 @@ export function HerkunftLegende({ arten }: { arten: readonly (HerkunftArt | null
     <p className="bericht-unter">
       {da.has('M') && <><sup className="herkunft herkunft-M">M</sup> Modellwert des NPVM, berechnet, nicht gezählt. </>}
       {da.has('K') && <><sup className="herkunft herkunft-K">K</sup> aus der Karte übernommen (OpenStreetMap oder amtliche Daten). </>}
+      {da.has('S') && <><sup className="herkunft herkunft-S">S</sup> aus gezählten Armmengen geschätzt, nicht gezählt. </>}
       Ohne Zeichen: von Hand eingegeben oder geändert.
     </p>
   )

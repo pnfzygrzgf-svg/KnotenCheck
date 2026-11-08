@@ -4,7 +4,10 @@ import BelastungsVergleich from './karte/BelastungsVergleich'
 import { querschnitteKnoten } from './karte/vergleich'
 import { kartenBezugAus, kartenBezugLesen, lsaTempo, type KartenBezug, type KnotenUebernahme, type UebernahmeArm } from './karte/rechner'
 import { Abschnitt, BerichtKopf, BerichtRahmen, Gesamtergebnis, Herkunft, HerkunftLegende, HinweisListe, QuellenAbschnitt } from './bericht/Bericht'
-import { kartenHerkunft, stromArt, type HerkunftArt } from './bericht/herkunft'
+import { kartenHerkunft, schaetzArt, stromArt, type HerkunftArt } from './bericht/herkunft'
+import type { ArmStroeme } from './engine/armmengen'
+import ArmmengenSchaetzung from './schaetzung/ArmmengenSchaetzung'
+import { schaetzungGilt, schaetzungLesen, type Schaetzung } from './schaetzung/schaetzung'
 import { HerkunftMarke } from './HerkunftMarke'
 import { GRUNDLAGEN } from './hilfeTexte'
 import { createPortal } from 'react-dom'
@@ -152,10 +155,12 @@ function StepBadge({ n, label }: { n:number|string; label:string }) {
 }
 
 // ── ArmCard ───────────────────────────────────────────────────────────────────
-function ArmCard({ arm, index, armCount, tzMode, onChange, herkunft }: {
+function ArmCard({ arm, index, armCount, tzMode, onChange, herkunft, schaetzung }: {
   arm:UIArmInput; index:number; armCount:3|4; tzMode:TzMode|null; onChange:(a:UIArmInput)=>void
   /** Arm der Übernahme aus der Karte, für die Marken «Karte» und «Modell» */
   herkunft?: UebernahmeArm
+  /** Aus Armmengen geschätzte Ströme dieses Arms */
+  schaetzung?: ArmStroeme
 }) {
   const labels = ['A','C','B','D']
   const lbl = labels[index]
@@ -187,7 +192,7 @@ function ArmCard({ arm, index, armCount, tzMode, onChange, herkunft }: {
           <div key={m.id} style={{ display:'flex', alignItems:'center', gap:8,
                                    padding:'6px 12px', borderBottom:'1px solid var(--kachel-rand)' }}>
             <div style={{ flex:1, fontSize:14, color:'var(--text)' }}>{num}: {m.label}</div>
-            <HerkunftMarke art={stromArt(herkunft, m.direction, arm[m.direction])} />
+            <HerkunftMarke art={schaetzArt(schaetzung, m.direction, arm[m.direction]) ?? stromArt(herkunft, m.direction, arm[m.direction])} />
             <NumInput live value={(arm[m.direction as keyof UIArmInput] as number)??0}
               onChange={v => upd(m.direction as keyof UIArmInput, v)} />
           </div>
@@ -916,7 +921,7 @@ const tab: React.CSSProperties = { width:'100%', borderCollapse:'collapse', marg
 const xFarbe = (X: number) => !isFinite(X) || X >= 1 ? '#b91c1c' : X >= 0.9 ? '#c2410c' : '#374151'
 
 export function LSAPrintSheet({ nodeName, armCount, arms, volumes, moveLane, fgsConfig, lanes, phaseStates, result, targetLos, tzMode,
-  manualZ = 0, onClose, karte, uebernahme }: {
+  manualZ = 0, onClose, karte, uebernahme, schaetzung }: {
   nodeName: string
   armCount: 3 | 4
   arms: UIArmInput[]
@@ -933,6 +938,7 @@ export function LSAPrintSheet({ nodeName, armCount, arms, volumes, moveLane, fgs
   onClose: () => void
   karte?: KartenBezug | null
   uebernahme?: KnotenUebernahme
+  schaetzung?: Schaetzung | null
 }) {
   const armLabels = armCount === 3 ? ['A','C','B'] : ['A','C','B','D']
   const overall = result.overallLos
@@ -969,6 +975,7 @@ export function LSAPrintSheet({ nodeName, armCount, arms, volumes, moveLane, fgs
 
   const hinweise: ReactNode[] = [
     ...(karte?.belegt ?? []),
+    ...(schaetzung && schaetzungGilt(schaetzung, arms) ? [schaetzung.text] : []),
     ...(tzMode === 'staffel' ? [<><b>Annahme:</b> Die Zwischenzeit ist nach der zulässigen Geschwindigkeit gestaffelt (3/4/5 s, angelehnt an die
       Gelbzeiten der VSS 40 837, Ziffer 16, Seite 5), massgebend ist der grösste Wert aller Arme. Die Norm-Pauschale beträgt {TZ_NORM} s je Phase
       (Ziffer 11.2, Seite 10).</>] : []),
@@ -1247,7 +1254,7 @@ export function LSAPrintSheet({ nodeName, armCount, arms, volumes, moveLane, fgs
                   <td style={{ ...tdL, fontWeight:700 }}>{lbl} ({i<2?'HS':'NS'})</td>
                   <td style={tdL}>{arm?.name || '—'}<Herkunft art={merke(nameArt(uArm(i), arm?.name))} /></td>
                   {RICHTUNGEN.map(([r]) => dirs.has(r)
-                    ? <td key={r} style={td}>{arm?.[r] ?? 0}<Herkunft art={merke(stromArt(uArm(i), r, arm?.[r] ?? 0))} /></td>
+                    ? <td key={r} style={td}>{arm?.[r] ?? 0}<Herkunft art={merke(schaetzArt(schaetzung?.stroeme[i], r, arm?.[r] ?? 0) ?? stromArt(uArm(i), r, arm?.[r] ?? 0))} /></td>
                     : <td key={r} style={td}>–</td>)}
                   <td style={tdL}>{arm?.mix
                     ? <>LW {arm.mix.pctLW} %, MR {arm.mix.pctMR} %, FR {arm.mix.pctFR} %<Herkunft art={merke(mixArt(uArm(i), arm.mix))} /></>
@@ -1347,8 +1354,11 @@ function moveLaneAus(u: KnotenUebernahme): Record<string, 1|2> {
   return aus
 }
 
-export default function LSAApp({ uebernahme }: { uebernahme?: KnotenUebernahme }) {
+export default function LSAApp({ uebernahme: kartenUebernahme }: { uebernahme?: KnotenUebernahme }) {
   const isActive = useIsActiveModule()  // Druckblatt nur im sichtbaren Modul
+  // Die Übernahme aus der Karte gilt, bis man zurücksetzt oder eine Datei lädt
+  const [mitKarte, setMitKarte] = useState(true)
+  const uebernahme = mitKarte ? kartenUebernahme : undefined
   const [nodeName,    setNodeName]    = useState(uebernahme?.name ?? '')
   const [armCount,    setArmCount]    = useState<3|4>(uebernahme?.armCount ?? 4)
   const [armGewaehlt, setArmGewaehlt] = useState(!!uebernahme)   // Knotentyp hat keinen Startwert
@@ -1364,6 +1374,7 @@ export default function LSAApp({ uebernahme }: { uebernahme?: KnotenUebernahme }
   const skipArmCountEffect = useRef(false)
   const letzteArmzahl = useRef(armCount)
   const [karte, setKarte] = useState(() => uebernahme ? kartenBezugAus(uebernahme, 'lsa') : null)
+  const [schaetzung, setSchaetzung] = useState<Schaetzung | null>(null)
   const [showBl, setShowBl] = useState(false)
   const openBl  = useCallback(() => setShowBl(true),  [])
   const closeBl = useCallback(() => setShowBl(false), [])
@@ -1451,7 +1462,7 @@ export default function LSAApp({ uebernahme }: { uebernahme?: KnotenUebernahme }
     exportTool({
       tool: 'lsa', filePrefix: 'LSA',
       name: nodeName, melden,
-      data: { lsaSchema: 3, nodeName, armCount, arms, moveLane, fgsConfig, phaseStates, targetLos, manualZ, tzMode, ...(karte ? { karte } : {}) },
+      data: { lsaSchema: 3, nodeName, armCount, arms, moveLane, fgsConfig, phaseStates, targetLos, manualZ, tzMode, ...(karte ? { karte } : {}), ...(schaetzung ? { schaetzung } : {}) },
     })
 
   const handleImport = () =>
@@ -1489,9 +1500,11 @@ export default function LSAApp({ uebernahme }: { uebernahme?: KnotenUebernahme }
       if (newCount !== armCount) skipArmCountEffect.current = true
       setNodeName(typeof d.nodeName === 'string' ? d.nodeName : '')
       setKarte(kartenBezugLesen(d.karte))
+      setMitKarte(false)
       setArmCount(newCount)
       setArmGewaehlt(true)
       setArms(loadedArms)
+      setSchaetzung(schaetzungLesen(d.schaetzung, newCount))
       setMoveLane(moveLane)
       setFgsConfig(fgsConfig)
       setPhaseStates(phaseStates)
@@ -1519,6 +1532,9 @@ export default function LSAApp({ uebernahme }: { uebernahme?: KnotenUebernahme }
     setTzMode(null)
     setLoadHint(null)
     setArmGewaehlt(false)
+    setSchaetzung(null)
+    setKarte(null)
+    setMitKarte(false)
     melden('Zurückgesetzt')
   }
 
@@ -1630,16 +1646,21 @@ export default function LSAApp({ uebernahme }: { uebernahme?: KnotenUebernahme }
             <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
               <span style={{ fontSize:14, fontWeight:600, color:'var(--text)' }}>Knotentyp:</span>
               {([3,4] as const).map(n => (
-                <button key={n} onClick={()=>{ setArmCount(n); setArmGewaehlt(true) }}
+                <button key={n} onClick={()=>{ if (n !== armCount) setSchaetzung(null); setArmCount(n); setArmGewaehlt(true) }}
                   className={`knopf${armGewaehlt && armCount === n ? '' : ' zweit'}`}>
                   {n===3?'Einmündung (3-Arm)':'Kreuzung (4-Arm)'}
                 </button>
               ))}
             </div>
             {!armGewaehlt && <OffeneAngaben liste={offen} />}
+            {armGewaehlt && <ArmmengenSchaetzung key={armCount} labels={arms.map((_, i) => ['A', 'C', 'B', 'D'][i])} namen={arms.map(a => a.name)}
+              kreisel={false} stand={schaetzung} onAnwenden={s => {
+                setSchaetzung(s)
+                setArms(prev => prev.map((a, i) => (i < s.stroeme.length ? { ...a, ...s.stroeme[i] } : a)))
+              }} />}
             {armGewaehlt && <div className={`arms-grid${armCount===4?' arms-grid-4':''}`}>
               {arms.map((arm,i) => (
-                <ArmCard key={i} arm={arm} index={i} armCount={armCount} tzMode={tzMode} herkunft={herkunftU?.arme[i]}
+                <ArmCard key={i} arm={arm} index={i} armCount={armCount} tzMode={tzMode} herkunft={herkunftU?.arme[i]} schaetzung={schaetzung?.stroeme[i]}
                   onChange={a => setArms(prev=>prev.map((x,j)=>j===i?a:x))} />
               ))}
             </div>}
@@ -1787,6 +1808,7 @@ export default function LSAApp({ uebernahme }: { uebernahme?: KnotenUebernahme }
         onClose={closeBl}
         karte={karte}
         uebernahme={uebernahme}
+        schaetzung={schaetzung}
       />,
       document.body
     )}

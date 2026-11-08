@@ -7,7 +7,8 @@ import type { IntersectionConfiguration, ArmConfiguration } from './engine/armCo
 import { armLabel, armFactor, pctPW } from './engine/armConfiguration'
 import type { KartenBezug, KnotenUebernahme } from './karte/rechner'
 import { Abschnitt, BerichtKopf, BerichtRahmen, Gesamtergebnis, Herkunft, HerkunftLegende, HinweisListe, QuellenAbschnitt } from './bericht/Bericht'
-import { kartenHerkunft, stromHerkunft, svHerkunft, type HerkunftArt } from './bericht/herkunft'
+import { kartenHerkunft, schaetzArt, stromHerkunft, svHerkunft, type HerkunftArt } from './bericht/herkunft'
+import { schaetzungGilt, type Schaetzung } from './schaetzung/schaetzung'
 import { GRUNDLAGEN } from './hilfeTexte'
 import kreuzungSvg    from './assets/kreuzung.svg'
 import einmuendungSvg from './assets/einmuendung.svg'
@@ -125,6 +126,7 @@ interface Props {
   onClose: () => void
   karte?: KartenBezug | null
   uebernahme?: KnotenUebernahme
+  schaetzung?: Schaetzung | null
   knotenbild?: ReactNode
 }
 
@@ -133,7 +135,7 @@ const VOLUMEN = { left: 'leftVolume', straight: 'straightVolume', right: 'rightV
 // Am dreiarmigen Knoten fehlt je Arm eine Richtung (Reihenfolge der Konfiguration: A, C, B)
 const OHNE_3: Record<number, 'left' | 'straight' | 'right'> = { 0: 'left', 1: 'right', 2: 'straight' }
 
-export function Berechnungsblatt({ cfg, result, onClose, karte, uebernahme, knotenbild }: Props) {
+export function Berechnungsblatt({ cfg, result, onClose, karte, uebernahme, schaetzung, knotenbild }: Props) {
   const is3      = cfg.arms.length === 3
   const armOrder = is3 ? ARM_ORDER_3 : ARM_ORDER_4
   const rang2    = result.streams.filter(s => s.rang === 2)
@@ -146,6 +148,7 @@ export function Berechnungsblatt({ cfg, result, onClose, karte, uebernahme, knot
 
   const hinweise: ReactNode[] = [
     ...(karte?.belegt ?? []),
+    ...(schaetzung && schaetzungGilt(schaetzung, cfg.arms.map(a => ({ left: a.leftVolume, straight: a.straightVolume, right: a.rightVolume }))) ? [schaetzung.text] : []),
     ...(result.mixedLanes.length ? [<><b>Annahme:</b> {is3 ? 'Links- und Rechtseinbieger teilen sich einen Fahrstreifen.'
       : 'Mindestens zwei Ströme je Nebenstrassen-Arm teilen sich einen Fahrstreifen.'} Die Norm kennt Mischstreifen nur, wenn Fahrstreifen im
       Knotenbereich von mehreren Strömen benutzt werden (Ziffer 12, Seite 7). Bei getrennten Streifen sind die Einzelströme massgebend, die
@@ -356,7 +359,7 @@ export function Berechnungsblatt({ cfg, result, onClose, karte, uebernahme, knot
                   <td style={TD}>{arm.streetName || '—'}<Herkunft art={merke(kartenHerkunft(u?.name, arm.streetName))} /></td>
                   {RICHTUNG.map(([r]) => is3 && OHNE_3[armIdx] === r
                     ? <td key={r} style={TDC}>–</td>
-                    : <td key={r} style={TDR}>{arm[VOLUMEN[r]]}<Herkunft art={merke(stromHerkunft(uebernahme, armIdx, r, arm[VOLUMEN[r]]))} /></td>)}
+                    : <td key={r} style={TDR}>{arm[VOLUMEN[r]]}<Herkunft art={merke(schaetzArt(schaetzung?.stroeme[armIdx], r, arm[VOLUMEN[r]]) ?? stromHerkunft(uebernahme, armIdx, r, arm[VOLUMEN[r]]))} /></td>)}
                   <td style={TDC}>{arm.vehicleMix
                     ? <>Fall 2: LW {arm.vehicleMix.pctLW} %, LZ {arm.vehicleMix.pctLZ} %, MR {arm.vehicleMix.pctMR} %, FR {arm.vehicleMix.pctFR} %<Herkunft art={merke(svHerkunft(uebernahme, armIdx, arm.vehicleMix.pctLW, arm.vehicleMix.pctLZ))} /></>
                     : 'Fall 1'}</td>

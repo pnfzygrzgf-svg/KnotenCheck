@@ -5,6 +5,7 @@
 // Eine Kreuzung besteht im Modell oft aus mehreren Knoten: Der Verkehr eines Arms wird darum nach den Abbiegeranteilen durch
 // die Knoten in der Nähe verfolgt, bis er auf einen anderen Arm kommt.
 
+import { zielIndex, type ArmStroeme } from '../engine/armmengen'
 import { holeJson } from '../knotenkern/daten/holen'
 import { abstandStrecke, dist, einheit, sub, wdiff, type P } from '../knotenkern/geo'
 import { npvmLesen, npvmUrl, type ModellStrecke, type Schwerverkehr } from './belastung'
@@ -26,7 +27,7 @@ const ABRUF_MS = 15000
 export type AbbiegerZeile = [number, number, number, number, number, number, number, number, number, number, number]
 export interface Kachel { k: Record<string, P>; a: AbbiegerZeile[] }
 export interface ArmEingabe { key: string; profil: P[] }
-export interface ArmStroeme { left: number; straight: number; right: number }
+export type { ArmStroeme }
 export type AbbiegerMatrix = Record<string, Record<string, number>>
 /** sv: Anteile von Lastwagen und Lastzügen an der Zufahrt [%], nur Arme mit Verkehr zum Knoten */
 export interface AbbiegerStand { spitze: Spitze; matrix: AbbiegerMatrix; sv: Record<string, Schwerverkehr>; offen: string[] }
@@ -119,22 +120,11 @@ export function zufahrtSchwerverkehr(kacheln: Kachel[], mitte: P, arme: { key: s
   return Object.fromEntries(Object.entries(summe).filter(([, t]) => t[0] > 0).map(([k, t]) => [k, { lw: anteil(t[1], t[0]), lz: anteil(t[2], t[0]) }]))
 }
 
-/** Ziel je Fahrbeziehung nach der Reihenfolge der Rechner: A West, C Ost, B Süd, D Nord */
-const ZIEL: Record<string, Record<keyof ArmStroeme, string>> = {
-  A: { left: 'D', straight: 'C', right: 'B' }, C: { left: 'B', straight: 'A', right: 'D' },
-  B: { left: 'A', straight: 'D', right: 'C' }, D: { left: 'C', straight: 'B', right: 'A' },
-}
-
-/** Matrix als Eingabe der Rechner, auf ganze Fahrzeuge gerundet. Am Kreisel führt rechts von Arm i zu Arm i + 1, die Nummern laufen in Fahrtrichtung */
+/** Matrix als Eingabe der Rechner, auf ganze Fahrzeuge gerundet. Zuordnung der Fahrbeziehungen wie in engine/armmengen.ts */
 export function armStroeme(m: AbbiegerMatrix, arme: { key: string; label: string }[], kreisel: boolean): Record<string, ArmStroeme> {
-  const n = arme.length, aus: Record<string, ArmStroeme> = {}
-  const ziel = (i: number, f: keyof ArmStroeme) => {
-    if (!kreisel) return arme.find(a => a.label === ZIEL[arme[i].label]?.[f])
-    if (n === 3 && f === 'straight') return undefined
-    return arme[(i + (f === 'right' ? 1 : f === 'left' ? n - 1 : 2)) % n]
-  }
+  const labels = arme.map(a => a.label), aus: Record<string, ArmStroeme> = {}
   arme.forEach((a, i) => {
-    const wert = (f: keyof ArmStroeme) => { const z = ziel(i, f); return z ? Math.round(m[a.key]?.[z.key] ?? 0) : 0 }
+    const wert = (f: keyof ArmStroeme) => { const j = zielIndex(labels, i, f, kreisel); return j === null ? 0 : Math.round(m[a.key]?.[arme[j].key] ?? 0) }
     aus[a.key] = { left: wert('left'), straight: wert('straight'), right: wert('right') }
   })
   return aus

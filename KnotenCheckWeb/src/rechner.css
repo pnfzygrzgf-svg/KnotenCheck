@@ -47,6 +47,7 @@
   border: 1px solid; margin-left: 6px; white-space: nowrap; vertical-align: middle; cursor: help; }
 .rechner .herkunft-marke-M { background: #fff7ed; border-color: #fdba74; color: #9a3412; }
 .rechner .herkunft-marke-K { background: #eff6ff; border-color: #bfdbfe; color: #1e3a8a; }
+.rechner .herkunft-marke-S { background: #f0fdf4; border-color: #86efac; color: #14532d; }
 
 /* Hilfe: «So funktioniert's» oben, Legende, Grundlagen und Quellen, Datenschutz unten */
 .rechner .hilfe { padding: 8px 14px; margin-bottom: 12px; }

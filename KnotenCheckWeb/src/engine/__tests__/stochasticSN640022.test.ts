@@ -165,28 +165,44 @@ describe('2C — Simultane NS-Ströme (Kreuzung Arm B + D)', () => {
 
 // ── Stufe 2D: Endlicher Stauraum ──────────────────────────────────────────────
 describe('2D — Endlicher Stauraum', () => {
-  // Hohe NS-Last → Schlange bildet sich
+  // Hohe NS-Last → Schlange bildet sich. Ein voller Stauraum hält niemanden zurück:
+  // Die Fahrzeuge warten dahinter weiter, ausgewiesen wird, wie viele ihn voll antreffen.
   const v = [[0, 800, 200], [700, 0, 150], [150, 100, 0]]
+  const opts = { runs: 30, seed: 20 }
+  const unbegrenzt = runStochasticSN640022(v, noFlags, undefined, opts)!
+  const stau5 = runStochasticSN640022(v, noFlags, undefined, { ...opts, storageB: 5 })!
+  const stau1 = runStochasticSN640022(v, noFlags, undefined, { ...opts, storageB: 1 })!
+  const s4 = (r: typeof unbegrenzt) => r.streams.find(s => s.streamNumber === 4)!.stats!
 
-  const rUnlimited = runStochasticSN640022(v, noFlags, undefined, { runs: 100 })!
-  const rStorage5  = runStochasticSN640022(v, noFlags, undefined, { runs: 100, storageB: 5 })!
-
-  const s4_unlim = rUnlimited.streams.find(s => s.streamNumber === 4)!.stats!
-  const s4_stor5 = rStorage5.streams.find(s => s.streamNumber === 4)!.stats!
-
-  test('Strom 4: mit Stauraum=5 weniger Fahrzeuge (overflow)', () => {
-    expect(s4_stor5.n).toBeLessThan(s4_unlim.n)
+  test('kein Fahrzeug fällt weg, die Wartezeit hängt nicht vom Stauraum ab', () => {
+    expect(s4(stau5).n).toBe(s4(unbegrenzt).n)
+    expect(s4(stau1).n).toBe(s4(unbegrenzt).n)
+    expect(s4(stau1).mean).toBe(s4(unbegrenzt).mean)
   })
 
-  test('Strom 4: mit Stauraum=5 tiefere Mean-Wartezeit (kürzere Schlangen)', () => {
-    // Fahrzeuge, die reinkommen, warten kürzer weil Schlange kürzer
-    expect(s4_stor5.mean).toBeLessThanOrEqual(s4_unlim.mean + 5)
+  test('Anteil der Fahrzeuge, die den Stauraum voll antreffen', () => {
+    expect(unbegrenzt.overflow).toEqual([])
+    const a5 = stau5.overflow![0], a1 = stau1.overflow![0]
+    expect(a5).toMatchObject({ arm: 'B', storage: 5 })
+    expect(a5.share).toBeGreaterThan(0)
+    expect(a1.share).toBeGreaterThan(a5.share)
+    expect(a1.share).toBeLessThanOrEqual(1)
   })
+})
 
-  test('storageB=1: fast keine Fahrzeuge kommen durch', () => {
-    const rStor1 = runStochasticSN640022(v, noFlags, undefined, { runs: 50, storageB: 1 })!
-    const n_stor1 = rStor1.streams.find(s => s.streamNumber === 4)!.stats?.n ?? 0
-    expect(n_stor1).toBeLessThan(s4_unlim.n * 0.5)
+// ── Folgezeitlücke auch für frei Ankommende ───────────────────────────────────
+describe('Folgezeitlücke zwischen zwei Abfahrten', () => {
+  const opts = { runs: 30, seed: 5, tcSigma: 0 }
+  const strom4 = (q: number) => runStochasticSN640022([[0, 0, 0], [0, 0, 0], [q, 0, 0]], noFlags, undefined, opts)!
+    .streams.find(s => s.streamNumber === 4)!
+
+  test('ohne Hauptstrom höchstens 3600/t_f: 4000 Fz/h stauen sich', () => {
+    const s = strom4(4000)
+    expect(s.stats!.mean).toBeGreaterThan(60)
+    expect(s.utilization).toBeGreaterThan(1)
+  })
+  test('ohne Hauptstrom ist die Auslastung q·t_f/3600 wie in der Normrechnung', () => {
+    acc(strom4(300).utilization, 300 * GAP_PARAMS.sideLeft.tf / 3600, 300 * GAP_PARAMS.sideLeft.tf / 3600 * 0.05)
   })
 })
 
@@ -382,6 +398,23 @@ describe('Feature D — Multi-Intervall (Carry-over-Queue)', () => {
     expect(r).toBeNull()
   })
 
+  // Rückstau bleibt, auch wenn im nächsten Intervall niemand mehr zufährt
+  const voll = [[0, 600, 0], [600, 0, 0], [4000, 0, 0]]
+  const halb = (q6: number): SimInterval[] => [
+    { label: 'voll', volumes: voll, T: 900 },
+    { label: 'danach', volumes: [[0, 600, 0], [600, 0, 0], [0, q6, 0]], T: 900 },
+  ]
+  test('Rückstau ohne neue Zufahrt wird weiter abgebaut, nicht gelöscht', () => {
+    const r = runStochasticSN640022Multi(halb(0), noFlags, { runs: 10, seed: 5, tcSigma: 0 })!
+    expect(r.intervals[0].carryOver).toBeGreaterThan(500)
+    expect(r.intervals[1].carryOver).toBeGreaterThan(0)
+    expect(r.intervals[1].carryOver).toBeLessThan(r.intervals[0].carryOver)
+  })
+  test('neu Zufahrende stehen hinter dem übernommenen Rückstau', () => {
+    const r = runStochasticSN640022Multi(halb(100), noFlags, { runs: 10, seed: 5, tcSigma: 0 })!
+    expect(r.intervals[1].result.streams.find(s => s.streamNumber === 6)!.stats!.mean).toBeGreaterThan(300)
+  })
+
   test('Laufzeit für 3 Intervalle < 6000 ms', () => {
     const r = runStochasticSN640022Multi([iv1, iv2, iv3], noFlags, { runs: 60 })!
     expect(r.totalDurationMs).toBeLessThan(6000)
@@ -522,13 +555,14 @@ describe('Kapazität der Simulation bei Sättigung (Harders)', () => {
 
 // ── Strom ohne Konfliktverkehr ────────────────────────────────────────────────
 describe('Strom mit Verkehr, aber ohne Hauptstrom', () => {
-  test('wird simuliert: keine Wartezeit ohne Fussgänger*innen', () => {
+  test('wird simuliert: ohne Fussgänger*innen nur kurze Wartezeit hinter dem Vorgänger (t_f)', () => {
     const v = [[0, 0, 0], [0, 0, 100], [50, 50, 0]]
     const r = runStochasticSN640022(v, noFlags, undefined, { runs: 5, seed: 3 })!
     const s7 = r.streams.find(s => s.streamNumber === 7)!
     expect(s7.qpi).toBe(0)
     expect(s7.stats).not.toBeNull()
-    expect(s7.stats!.mean).toBe(0)
+    expect(s7.stats!.mean).toBeGreaterThanOrEqual(0)
+    expect(s7.stats!.mean).toBeLessThan(0.5)
   })
 })
 

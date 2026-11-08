@@ -292,12 +292,14 @@ export default function KnotenKarte({ aktiv, breite, fokus, gewaehlt, linien, on
     const g = armeRef.current
     if (!g) return
     g.clearLayers()
+    // Strassennamen kommen aus OSM: als Text einsetzen, Leaflet setzt Zeichenketten sonst als HTML ein
+    const text = (s: string) => { const e = document.createElement('span'); e.textContent = s; return e }
     for (const l of linien) {
       L.polyline(l.linie, { color: l.haupt ? ARM_HAUPT_FARBE : ARM_NEBEN_FARBE, weight: 5, opacity: 0.85, pane: OBEN_PANE })
-        .bindTooltip(l.name, { sticky: true }).addTo(g)
+        .bindTooltip(text(l.name), { sticky: true }).addTo(g)
       const ende = l.linie[l.linie.length - 1]
       if (ende) L.marker(ende, { pane: SCHILD_PANE, keyboard: false, zIndexOffset: 1000,
-        icon: L.divIcon({ className: 'arm-nr', iconSize: [22, 22], html: `<span>${l.label}</span>` }) }).bindTooltip(l.name).addTo(g)
+        icon: L.divIcon({ className: 'arm-nr', iconSize: [22, 22], html: text(l.label) }) }).bindTooltip(text(l.name)).addTo(g)
     }
   }, [linien])
 

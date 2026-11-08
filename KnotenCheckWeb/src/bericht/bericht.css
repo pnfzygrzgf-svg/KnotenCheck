@@ -29,6 +29,7 @@
 .herkunft { font-size: 8px; font-weight: 700; margin-left: 2px; padding: 0 2px; border-radius: 3px; }
 .herkunft-M { color: #7c2d12; background: #ffedd5; }
 .herkunft-K { color: #1e3a5f; background: #dbeafe; }
+.herkunft-S { color: #14532d; background: #dcfce7; }
 
 .bericht-fuss { margin-top: 14px; padding-top: 4px; border-top: 1px solid #ccc; font-size: 9px; color: #555; }
 .bericht-fuss a { color: #555; }

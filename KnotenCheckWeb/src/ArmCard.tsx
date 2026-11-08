@@ -8,7 +8,8 @@ import type {
 import type { MixedLaneCombination } from './engine/types'
 import { LeereWahl, NumInput, Row, SectionLabel, Ckbx, ToggleBtn } from './ui'
 import { HerkunftMarke } from './HerkunftMarke'
-import { kartenHerkunft, streifenArt, stromArt, svFeldArt } from './bericht/herkunft'
+import { kartenHerkunft, schaetzArt, streifenArt, stromArt, svFeldArt } from './bericht/herkunft'
+import type { ArmStroeme } from './engine/armmengen'
 import type { UebernahmeArm } from './karte/rechner'
 
 const RICHTUNG = { leftVolume: 'left', straightVolume: 'straight', rightVolume: 'right' } as const
@@ -146,10 +147,12 @@ export function MixedLaneHint({ index, arm, opposingHSSeparateLane }: {
 
 // ── ArmCard ────────────────────────────────────────────────────────────────────
 
-export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, onChange, footer, geometryLocked, hideMixedLane, hideIsland, live, herkunft }: {
+export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, onChange, footer, geometryLocked, hideMixedLane, hideIsland, live, herkunft, schaetzung }: {
   arm: ArmConfiguration; index: number; isHS: boolean; armCount: number
   /** Arm der Übernahme aus der Karte: Marken «Modell» bzw. «Karte», solange ein Wert noch gleich ist */
   herkunft?: UebernahmeArm
+  /** Aus gezählten Armmengen geschätzte Ströme dieses Arms: Marke «geschätzt», solange ein Wert noch gleich ist */
+  schaetzung?: ArmStroeme
   opposingHSSeparateLane: boolean
   onChange: (a: ArmConfiguration) => void
   footer?: React.ReactNode
@@ -227,7 +230,7 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
       <SectionLabel title="Verkehrsmengen" />
       {movements.map(m => (
         <Row key={m.key} label={m.label}>
-          <HerkunftMarke art={stromArt(herkunft, RICHTUNG[m.key as keyof typeof RICHTUNG], arm[m.key] as number)} />
+          <HerkunftMarke art={schaetzArt(schaetzung, RICHTUNG[m.key as keyof typeof RICHTUNG], arm[m.key] as number) ?? stromArt(herkunft, RICHTUNG[m.key as keyof typeof RICHTUNG], arm[m.key] as number)} />
           <NumInput value={arm[m.key] as number} onChange={v => upd(m.key, v)} live={live} />
           <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 30 }}>Fz/h</span>
         </Row>

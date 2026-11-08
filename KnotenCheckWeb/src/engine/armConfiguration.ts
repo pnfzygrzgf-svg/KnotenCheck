@@ -112,16 +112,21 @@ const MIXED_COMBINATIONS: readonly MixedLaneCombination[] = ['leftAndThrough', '
 export function conformArms(value: unknown, armCount: 3 | 4, leereFelder = false): ArmConfiguration[] {
   // Der Linksabbiegestreifen hat keinen Vorlagewert: Fehlt er in einer älteren Datei, gilt «vorhanden»
   const vorlage = defaultIntersection(armCount).arms.map(a => ({ ...a, hasLeftTurnLane: undefined }))
-  return conformFixed(vorlage, value).map(a => ({
-    ...a,
-    gradient: leereFelder ? wahl(GRADIENTS, a.gradient) : oneOf(GRADIENTS, a.gradient, '±0%'),
-    fall: leereFelder ? wahl<1 | 2>([1, 2], a.fall) : a.vehicleMix ? 2 : 1,
-    mixedLaneCombination: leereFelder ? wahl(MIXED_COMBINATIONS, a.mixedLaneCombination) : oneOf(MIXED_COMBINATIONS, a.mixedLaneCombination, 'all'),
-    vehicleMix: a.vehicleMix ? conform(MIX_TEMPLATE, a.vehicleMix) : undefined,
-    rightLaneVolume: typeof a.rightLaneVolume === 'number' && a.rightLaneVolume >= 0
-      ? a.rightLaneVolume : undefined,
-    hasLeftTurnLane: typeof a.hasLeftTurnLane === 'boolean' ? a.hasLeftTurnLane : undefined,
-  }))
+  return conformFixed(vorlage, value).map(a => {
+    const gradient = leereFelder ? wahl(GRADIENTS, a.gradient) : oneOf(GRADIENTS, a.gradient, '±0%')
+    const mix = a.vehicleMix ? conform(MIX_TEMPLATE, a.vehicleMix) : undefined
+    return {
+      ...a,
+      gradient,
+      fall: leereFelder ? wahl<1 | 2>([1, 2], a.fall) : a.vehicleMix ? 2 : 1,
+      mixedLaneCombination: leereFelder ? wahl(MIXED_COMBINATIONS, a.mixedLaneCombination) : oneOf(MIXED_COMBINATIONS, a.mixedLaneCombination, 'all'),
+      // Fahrräder gibt es nur bei ±0 % (Tab. 2), wie beim Wechsel der Neigung in der Armkarte; sonst zählten sie ohne Faktor im Nenner
+      vehicleMix: mix && gradient !== '±0%' ? { ...mix, pctFR: 0 } : mix,
+      rightLaneVolume: typeof a.rightLaneVolume === 'number' && a.rightLaneVolume >= 0
+        ? a.rightLaneVolume : undefined,
+      hasLeftTurnLane: typeof a.hasLeftTurnLane === 'boolean' ? a.hasLeftTurnLane : undefined,
+    }
+  })
 }
 
 export function conformIntersection(value: unknown): IntersectionConfiguration {

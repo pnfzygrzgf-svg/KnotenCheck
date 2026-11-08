@@ -9,6 +9,7 @@ import { createPortal } from 'react-dom'
 import { Berechnungsblatt } from './Berechnungsblatt'
 import { KnotenDiagramm } from './KnotenDiagramm'
 import { analyzeSN640022 } from './engine/sn640022Calculator'
+import { armLabel } from './engine/armConfiguration'
 import {
   defaultIntersection, toSNVolumes, toSNRawVolumes, toSNLaneFlags,
   conformIntersection, offeneArmAngaben,
@@ -23,6 +24,8 @@ import { LOS_BG, LOS_COLOR, delayText, streamMovementName, utilizationColor } fr
 import { useMeldung } from './useMeldung'
 import { LOSBadge, OffeneAngaben, UtilBar, ToggleBtn, ToolbarBtn, BerichtKnopf } from './ui'
 import { ArmCard } from './ArmCard'
+import ArmmengenSchaetzung from './schaetzung/ArmmengenSchaetzung'
+import { schaetzungLesen, type Schaetzung } from './schaetzung/schaetzung'
 import { RechnerFuss } from './Fusszeile'
 
 // ── Ergebnis-Karten ───────────────────────────────────────────────────────────
@@ -223,25 +226,36 @@ function ResultsPanel({ result }: {
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 
-export default function SN022App({ uebernahme }: { uebernahme?: KnotenUebernahme }) {
+export default function SN022App({ uebernahme: kartenUebernahme }: { uebernahme?: KnotenUebernahme }) {
   const isActive = useIsActiveModule()  // Druckblatt nur im sichtbaren Modul
+  // Die Übernahme aus der Karte gilt, bis man zurücksetzt oder eine Datei lädt
+  const [mitKarte, setMitKarte] = useState(true)
+  const uebernahme = mitKarte ? kartenUebernahme : undefined
   const [cfg, setCfg] = useState<IntersectionConfiguration>(() => uebernahme ? intersectionAus(uebernahme) : defaultIntersection(3))
   const [armGewaehlt, setArmGewaehlt] = useState(!!uebernahme)   // Knotentyp hat keinen Startwert
   const [karte, setKarte] = useState(() => uebernahme ? kartenBezugAus(uebernahme, 'sn022') : null)
+  const [schaetzung, setSchaetzung] = useState<Schaetzung | null>(null)
   const [showBl, setShowBl] = useState(false)
   const openBl  = useCallback(() => setShowBl(true),  [])
   const closeBl = useCallback(() => setShowBl(false), [])
   const { meldung, melden, schliessen: meldungZu } = useMeldung()
 
   const handleExport = () =>
-    exportTool({ tool: 'sn022', filePrefix: 'SN022', name: cfg.name, data: { ...cfg, ...(karte ? { karte } : {}) }, melden })
+    exportTool({ tool: 'sn022', filePrefix: 'SN022', name: cfg.name, data: { ...cfg, ...(karte ? { karte } : {}), ...(schaetzung ? { schaetzung } : {}) }, melden })
 
   const handleImport = () =>
-    importTool('sn022', data => { setCfg(conformIntersection(data)); setArmGewaehlt(true); setKarte(kartenBezugLesen(data.karte)) }, melden)
+    importTool('sn022', data => {
+      const c = conformIntersection(data)
+      setCfg(c); setArmGewaehlt(true); setKarte(kartenBezugLesen(data.karte)); setSchaetzung(schaetzungLesen(data.schaetzung, c.arms.length))
+      setMitKarte(false)
+    }, melden)
 
   function handleReset() {
     setCfg(defaultIntersection(3))
     setArmGewaehlt(false)
+    setSchaetzung(null)
+    setKarte(null)
+    setMitKarte(false)
     melden('Zurückgesetzt')
   }
 
@@ -309,6 +323,7 @@ export default function SN022App({ uebernahme }: { uebernahme?: KnotenUebernahme
 
   const setArmCount = (n: 3 | 4) => {
     setArmGewaehlt(true)
+    if (cfg.arms.length !== n) setSchaetzung(null)
     setCfg(prev => prev.arms.length === n ? prev : defaultIntersection(n))
   }
 
@@ -351,13 +366,19 @@ export default function SN022App({ uebernahme }: { uebernahme?: KnotenUebernahme
 
       {!armGewaehlt && <OffeneAngaben liste={offen} />}
 
+      {armGewaehlt && <ArmmengenSchaetzung key={cfg.arms.length} labels={cfg.arms.map((_, i) => armLabel(i))} namen={cfg.arms.map(a => a.streetName)}
+        kreisel={false} hauptstrasse stand={schaetzung} onAnwenden={s => {
+          setSchaetzung(s)
+          setCfg(prev => ({ ...prev, arms: prev.arms.map((a, i) => ({ ...a, leftVolume: s.stroeme[i].left, straightVolume: s.stroeme[i].straight, rightVolume: s.stroeme[i].right })) }))
+        }} />}
+
       {/* Arme + Ergebnisse */}
       {armGewaehlt && <div className="layout-grid">
 
         {/* Arm-Karten */}
         <div className={`arms-grid${cfg.arms.length === 4 ? ' arms-grid-4' : ''}`}>
           {cfg.arms.map((arm, i) => (
-            <ArmCard key={arm.id} arm={arm} index={i} isHS={i < 2} herkunft={uebernahme?.arme[i]}
+            <ArmCard key={arm.id} arm={arm} index={i} isHS={i < 2} herkunft={uebernahme?.arme[i]} schaetzung={schaetzung?.stroeme[i]}
               armCount={cfg.arms.length} live
               opposingHSSeparateLane={
                 i === 2 ? (cfg.arms[0]?.hasSeparateTurnLane ?? false)
@@ -395,7 +416,7 @@ export default function SN022App({ uebernahme }: { uebernahme?: KnotenUebernahme
       </RechnerFuss>
     </main>
     {isActive && result && showBl && createPortal(
-      <Berechnungsblatt cfg={cfg} result={result} onClose={closeBl} karte={karte} uebernahme={uebernahme} knotenbild={knotenbild} />,
+      <Berechnungsblatt cfg={cfg} result={result} onClose={closeBl} karte={karte} uebernahme={uebernahme} schaetzung={schaetzung} knotenbild={knotenbild} />,
       document.body
     )}
     </>

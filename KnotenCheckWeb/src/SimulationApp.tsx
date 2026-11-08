@@ -4,7 +4,9 @@ import BelastungsVergleich from './karte/BelastungsVergleich'
 import { querschnitteKnoten } from './karte/vergleich'
 import { intersectionAus, kartenBezugAus, kartenBezugLesen, type KartenBezug, type KnotenUebernahme } from './karte/rechner'
 import { Abschnitt, BerichtKopf, BerichtRahmen, Herkunft, HerkunftLegende, HinweisListe, QuellenAbschnitt } from './bericht/Bericht'
-import { kartenHerkunft, stromHerkunft, svHerkunft, type HerkunftArt } from './bericht/herkunft'
+import { kartenHerkunft, schaetzArt, stromHerkunft, svHerkunft, type HerkunftArt } from './bericht/herkunft'
+import ArmmengenSchaetzung from './schaetzung/ArmmengenSchaetzung'
+import { schaetzungGilt, schaetzungLesen, type Schaetzung } from './schaetzung/schaetzung'
 import { GRUNDLAGEN } from './hilfeTexte'
 import { createPortal } from 'react-dom'
 import einmuendungSvg from './assets/einmuendung.svg'
@@ -542,7 +544,7 @@ function querungText(leg: PedestrianLegConfig | undefined, armIdx: number): { te
   }
 }
 
-export function SimulationBlatt({ result, lauf, nodeName, armCount, veraltet, karte, uebernahme, onClose }: {
+export function SimulationBlatt({ result, lauf, nodeName, armCount, veraltet, karte, uebernahme, schaetzung, onClose }: {
   result:      StochasticSN640022Result | StochasticMultiResult
   lauf?:       SimLauf | null
   nodeName:    string
@@ -550,6 +552,7 @@ export function SimulationBlatt({ result, lauf, nodeName, armCount, veraltet, ka
   veraltet:    boolean
   karte?:      KartenBezug | null
   uebernahme?: KnotenUebernahme
+  schaetzung?: Schaetzung | null
   onClose:     () => void
 }) {
   const arms  = lauf?.arms ?? null
@@ -564,7 +567,7 @@ export function SimulationBlatt({ result, lauf, nodeName, armCount, veraltet, ka
 
   const stroeme = (arm: ArmConfiguration, armIdx: number) => BL_RICHTUNG.map(([r]) => is3 && BL_OHNE_3[armIdx] === r
     ? <td key={r} style={BTDC}>–</td>
-    : <td key={r} style={BTDR}>{arm[BL_VOLUMEN[r]]}<Herkunft art={merke(stromHerkunft(uebernahme, armIdx, r, arm[BL_VOLUMEN[r]]))} /></td>)
+    : <td key={r} style={BTDR}>{arm[BL_VOLUMEN[r]]}<Herkunft art={merke(schaetzArt(schaetzung?.stroeme[armIdx], r, arm[BL_VOLUMEN[r]]) ?? stromHerkunft(uebernahme, armIdx, r, arm[BL_VOLUMEN[r]]))} /></td>)
 
   const runs = multi ? result.intervals[0]?.result.runs : result.runs
   const gaps = (Object.keys(rc.gapOverrides ?? {}) as GapKey[]).filter(k => rc.gapOverrides?.[k])
@@ -572,6 +575,7 @@ export function SimulationBlatt({ result, lauf, nodeName, armCount, veraltet, ka
 
   const hinweise: ReactNode[] = [
     ...(karte?.belegt ?? []),
+    ...(schaetzung && arms && schaetzungGilt(schaetzung, arms.map(a => ({ left: a.leftVolume, straight: a.straightVolume, right: a.rightVolume }))) ? [schaetzung.text] : []),
     'Stochastische Simulation auf Basis der SN 640 022 mit Grenz-/Folgezeitlücken nach HBS 2015.',
     ...(arms ? [] : ['Die Verkehrsstärken des Laufs sind nicht gespeichert; das Blatt zeigt darum nur die Einstellungen der Simulation.']),
     'Jeder Lauf streut, darum weichen die Zahlen bei jedem Start leicht ab.',
@@ -681,8 +685,11 @@ export function SimulationBlatt({ result, lauf, nodeName, armCount, veraltet, ka
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 
-export default function SimulationApp({ uebernahme }: { uebernahme?: KnotenUebernahme }) {
+export default function SimulationApp({ uebernahme: kartenUebernahme }: { uebernahme?: KnotenUebernahme }) {
   const isActive = useIsActiveModule()  // Druckblatt nur im sichtbaren Modul
+  // Die Übernahme aus der Karte gilt, bis man eine Datei lädt
+  const [mitKarte, setMitKarte] = useState(true)
+  const uebernahme = mitKarte ? kartenUebernahme : undefined
   const [nodeName,    setNodeName]    = useState(uebernahme?.name ?? '')
   const [armCount,    setArmCount]    = useState<3 | 4>(uebernahme?.armCount ?? 3)
   const [armGewaehlt, setArmGewaehlt] = useState(!!uebernahme)   // Knotentyp hat keinen Startwert
@@ -695,6 +702,7 @@ export default function SimulationApp({ uebernahme }: { uebernahme?: KnotenUeber
     return { armA: leg('A'), armC: leg('C'), ...(uebernahme ? { armB: leg('B'), armD: leg('D') } : {}) }
   })
   const [karte, setKarte] = useState(() => uebernahme ? kartenBezugAus(uebernahme, 'simulation') : null)
+  const [schaetzung, setSchaetzung] = useState<Schaetzung | null>(null)
   const [gapOverrides,  setGapOverrides]  = useState<GapOverrides>({})
   const [gapGewaehlt,   setGapGewaehlt]   = useState(false)
   const [useIntervals,  setUseIntervals]  = useState(false)
@@ -723,6 +731,7 @@ export default function SimulationApp({ uebernahme }: { uebernahme?: KnotenUeber
     stopWorker()
     setArmCount(n)
     setBaseArms(defaultIntersection(n).arms)
+    setSchaetzung(null)
     setIntervals([defaultInterval(n)])
     setResult(null)
   }
@@ -818,12 +827,13 @@ export default function SimulationApp({ uebernahme }: { uebernahme?: KnotenUeber
     exportTool({
       tool: 'simulation', filePrefix: 'Simulation',
       name: nodeName, fallbackName: 'simulation', melden,
-      data: { armCount, baseArms, pedestrians, gapOverrides, gapGewaehlt, useIntervals, intervals, simConfig, ...(karte ? { karte } : {}) },
+      data: { armCount, baseArms, pedestrians, gapOverrides, gapGewaehlt, useIntervals, intervals, simConfig, ...(karte ? { karte } : {}), ...(schaetzung ? { schaetzung } : {}) },
     })
 
   const handleImport = () =>
     importTool('simulation', (d, name) => {
       setKarte(kartenBezugLesen(d.karte))
+      setMitKarte(false)
       const n = oneOf<3 | 4>([3, 4], d.armCount, 3)
       const leer = d.leereFelder === true
       const obj = (v: unknown) => (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>
@@ -875,6 +885,7 @@ export default function SimulationApp({ uebernahme }: { uebernahme?: KnotenUeber
       setArmCount(n)
       setArmGewaehlt(true)
       setBaseArms(conformArms(d.baseArms, n, leer))
+      setSchaetzung(schaetzungLesen(d.schaetzung, n))
       setPedestrians(peds)
       setGapOverrides(gaps)
       setGapGewaehlt(leer ? d.gapGewaehlt === true : true)
@@ -944,6 +955,12 @@ export default function SimulationApp({ uebernahme }: { uebernahme?: KnotenUeber
         {/* ─── Input-Panel ─── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
+          {!useIntervals && <ArmmengenSchaetzung key={armCount} labels={baseArms.map((_, i) => ['A', 'C', 'B', 'D'][i])} namen={baseArms.map(a => a.streetName)}
+            kreisel={false} hauptstrasse stand={schaetzung} onAnwenden={s => {
+              setSchaetzung(s)
+              setBaseArms(prev => prev.map((a, i) => ({ ...a, leftVolume: s.stroeme[i].left, straightVolume: s.stroeme[i].straight, rightVolume: s.stroeme[i].right })))
+            }} />}
+
           {/* Arm-Cards mit FG-Eingabe als Footer */}
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)',
                         textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
@@ -953,7 +970,7 @@ export default function SimulationApp({ uebernahme }: { uebernahme?: KnotenUeber
             const pedKey: PedArmKey = i === 0 ? 'armA' : i === 1 ? 'armC' : i === 2 ? 'armB' : 'armD'
             const leg = pedestrians[pedKey] ?? defaultLeg()
             return (
-              <ArmCard key={arm.id} arm={arm} index={i} isHS={i < 2} herkunft={uebernahme?.arme[i]}
+              <ArmCard key={arm.id} arm={arm} index={i} isHS={i < 2} herkunft={uebernahme?.arme[i]} schaetzung={useIntervals ? undefined : schaetzung?.stroeme[i]}
                 armCount={armCount} hideMixedLane hideIsland live
                 opposingHSSeparateLane={i >= 2 ? (baseArms[i === 2 ? 0 : 1]?.hasSeparateTurnLane ?? false) : false}
                 onChange={a => setArm(i, a)}
@@ -1110,6 +1127,10 @@ export default function SimulationApp({ uebernahme }: { uebernahme?: KnotenUeber
                       </label>
                     ))}
                   </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                    Ausgewiesen wird, wie viele Fahrzeuge den Stauraum voll antreffen. Sie warten dahinter weiter
+                    und zählen in den Wartezeiten mit.
+                  </div>
                 </div>
 
                 {/* tc/tf Override */}
@@ -1226,7 +1247,7 @@ export default function SimulationApp({ uebernahme }: { uebernahme?: KnotenUeber
       {/* Druckblatt: Resultat mit den Eingaben, mit denen es gerechnet wurde */}
       {isActive && result && showBl && createPortal(
         <SimulationBlatt result={result} lauf={lauf} nodeName={nodeName} armCount={armCount}
-          veraltet={resultKey !== inputKey} karte={karte} uebernahme={uebernahme} onClose={closeBl} />,
+          veraltet={resultKey !== inputKey} karte={karte} uebernahme={uebernahme} schaetzung={schaetzung} onClose={closeBl} />,
         document.body,
       )}
     </main>

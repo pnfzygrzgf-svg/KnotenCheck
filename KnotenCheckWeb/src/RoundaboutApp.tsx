@@ -21,7 +21,10 @@ import { useMeldung } from './useMeldung'
 import { LeereWahl, LOSBadge, NumInput, OffeneAngaben, Row, SectionLabel, UtilBar, ToggleBtn, BerichtKnopf } from './ui'
 import { RechnerFuss } from './Fusszeile'
 import { Abschnitt, BerichtKopf, BerichtRahmen, Gesamtergebnis, Herkunft, HerkunftLegende, HinweisListe, QuellenAbschnitt } from './bericht/Bericht'
-import { kartenHerkunft, stromArt, stromHerkunft, svFeldArt, svHerkunft, type HerkunftArt } from './bericht/herkunft'
+import { kartenHerkunft, schaetzArt, stromArt, stromHerkunft, svFeldArt, svHerkunft, type HerkunftArt } from './bericht/herkunft'
+import type { ArmStroeme } from './engine/armmengen'
+import ArmmengenSchaetzung from './schaetzung/ArmmengenSchaetzung'
+import { schaetzungGilt, schaetzungLesen, type Schaetzung } from './schaetzung/schaetzung'
 import { HerkunftMarke } from './HerkunftMarke'
 import { GRUNDLAGEN } from './hilfeTexte'
 
@@ -82,7 +85,7 @@ const MIX_ROWS: { key: keyof RbVehicleMix; label: string; onlyFlat?: boolean }[]
   { key: 'pctFR', label: 'FR – Fahrrad/Mofa', onlyFlat: true },
 ]
 
-function ArmCard({ arm, index, armCount, qkFzh, qkPWE, onChange, herkunft }: {
+function ArmCard({ arm, index, armCount, qkFzh, qkPWE, onChange, herkunft, schaetzung }: {
   arm: ArmInput
   index: number
   armCount: 3 | 4
@@ -90,6 +93,7 @@ function ArmCard({ arm, index, armCount, qkFzh, qkPWE, onChange, herkunft }: {
   qkPWE: number   // aus der Berechnung: Ringströme mit dem Faktor ihres Herkunftsarms
   onChange: (a: ArmInput) => void
   herkunft?: UebernahmeArm   // Arm der Übernahme: Marken bei den Werten, die noch aus Karte oder Modell stammen
+  schaetzung?: ArmStroeme     // aus Armmengen geschätzte Ströme dieses Arms
 }) {
   const upd = <K extends keyof ArmInput>(k: K, v: ArmInput[K]) => onChange({ ...arm, [k]: v })
   const mix    = arm.mix
@@ -134,20 +138,20 @@ function ArmCard({ arm, index, armCount, qkFzh, qkPWE, onChange, herkunft }: {
       {/* Abbiegeströme */}
       <SectionLabel title={`Abbiegeströme Arm ${index + 1} (Abb. 10, Seite 18)`} />
       <Row label="1. Ausfahrt — rechts" sub={`→ Arm ${(index + 1) % armCount + 1}`}>
-        <HerkunftMarke art={stromArt(herkunft, 'right', arm.right)} />
+        <HerkunftMarke art={schaetzArt(schaetzung, 'right', arm.right) ?? stromArt(herkunft, 'right', arm.right)} />
         <NumInput live value={arm.right} onChange={v => upd('right', v)} width={80} />
         <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36 }}>Fz/h</span>
       </Row>
       {armCount === 4 && (
         <Row label="2. Ausfahrt — geradeaus" sub={`→ Arm ${(index + 2) % armCount + 1}`}>
-          <HerkunftMarke art={stromArt(herkunft, 'straight', arm.straight)} />
+          <HerkunftMarke art={schaetzArt(schaetzung, 'straight', arm.straight) ?? stromArt(herkunft, 'straight', arm.straight)} />
         <NumInput live value={arm.straight} onChange={v => upd('straight', v)} width={80} />
           <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36 }}>Fz/h</span>
         </Row>
       )}
       <Row label={armCount === 4 ? '3. Ausfahrt — links' : '2. Ausfahrt — links'}
            sub={`→ Arm ${(index + (armCount === 4 ? 3 : 2)) % armCount + 1}`}>
-        <HerkunftMarke art={stromArt(herkunft, 'left', arm.left)} />
+        <HerkunftMarke art={schaetzArt(schaetzung, 'left', arm.left) ?? stromArt(herkunft, 'left', arm.left)} />
         <NumInput live value={arm.left} onChange={v => upd('left', v)} width={80} />
         <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 36 }}>Fz/h</span>
       </Row>
@@ -431,7 +435,7 @@ const tdL: CSSProperties = { ...td, textAlign: 'left' }
 const tabelle: CSSProperties = { width: '100%', borderCollapse: 'collapse', marginBottom: 12 }
 const zeile = (i: number): CSSProperties => ({ background: i % 2 === 0 ? '#fff' : '#f7f7f7' })
 
-export function Bewertungsblatt({ nodeName, armCount, arms, result, onClose, karte, uebernahme, knotenbild }: {
+export function Bewertungsblatt({ nodeName, armCount, arms, result, onClose, karte, uebernahme, schaetzung, knotenbild }: {
   nodeName: string
   armCount: 3 | 4
   arms: ArmInput[]
@@ -439,6 +443,7 @@ export function Bewertungsblatt({ nodeName, armCount, arms, result, onClose, kar
   onClose: () => void
   karte?: KartenBezug | null
   uebernahme?: KnotenUebernahme
+  schaetzung?: Schaetzung | null
   knotenbild?: ReactNode
 }) {
   const overall = result.overallLevelOfService
@@ -458,6 +463,7 @@ export function Bewertungsblatt({ nodeName, armCount, arms, result, onClose, kar
 
   const hinweise: ReactNode[] = [
     ...(karte?.belegt ?? []),
+    ...(schaetzung && schaetzungGilt(schaetzung, arms) ? [schaetzung.text] : []),
     <><b>Annahme:</b> Q_A ist mit dem Faktor f der Herkunftsarme gewichtet, auch mit der Neigung ihrer Einfahrt.
       Die Norm nennt für Ausfahrten keinen Faktor (Ziffer 9.2, Seiten 8–9).</>,
     ...(result.entries.some(e => e.fgOutOfRange) ? [<>¹ FG über {FG_MAX_NORM} FG/h: ausserhalb Abb. 3–5 (Seiten 10–11), mit
@@ -675,7 +681,7 @@ export function Bewertungsblatt({ nodeName, armCount, arms, result, onClose, kar
             {arms.map((arm, i) => {
               const u = uebernahme?.arme[i], mix = arm.mix
               const strom = (art: 'right' | 'straight' | 'left') =>
-                <td style={td}>{arm[art]}<Herkunft art={merke(stromHerkunft(uebernahme, i, art, arm[art]))} /></td>
+                <td style={td}>{arm[art]}<Herkunft art={merke(schaetzArt(schaetzung?.stroeme[i], art, arm[art]) ?? stromHerkunft(uebernahme, i, art, arm[art]))} /></td>
               return (
                 <tr key={i} style={zeile(i)}>
                   <td style={tdL}><strong>Arm {i + 1}</strong></td>
@@ -727,8 +733,11 @@ const LEGEND_ITEMS: LegendItem[] = [
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 
-export default function RoundaboutApp({ uebernahme }: { uebernahme?: KnotenUebernahme }) {
+export default function RoundaboutApp({ uebernahme: kartenUebernahme }: { uebernahme?: KnotenUebernahme }) {
   const isActive = useIsActiveModule()  // Druckblatt nur im sichtbaren Modul
+  // Die Übernahme aus der Karte gilt, bis man zurücksetzt oder eine Datei lädt
+  const [mitKarte, setMitKarte] = useState(true)
+  const uebernahme = mitKarte ? kartenUebernahme : undefined
   const [armCount, setArmCount] = useState<3 | 4>(uebernahme?.armCount ?? 4)
   const [armGewaehlt, setArmGewaehlt] = useState(!!uebernahme)   // Armzahl hat keinen Startwert
   const [nodeName, setNodeName] = useState(uebernahme?.name ?? '')
@@ -740,6 +749,7 @@ export default function RoundaboutApp({ uebernahme }: { uebernahme?: KnotenUeber
         ...(v?.schwerverkehr ? { mix: { pctFR: 0, pctMR: 0, pctLW: v.schwerverkehr.lw, pctLZ: v.schwerverkehr.lz } } : {}) }
     }))
   const [karte, setKarte] = useState(() => uebernahme ? kartenBezugAus(uebernahme, 'sn024a') : null)
+  const [schaetzung, setSchaetzung] = useState<Schaetzung | null>(null)
   const [showBl, setShowBl] = useState(false)
   const openBl  = useCallback(() => setShowBl(true),  [])
   const closeBl = useCallback(() => setShowBl(false), [])
@@ -753,15 +763,18 @@ export default function RoundaboutApp({ uebernahme }: { uebernahme?: KnotenUeber
     exportTool({
       tool: 'sn024a', filePrefix: 'SN024a',
       name: nodeName, fallbackName: 'kreisel', melden,
-      data: { nodeName, armCount, arms, ...(karte ? { karte } : {}) },
+      data: { nodeName, armCount, arms, ...(karte ? { karte } : {}), ...(schaetzung ? { schaetzung } : {}) },
     })
 
   const handleImport = () =>
     importTool('sn024a', d => {
         setNodeName(typeof d.nodeName === 'string' ? d.nodeName : '')
         setKarte(kartenBezugLesen(d.karte))
-        setArmCount(oneOf<3 | 4>([3, 4], d.armCount, 4))
+        setMitKarte(false)
+        const n = oneOf<3 | 4>([3, 4], d.armCount, 4)
+        setArmCount(n)
         setArmGewaehlt(true)
+        setSchaetzung(schaetzungLesen(d.schaetzung, n))
         // Immer 4 Arme halten (3-Arm nutzt die ersten drei); Typ, Neigung und Mischung prüfen
         const leer = d.leereFelder === true, types = entryTypesFromFile(d, 4)
         const neigungen = Object.keys(RB_PCE_MOTOR) as GradientPCE[]
@@ -782,6 +795,9 @@ export default function RoundaboutApp({ uebernahme }: { uebernahme?: KnotenUeber
     setNodeName('')
     setArms([defaultArm(), defaultArm(), defaultArm(), defaultArm()])
     setArmGewaehlt(false)
+    setSchaetzung(null)
+    setKarte(null)
+    setMitKarte(false)
     melden('Zurückgesetzt')
   }
 
@@ -883,7 +899,7 @@ export default function RoundaboutApp({ uebernahme }: { uebernahme?: KnotenUeber
 
         <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--text)', marginLeft: 8 }}>Arme</span>
         {([3, 4] as const).map(n => (
-          <button key={n} onClick={() => { setArmCount(n); setArmGewaehlt(true) }}
+          <button key={n} onClick={() => { if (n !== armCount) setSchaetzung(null); setArmCount(n); setArmGewaehlt(true) }}
             className={`knopf${armGewaehlt && armCount === n ? '' : ' zweit'}`}>
             {n} Arme
           </button>
@@ -907,6 +923,12 @@ export default function RoundaboutApp({ uebernahme }: { uebernahme?: KnotenUeber
 
       {!armGewaehlt && <OffeneAngaben liste={offen} />}
 
+      {armGewaehlt && <ArmmengenSchaetzung key={armCount} labels={activeArms.map((_, i) => String(i + 1))} namen={activeArms.map(a => a.name)}
+        kreisel stand={schaetzung} onAnwenden={s => {
+          setSchaetzung(s)
+          setArms(prev => prev.map((a, i) => (i < armCount ? { ...a, ...s.stroeme[i] } : a)))
+        }} />}
+
       {/* Hauptlayout */}
       {armGewaehlt && <div className="layout-grid">
 
@@ -914,7 +936,7 @@ export default function RoundaboutApp({ uebernahme }: { uebernahme?: KnotenUeber
         <div className={`arms-grid${armCount === 4 ? ' arms-grid-4' : ''}`}>
           {activeArms.map((arm, i) => (
             <ArmCard key={i} arm={arm} index={i} armCount={armCount}
-                     qkFzh={qkFzh[i]} qkPWE={qkPWE[i]} onChange={a => setArm(i, a)} herkunft={uebernahme?.arme[i]} />
+                     qkFzh={qkFzh[i]} qkPWE={qkPWE[i]} onChange={a => setArm(i, a)} herkunft={uebernahme?.arme[i]} schaetzung={schaetzung?.stroeme[i]} />
           ))}
         </div>
 
@@ -1021,7 +1043,7 @@ export default function RoundaboutApp({ uebernahme }: { uebernahme?: KnotenUeber
 
     {isActive && result && showBl && createPortal(
       <Bewertungsblatt nodeName={nodeName} armCount={armCount} arms={activeArms} result={result}
-        onClose={closeBl} karte={karte} uebernahme={uebernahme} knotenbild={knotenbild} />,
+        onClose={closeBl} karte={karte} uebernahme={uebernahme} schaetzung={schaetzung} knotenbild={knotenbild} />,
       document.body
     )}
     </>
