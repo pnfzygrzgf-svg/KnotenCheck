@@ -110,7 +110,11 @@ export default function App() {
           </button>
           <span className="app-header-title">KnotenCheck</span>
           <span className="marke">{MARKE} v{__APP_VERSION__}</span>
-          <button className="home-btn" onClick={() => openMode('karte')}>Karte</button>
+          {/* Gleich gross wie die Reiter, aber in eigener Farbe: kein Rechner, sondern die Seite zum Knoten wählen */}
+          <button className="mode-btn karte-btn" onClick={() => openMode('karte')}>
+            Karte
+            <span className="mode-btn-sub">Knoten wählen</span>
+          </button>
           <div className="mode-switcher">
             {MODE_BUTTONS.map(m => (
               <button key={m.key} onClick={() => openMode(m.key)}
