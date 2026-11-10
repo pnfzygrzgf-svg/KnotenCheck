@@ -1,9 +1,9 @@
 {
  "hinweis": "Wortgleiche Kopie aus dem SichtweitenCheck (scripts/knotenkern_holen.mjs), MIT-Lizenz siehe LICENSE in diesem Ordner. Nicht von Hand ändern; der Test src/knotenkern/herkunft.test.ts prüft die SHA-256 je Datei.",
  "quelle": "SichtweitenCheck",
- "version": "0.9.7",
- "commit": "e51605e43ff987007d6cb8968aefeaf680420808",
- "datum": "2026-11-10T12:35:12+01:00",
+ "version": "0.9.9",
+ "commit": "47576f81f0a291caeabe6ab345a2afb687d49a8e",
+ "datum": "2026-11-10T22:45:02+01:00",
  "dateien": {
   "Ortssuche.tsx": "436a52ff6d1635b2e1bfbeacfad4ac751e0e940f037b3977dc72450fbd5f1344",
   "ausschnitt.ts": "6afae17c95c1e38d073882a03287216e78984db1482a5b80a5a48c384065ba09",
@@ -13,7 +13,7 @@
   "daten/hoehenDienst.ts": "e63b796bd0a6935b681049c8e766c2f1d513bb3e6e62b33fcdc2ef87722d7978",
   "daten/holen.ts": "c67c01e963bacaba9f3bd7f6bc70a8a5bdce88d7484fe869fd07e895f412c4e6",
   "daten/ortssuche.ts": "d02278ec70fa26a273820b513045fa7b17ed8fc4af133985d9c219274059572e",
-  "daten/osm.ts": "983d53ca60814acaab0ba0ab2631d0dd3d47096ec30971c3cb94fe7218e74a97",
+  "daten/osm.ts": "853cb963df0035269503f059bde6bb537bb95d96dc556de2d71fe48dde933313",
   "geo.ts": "f0f3c648173639b9d252fd6a54ad7b3c8c3c001b18c4901939e069a0bdf48417",
   "rechner/knoten.ts": "def402e55bbd0b04f541b5867d1f668bf9d26a1910e59dfb2fa84192f3af0342",
   "rechner/neigung.ts": "3e39c0719eab2b7be4b833e5ee8dea6ee8cb3e2dd741a5d1c423a5b779729a8d",

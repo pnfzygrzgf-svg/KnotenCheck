@@ -635,3 +635,15 @@ export function defaultLanesAndPhases(armCount: 3 | 4): {
 
   return { lanes, phases }
 }
+
+// Standard-Vorschlag auf dem vorhandenen Fahrstreifenplan: Der feste Plan gibt je Arm alle Richtungen gemeinsam frei. Darum gehören
+// alle Fahrstreifen des Arms in seine Phase, auch FS2; sonst bliebe ein belasteter Fahrstreifen ohne Grün. Fussgängerstreifen
+// ordnet der Vorschlag nicht zu.
+export function defaultPhasesFor(armCount: 3 | 4, lanes: readonly Lane[]): PhaseDefinition[] {
+  const { lanes: defLanes, phases } = defaultLanesAndPhases(armCount)
+  const armVon = new Map(defLanes.map(dl => [dl.id, dl.armIndex]))
+  return phases.map(ph => ({
+    id: ph.id,
+    laneIds: ph.laneIds.flatMap(id => lanes.filter(l => !l.isFGS && l.armIndex === armVon.get(id)).map(l => l.id)),
+  }))
+}

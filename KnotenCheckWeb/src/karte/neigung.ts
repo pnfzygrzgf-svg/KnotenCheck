@@ -10,12 +10,15 @@ import type { P } from '../knotenkern/geo'
 export const NEIGUNG_LINIE_M = 50
 /** Annahme: Steiler als so viele Prozent liegt ausserhalb der Tabellen, gerechnet wird mit ±4 % */
 const TABELLE_ENDE = 5
+/** Annahme: Ab diesem Anteil der Messlänge gilt das Profil als vollständig (die Höhenpunkte treffen die Enden nicht immer genau) */
+export const NEIGUNG_VOLL = 0.9
 
 export interface ArmNeigung {
   prozent: number | null
   klasse: GradientCategory | null
   modell: string           // «swissALTI3D» bzw. «DTM 2023 Stadt Bern»
   hinweis: string | null
+  laengeM?: number         // Länge, über die das Profil wirklich reicht
 }
 
 /** Nächste Klasse der Tabellen: ±0 bis unter 1 %, ±2 bis unter 3 %, darüber ±4 % */
@@ -36,7 +39,9 @@ export async function ladeArmNeigung(linie: P[], signal?: AbortSignal): Promise<
     const [m] = await ladeNeigungMit(d, linie, signal)
     if (m.i !== null) {
       const steil = Math.abs(m.i) > TABELLE_ENDE ? `Neigung ${String(m.i).replace('.', ',')} % liegt ausserhalb der Tabellen, gerechnet wird mit ±4 %.` : null
-      return { prozent: m.i, klasse: neigungsklasse(m.i), modell: d.kurz, hinweis: [steil, m.hinweis].filter(x => x).join(' ') || null }
+      // Der Höhenkern nimmt ein Profil ab 20 m an. Reicht es nicht über die ganze Messlänge, steht das beim Wert
+      const teil = m.laenge < NEIGUNG_VOLL * NEIGUNG_LINIE_M ? `Höhenprofil reicht nur über ${Math.round(m.laenge)} m statt ${NEIGUNG_LINIE_M} m: Neigung bitte prüfen.` : null
+      return { prozent: m.i, klasse: neigungsklasse(m.i), modell: d.kurz, hinweis: [steil, teil, m.hinweis].filter(x => x).join(' ') || null, laengeM: m.laenge }
     }
     letzter = { prozent: null, klasse: null, modell: d.kurz, hinweis: 'Neigung nicht bestimmbar.' }
   }

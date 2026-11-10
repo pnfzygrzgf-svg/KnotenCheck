@@ -1,7 +1,7 @@
 // Angaben, die für die Rechnung noch fehlen. Die Rechner beginnen ohne Startwerte und zeigen ein Ergebnis erst, wenn hier nichts mehr
 // offen ist. Leere Stromfelder zählen als kein Verkehr, mindestens ein Strom ist aber nötig. Verlangt wird nur, was gerade sichtbar ist.
 
-import { armLabel, offeneArmAngaben, type ArmConfiguration } from './armConfiguration'
+import { armLabel, MIX_OFFEN, mixGueltig, offeneArmAngaben, type ArmConfiguration } from './armConfiguration'
 import { armMovements } from './lsaCalculatorV2'
 import type { Querung } from './querung'
 
@@ -14,6 +14,7 @@ export interface KreiselAngaben {
   exitWide: boolean | null
   exitTwoLanes: boolean | null
   mischung: string | null
+  mix?: object
 }
 
 export function offenKreisel(arms: KreiselAngaben[]): string[] {
@@ -27,6 +28,7 @@ export function offenKreisel(arms: KreiselAngaben[]): string[] {
     if (!(a.type === '2/2' && a.exitTwoLanes === true) && a.exitWide === null) aus.push(`${arm}: Ausfahrtsbreite`)
     if (a.mischung === null) aus.push(`${arm}: pauschal oder detailliert`)
     if (a.gradient === null) aus.push(`${arm}: Neigung`)
+    if (a.mischung === 'detail' && !mixGueltig(a.mix)) aus.push(`${arm}: ${MIX_OFFEN}`)
   })
   return aus
 }
@@ -56,7 +58,7 @@ export function offenVss308(arms: Vss308Angaben[]): string[] {
 
 export interface LsaAngaben {
   armCount: 3 | 4
-  arms: { left: number; straight: number; right: number; vDesign?: number }[]
+  arms: { left: number; straight: number; right: number; vDesign?: number; mix?: object }[]
   moveLane: Record<string, 1 | 2>
   fgs: Record<string, { enabled: boolean; volume: number; length: number } | undefined>
   tzMode: string | null
@@ -75,6 +77,7 @@ export function offenLsa(o: LsaAngaben): string[] {
     if (f?.enabled && !(f.volume > 0)) aus.push(`Fussgängerstreifen Arm ${lbl}: Fg/h`)
     if (f?.enabled && !(f.length > 0)) aus.push(`Fussgängerstreifen Arm ${lbl}: Länge`)
     if (o.tzMode === 'staffel' && o.arms[i]?.vDesign === undefined) aus.push(`Arm ${lbl}: Tempo`)
+    if (!mixGueltig(o.arms[i]?.mix)) aus.push(`Arm ${lbl}: ${MIX_OFFEN}`)
   })
   if (!o.phasenplan) aus.push('Phasenplan')
   if (o.tzMode === null) aus.push('Zwischenzeit')

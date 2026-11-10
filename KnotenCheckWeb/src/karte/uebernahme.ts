@@ -8,9 +8,9 @@
 import { winkelGrad, dot } from '../knotenkern/geo'
 import type { RoundaboutType } from '../engine/roundaboutCalculator'
 import type { ArmBelastung } from './belastung'
-import { armStroeme, type AbbiegerStand } from './modellAbbieger'
+import { armStroeme, type AbbiegerStand, type ArmStroeme } from './modellAbbieger'
 import { armName, RECHTSVORTRITT_TEXT, vermutlichRechtsvortritt, type KartenArm, type KnotenVorschlag } from './knotenVorschlag'
-import { klasseText, NEIGUNG_LINIE_M, type ArmNeigung } from './neigung'
+import { klasseText, NEIGUNG_LINIE_M, NEIGUNG_VOLL, type ArmNeigung } from './neigung'
 import type { ArmStreifen, Belegt, KnotenUebernahme, UebernahmeArm } from './rechner'
 import type { ArmVergleich } from './vergleich'
 import type { ArmTempo } from './ortEbenen'
@@ -100,7 +100,6 @@ export function uebernahmeAus(v: KnotenVorschlag, paar: HauptPaar | null, neigun
   const armCount = arme.length as 3 | 4
   const hinweise = [...v.hinweise]
   for (const { arm, label } of arme) {
-    if (!arm.zufahrt) hinweise.push(`Arm ${label} ist Einbahn vom Knoten weg: keine Zufahrt, Ströme dort bleiben 0.`)
     if (arm.stichM !== null) hinweise.push(`Arm ${label} endet nach ${Math.round(arm.stichM)} m für Motorfahrzeuge.`)
     const n = neigungen[arm.key]
     if (auswahl.neigung && n?.hinweis) hinweise.push(`Arm ${label}: ${n.hinweis}`)
@@ -112,8 +111,25 @@ export function uebernahmeAus(v: KnotenVorschlag, paar: HauptPaar | null, neigun
   const modell = auswahl.abbieger && abbieger?.spitze === auswahl.abbieger ? abbieger : null
   // Schwerverkehr der Zufahrt aus den Abbiegern, nur wenn beide dieselbe Spitze haben; sonst der Anteil der Modellstrecke (beide Richtungen)
   const svZufahrt = modell && auswahl.schwerverkehr === modell.spitze ? modell.sv : null
-  const stroeme = modell ? armStroeme(modell.matrix, arme.map(({ arm, label }) => ({ key: arm.key, label })), v.form === 'kreisel') : null
-  if (modell) for (const { arm, label } of arme) if (modell.offen.includes(arm.key)) hinweise.push(`Arm ${label}: kein passender Modellwert, seine Ströme fehlen im Vorschlag.`)
+  const alle = modell ? armStroeme(modell.matrix, arme.map(({ arm, label }) => ({ key: arm.key, label })), v.form === 'kreisel') : null
+  // Ströme je Arm, nur wo das Modell sie belegt. Ein Arm ohne Modellwert bekommt keine Zahlen und bleibt im Rechner offen, bis seine Ströme
+  // eingegeben sind oder «kein Verkehr» bestätigt ist. Eine Einbahn vom Knoten weg (OSM) hat keine Zufahrt: Führt das Modell dort trotzdem
+  // Verkehr zum Knoten, widersprechen sich die Quellen und der Arm bleibt ebenfalls offen.
+  const stroeme: Record<string, ArmStroeme> = {}, stroemeOffen = new Set<string>()
+  for (const { arm, label } of arme) {
+    const s = alle?.[arm.key], summe = s ? s.left + s.straight + s.right : 0
+    if (!arm.zufahrt) {
+      if (summe > 0) {
+        stroemeOffen.add(arm.key)
+        hinweise.push(`Arm ${label} ist in OSM Einbahn vom Knoten weg, das Modell führt dort ${summe} Fz/h zum Knoten. Diese Ströme sind nicht übernommen: bitte prüfen und eingeben oder «kein Verkehr» bestätigen.`)
+      } else hinweise.push(`Arm ${label} ist Einbahn vom Knoten weg: keine Zufahrt, Ströme dort bleiben 0.`)
+    } else if (modell && s) {
+      if (modell.offen.includes(arm.key)) {
+        stroemeOffen.add(arm.key)
+        hinweise.push(`Arm ${label}: kein passender Modellwert, seine Ströme fehlen im Vorschlag. Bitte eingeben oder «kein Verkehr» bestätigen.`)
+      } else stroeme[arm.key] = s
+    }
+  }
 
   const uArme: UebernahmeArm[] = arme.map(({ arm, label }) => {
     const n = neigungen[arm.key]
@@ -130,7 +146,8 @@ export function uebernahmeAus(v: KnotenVorschlag, paar: HauptPaar | null, neigun
       ...(auswahl.tempo && tempo !== null ? { tempoQuelle: tempoQuelle(hand, amtlich, arm.tempo) } : {}),
       ...(typ ? { kreiselTyp: typ } : {}),
       ...(sv ? { schwerverkehr: sv } : {}),
-      ...(stroeme ? { stroeme: stroeme[arm.key] } : {}),
+      ...(stroeme[arm.key] ? { stroeme: stroeme[arm.key] } : {}),
+      ...(stroemeOffen.has(arm.key) ? { stroemeOffen: true as const } : {}),
     }
   })
 
@@ -143,8 +160,10 @@ export function uebernahmeAus(v: KnotenVorschlag, paar: HauptPaar | null, neigun
   const mitNeigung = uArme.filter(a => a.neigung)
   const modelle = [...new Set(arme.map(({ arm }) => neigungen[arm.key]?.modell).filter(m => m))]
   if (mitNeigung.length) {
+    // Die Messlänge je Arm steht nur dabei, wo das Profil kürzer ist als die angefragte Linie
+    const kurz = (key: string) => { const l = neigungen[key]?.laengeM; return l !== undefined && l < NEIGUNG_VOLL * NEIGUNG_LINIE_M ? ` (nur über ${Math.round(l)} m)` : '' }
     belegt.push({ art: 'neigung', text: `Neigung aus ${modelle.join(', ')}, gemessen über ${NEIGUNG_LINIE_M} m ab dem Knoten (Annahme), auf die Tabellenklassen gerundet: ` +
-      labels(mitNeigung.map(a => `${a.label} ${klasseText(a.neigung!)}`)) })
+      labels(arme.flatMap(({ arm, label }, i) => (uArme[i].neigung ? [`${label} ${klasseText(uArme[i].neigung!)}${kurz(arm.key)}`] : []))) })
   }
   const mitFgs = uArme.filter(a => a.fgs)
   if (mitFgs.length) belegt.push({ art: 'fgs', text: `Fussgängerstreifen aus OSM an Arm ${labels(mitFgs.map(a => a.label))}. Fussgänger*innen je Stunde bitte eingeben.` })

@@ -82,7 +82,7 @@ export function StochasticPanel({ result }: { result: StochasticSN640022Result }
                           color: 'var(--text)', marginBottom: 8, flexWrap: 'wrap' }}>
               <div>
                 <span style={{ color: 'var(--text-muted)' }}>Mittelwert </span>
-                <strong>{Math.round(st.mean)} s</strong>
+                <strong>{(s.open ?? 0) > 0 ? '≥ ' : ''}{Math.round(st.mean)} s</strong>
               </div>
               <div>
                 <span style={{ color: 'var(--text-muted)' }}>±σ </span>
@@ -111,6 +111,13 @@ export function StochasticPanel({ result }: { result: StochasticSN640022Result }
                 <strong>{st.n.toLocaleString()}</strong>
               </div>
             </div>
+
+            {(s.open ?? 0) > 0 && (
+              <div style={{ fontSize: 12, color: '#9a3412', marginBottom: 8 }}>
+                Im Mittel {s.open! < 0.5 ? 'weniger als 1 Fahrzeug' : `${Math.round(s.open!)} Fahrzeuge`} je Lauf fahren bis zum Ende der Beobachtung nicht ab.
+                Sie zählen mit der Wartezeit bis dorthin: Mittelwert und Quantile sind Mindestwerte.
+              </div>
+            )}
 
             {/* Histogramm */}
             <SimHistBar freq={st.freq} label="Verteilung der Wartezeiten" />

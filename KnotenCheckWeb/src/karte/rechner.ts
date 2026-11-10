@@ -51,6 +51,9 @@ export interface UebernahmeArm {
   kreiselTyp?: RoundaboutType
   schwerverkehr?: { lw: number; lz: number }   // Anteile an der gewählten Spitzenstunde [%], modelliert
   stroeme?: { left: number; straight: number; right: number }   // Abbiegeströme der gewählten Spitzenstunde [Fz/h], modelliert
+  /** Der Modellvorschlag hat für diesen Arm keine Ströme (kein Modellwert oder Widerspruch zur Einbahn in OSM): Der Rechner lässt den Arm offen,
+   *  bis Ströme eingegeben sind oder «kein Verkehr» bestätigt ist */
+  stroemeOffen?: true
   linie?: [number, number][]   // Armlinie WGS84 [lat, lon], für den Kartenausschnitt im Bericht
 }
 
@@ -127,14 +130,70 @@ export const belegtFuer = (u: KnotenUebernahme, r: RechnerKey): string[] => u.be
 /** Tempo als Eingabe des LSA-Rechners (Staffelung der Zwischenzeit) */
 export const lsaTempo = (kmh: number): 30 | 50 | 60 => (kmh <= 30 ? 30 : kmh <= 50 ? 50 : 60)
 
+/** Übernommene Werte je Arm, wie sie in der Speicherdatei stehen: Daran erkennen Bildschirm und Druckblatt nach dem Laden, welche Eingaben noch
+ *  aus Karte oder Modell stammen (ohne Armlinie, die steht in arme) */
+export interface HerkunftStand { name: string; armCount: 3 | 4; arme: UebernahmeArm[] }
+
 /** Bezug zur Karte in der Speicherdatei: Ort, OSM-Nummer und Herkunft der Vorbelegung */
 export interface KartenBezug { osmKnoten: number; lat: number; lon: number; belegt: string[]; vergleich: ArmVergleich[]; quellen: BerichtQuelle[]
   arme?: { label: string; linie: [number, number][] }[]   // Armlinien für den Kartenausschnitt im Bericht
+  herkunft?: HerkunftStand   // fehlt in Dateien vor Version 0.3.2: Die Herkunft der Werte ist dort nicht gespeichert
 }
 
 export const kartenBezugAus = (u: KnotenUebernahme, r: RechnerKey): KartenBezug =>
   ({ osmKnoten: u.id, lat: u.lat, lon: u.lon, belegt: belegtFuer(u, r), vergleich: u.vergleich, quellen: quellenFuer(u, r),
-     arme: u.arme.flatMap(a => (a.linie?.length ? [{ label: a.label, linie: a.linie }] : [])) })
+     arme: u.arme.flatMap(a => (a.linie?.length ? [{ label: a.label, linie: a.linie }] : [])),
+     herkunft: { name: u.name, armCount: u.armCount, arme: u.arme.map(a => { const ohne = { ...a }; delete ohne.linie; return ohne }) } })
+
+const GRADIENTS: readonly GradientCategory[] = ['+4%', '+2%', '±0%', '-2%', '-4%']
+const KREISEL_TYPEN: readonly RoundaboutType[] = ['1/1', '2/1+', '2/2']
+const SPUREN: readonly Spur[] = ['left', 'straight', 'right']
+const istZahl = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+
+/** Arm der Herkunft aus einer Datei: nur Felder mit gültigem Wert */
+function herkunftArmLesen(x: unknown): UebernahmeArm | null {
+  const a = x as Partial<UebernahmeArm> | null | undefined
+  if (typeof a?.label !== 'string') return null
+  const s = a.streifen, sv = a.schwerverkehr, q = a.stroeme
+  const spuren = Array.isArray(s?.spuren) && s.spuren.every(l => Array.isArray(l) && l.every(r => SPUREN.includes(r))) ? s.spuren.map(l => [...l]) : null
+  return {
+    label: a.label, name: typeof a.name === 'string' ? a.name : '', himmel: typeof a.himmel === 'string' ? a.himmel : '',
+    ...(GRADIENTS.includes(a.neigung as GradientCategory) ? { neigung: a.neigung } : {}),
+    ...(typeof a.fgs?.insel === 'boolean' ? { fgs: { insel: a.fgs.insel } } : {}),
+    ...(istZahl(s?.anzahl) ? { streifen: { anzahl: s.anzahl, spuren } } : {}),
+    ...(istZahl(a.tempo) ? { tempo: a.tempo } : {}),
+    ...(typeof a.tempoQuelle === 'string' ? { tempoQuelle: a.tempoQuelle } : {}),
+    ...(KREISEL_TYPEN.includes(a.kreiselTyp as RoundaboutType) ? { kreiselTyp: a.kreiselTyp } : {}),
+    ...(istZahl(sv?.lw) && istZahl(sv.lz) ? { schwerverkehr: { lw: sv.lw, lz: sv.lz } } : {}),
+    ...(istZahl(q?.left) && istZahl(q.straight) && istZahl(q.right) ? { stroeme: { left: q.left, straight: q.straight, right: q.right } } : {}),
+    ...(a.stroemeOffen === true ? { stroemeOffen: true as const } : {}),
+  }
+}
+
+function herkunftLesen(x: unknown): HerkunftStand | null {
+  const h = x as Partial<HerkunftStand> | null | undefined
+  if ((h?.armCount !== 3 && h?.armCount !== 4) || !Array.isArray(h.arme) || h.arme.length !== h.armCount) return null
+  const arme = h.arme.map(herkunftArmLesen)
+  if (arme.some(a => a === null)) return null
+  return { name: typeof h.name === 'string' ? h.name : '', armCount: h.armCount, arme: arme as UebernahmeArm[] }
+}
+
+/** Übernahme, wie sie beim Speichern galt: für die Herkunft der Werte nach dem Laden. Nicht für den Hinweis «Aus der Karte übernommen» */
+export function herkunftAus(k: KartenBezug | null): KnotenUebernahme | undefined {
+  if (!k?.herkunft) return undefined
+  const h = k.herkunft
+  return { id: k.osmKnoten, lat: k.lat, lon: k.lon, name: h.name, armCount: h.armCount, arme: h.arme, belegt: [], vergleich: k.vergleich, hinweise: [], osmStand: '', hoehenModelle: [] }
+}
+
+/** Arme, deren Modellströme fehlen und die weder Ströme haben noch als «kein Verkehr» bestätigt sind (Index in Rechner-Reihenfolge) */
+export function offeneModellArme(u: KnotenUebernahme | undefined, summen: readonly number[], bestaetigt: readonly number[]): number[] {
+  return (u?.arme ?? []).flatMap((a, i) => (a.stroemeOffen && i < summen.length && !(summen[i] > 0) && !bestaetigt.includes(i) ? [i] : []))
+}
+/** Dieselben Arme als offene Angaben der Rechner */
+export const offeneModellAngaben = (u: KnotenUebernahme | undefined, summen: readonly number[], bestaetigt: readonly number[]): string[] =>
+  offeneModellArme(u, summen, bestaetigt).map(i => `Arm ${u!.arme[i].label}: Ströme (kein Modellwert; eingeben oder «kein Verkehr» bestätigen)`)
+/** Bestätigte Arme aus einer Datei */
+export const bestaetigtLesen = (x: unknown): number[] => (Array.isArray(x) ? x.filter((i): i is number => Number.isInteger(i) && i >= 0 && i < 4) : [])
 
 /** Bezug aus einer Datei; ältere Dateien haben keinen */
 export function kartenBezugLesen(x: unknown): KartenBezug | null {
@@ -153,5 +212,5 @@ export function kartenBezugLesen(x: unknown): KartenBezug | null {
   const arme = (Array.isArray(k.arme) ? k.arme : []).filter(a => typeof a?.label === 'string' && Array.isArray(a.linie) && a.linie.length >= 2 && a.linie.every(punkt))
     .map(a => ({ label: a.label, linie: a.linie.map(([x, y]) => [x, y] as [number, number]) }))
   return { osmKnoten: k.osmKnoten, lat: k.lat, lon: k.lon, belegt: Array.isArray(k.belegt) ? k.belegt.filter(b => typeof b === 'string') : [], vergleich, quellen,
-    ...(arme.length ? { arme } : {}) }
+    ...(arme.length ? { arme } : {}), ...(herkunftLesen(k.herkunft) ? { herkunft: herkunftLesen(k.herkunft)! } : {}) }
 }

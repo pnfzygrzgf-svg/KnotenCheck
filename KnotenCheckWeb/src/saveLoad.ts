@@ -24,10 +24,11 @@ export function exportTool(opts: {
   opts.melden(`Gespeichert als ${filename}`)
 }
 
-// apply erhält die Rohdaten der Datei und muss sie selbst absichern (engine/conform.ts)
+// apply erhält die Rohdaten der Datei und muss sie selbst absichern (engine/conform.ts). Gibt apply einen Text zurück, hat das Laden
+// einen Wert geändert: Der Text steht dann in der Meldung und bleibt stehen
 export async function importTool(
   tool: string,
-  apply: (data: Record<string, unknown>, name: string) => void,
+  apply: (data: Record<string, unknown>, name: string) => string | void,
   melden: (text: string, bleibt?: boolean) => void,
 ): Promise<void> {
   let raw: Record<string, unknown>
@@ -45,8 +46,9 @@ export async function importTool(
   }
   const name = typeof raw.name === 'string' ? raw.name : ''
   try {
-    apply(data as Record<string, unknown>, name)
-    melden(`Geladen: ${name || 'Unbenannt'}`)
+    const zusatz = apply(data as Record<string, unknown>, name)
+    if (zusatz) melden(`Geladen: ${name || 'Unbenannt'}. ${zusatz}`, true)
+    else melden(`Geladen: ${name || 'Unbenannt'}`)
   } catch {
     melden('Die Datei konnte nicht geladen werden (unvollständig oder beschädigt).', true)
   }

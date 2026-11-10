@@ -107,8 +107,14 @@ export function Herkunft({ art }: { art: HerkunftArt | null }) {
 }
 
 /** Erklärung der Zeichen unter einer Tabelle; nur die Zeichen, die vorkommen */
-export function HerkunftLegende({ arten }: { arten: readonly (HerkunftArt | null)[] }) {
+export function HerkunftLegende({ arten, unbekannt = false }: { arten: readonly (HerkunftArt | null)[]
+  /** Knoten aus der Karte, aber die Datei ist älter und nennt die übernommenen Werte nicht: Ohne Zeichen heisst dann nicht «von Hand» */
+  unbekannt?: boolean }) {
   const da = new Set(arten.filter(Boolean))
+  if (unbekannt) return (
+    <p className="bericht-unter">Der Knoten stammt aus der Karte. Welche Werte aus Karte oder Modell übernommen sind, ist in dieser älteren Datei nicht gespeichert.
+      {da.has('S') && <> <sup className="herkunft herkunft-S">S</sup> aus gezählten Armmengen geschätzt, nicht gezählt.</>}</p>
+  )
   if (!da.size) return null
   return (
     <p className="bericht-unter">

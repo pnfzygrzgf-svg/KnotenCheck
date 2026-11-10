@@ -99,13 +99,18 @@ function streckenAbstand(s: ModellStrecke, p: P, r: P): number | null {
   return best
 }
 
+const gleicherSv = (a: Schwerverkehr | null, b: Schwerverkehr | null) => (a === null || b === null ? a === b : a.lw === b.lw && a.lz === b.lz)
+const gleicheWerte = (a: ModellStrecke, b: ModellStrecke) =>
+  a.dtv === b.dtv && a.msp === b.msp && a.asp === b.asp && gleicherSv(a.svMorgen, b.svMorgen) && gleicherSv(a.svAbend, b.svAbend)
+
 /** Modellstrecke des Arms: die nächste passende; zwei gleich nahe mit anderen Werten (parallele Fahrbahnen, Knoten) bleiben offen */
 export function modellZuordnen(strecken: ModellStrecke[], profil: P[]): { strecke: ModellStrecke | null; hinweis: string | null } {
   if (profil.length < 2) return { strecke: null, hinweis: 'Arm zu kurz für den Vergleich.' }
   const { p, r } = aufLinie(profil, PROBE_M)
   const k = strecken.flatMap(s => { const d = streckenAbstand(s, p, r); return d !== null && d <= MODELL_ABSTAND_M ? [{ s, d }] : [] }).sort((a, b) => a.d - b.d)
   if (!k.length) return { strecke: null, hinweis: 'Keine passende Modellstrecke. Fehlt sie, heisst das nicht, dass kein Verkehr fährt.' }
-  const zweite = k.find(x => x.s.nr !== k[0].s.nr && x.s.dtv !== k[0].s.dtv)
+  // Verglichen wird alles, was später gebraucht wird: Tageswert, beide Spitzen und der Schwerverkehr. Sonst entschiede die Reihenfolge der Antwort
+  const zweite = k.find(x => x.s.nr !== k[0].s.nr && !gleicheWerte(x.s, k[0].s))
   if (zweite && zweite.d <= k[0].d + MODELL_MEHRDEUTIG_M) return { strecke: null, hinweis: 'Mehrere passende Modellstrecken (parallele Fahrbahnen oder Knoten): offen.' }
   return { strecke: k[0].s, hinweis: null }
 }

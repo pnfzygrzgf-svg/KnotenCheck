@@ -370,7 +370,7 @@ export function Berechnungsblatt({ cfg, result, onClose, karte, uebernahme, scha
             })}
           </tbody>
         </table>
-        <HerkunftLegende arten={herkunft} />
+        <HerkunftLegende arten={herkunft} unbekannt={!!karte && !karte.herkunft} />
       </Abschnitt>
 
       <HinweisListe hinweise={hinweise} />

@@ -35,6 +35,14 @@ export function pctPW(mix: VehicleCategoryMix): number {
   return Math.max(0, 100 - mix.pctLW - mix.pctLZ - mix.pctMR - mix.pctFR)
 }
 
+/** Anteile der Fahrzeugkategorien: jeder 0 bis 100 %, zusammen höchstens 100 % (der Rest sind Personenwagen). Gilt für alle Rechner */
+export function mixGueltig(mix: object | undefined | null): boolean {
+  if (!mix) return true
+  const w = Object.entries(mix).filter(([k]) => k.startsWith('pct')).map(([, v]) => v as unknown)
+  return w.every(x => typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= 100) && (w as number[]).reduce((s, x) => s + x, 0) <= 100 + 1e-9
+}
+export const MIX_OFFEN = 'Fahrzeuganteile (zusammen höchstens 100 %)'
+
 export function effectiveFactor(mix: VehicleCategoryMix, gradient: GradientCategory): number {
   const f = GRADIENT_FACTORS[gradient]
   const pw = pctPW(mix)
@@ -151,6 +159,7 @@ export function offeneArmAngaben(arms: ArmConfiguration[], { mischstreifen = tru
     const arm = `Arm ${armLabel(i)}`
     if (a.fall === null) aus.push(`${arm}: Fall 1 oder Fall 2`)
     if (a.gradient === null) aus.push(`${arm}: Neigung`)
+    if (!mixGueltig(a.vehicleMix)) aus.push(`${arm}: ${MIX_OFFEN}`)
     if (mischstreifen && arms.length === 4 && i >= 2 && a.mixedLaneCombination === null) aus.push(`${arm}: Mischstreifen-Kombination`)
   })
   return aus

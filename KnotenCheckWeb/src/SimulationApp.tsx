@@ -1,8 +1,9 @@
-import { useState, useCallback, useRef, useEffect, type CSSProperties, type ReactNode } from 'react'
+import { useMemo, useState, useCallback, useRef, useEffect, type CSSProperties, type ReactNode } from 'react'
 import UebernahmeHinweis from './karte/UebernahmeHinweis'
 import BelastungsVergleich from './karte/BelastungsVergleich'
 import { querschnitteKnoten } from './karte/vergleich'
-import { intersectionAus, kartenBezugAus, kartenBezugLesen, type KartenBezug, type KnotenUebernahme } from './karte/rechner'
+import { bestaetigtLesen, herkunftAus, intersectionAus, kartenBezugAus, kartenBezugLesen, offeneModellAngaben, type KartenBezug, type KnotenUebernahme } from './karte/rechner'
+import ModellLuecken from './karte/ModellLuecken'
 import { Abschnitt, BerichtKopf, BerichtRahmen, Herkunft, HerkunftLegende, HinweisListe, QuellenAbschnitt } from './bericht/Bericht'
 import { kartenHerkunft, schaetzArt, stromHerkunft, svHerkunft, type HerkunftArt } from './bericht/herkunft'
 import ArmmengenSchaetzung from './schaetzung/ArmmengenSchaetzung'
@@ -405,7 +406,7 @@ function MultiIntervalPanel({ result, alle = false }: { result: StochasticMultiR
               <th style={{ padding: '5px 8px', textAlign: 'right' }}>Mittelw. [s]</th>
               <th style={{ padding: '5px 8px', textAlign: 'right' }}>P85 [s]</th>
               <th style={{ padding: '5px 8px', textAlign: 'center' }}>QS</th>
-              <th style={{ padding: '5px 8px', textAlign: 'right' }}>Carry-over</th>
+              <th style={{ padding: '5px 8px', textAlign: 'right' }}>Wartend am Ende</th>
             </tr>
           </thead>
           <tbody>
@@ -427,10 +428,10 @@ function MultiIntervalPanel({ result, alle = false }: { result: StochasticMultiR
                     {streamMovementName(s.streamNumber)}
                   </td>
                   <td style={{ padding: '4px 8px', textAlign: 'right' }}>
-                    {s.stats ? Math.round(s.stats.mean) : '–'}
+                    {s.stats ? `${(s.open ?? 0) > 0 ? '≥ ' : ''}${Math.round(s.stats.mean)}` : '–'}
                   </td>
                   <td style={{ padding: '4px 8px', textAlign: 'right' }}>
-                    {s.stats ? Math.round(s.stats.p85) : '–'}
+                    {s.stats ? `${(s.open ?? 0) > 0 ? '≥ ' : ''}${Math.round(s.stats.p85)}` : '–'}
                   </td>
                   <td style={{ padding: '4px 8px', textAlign: 'center' }}>
                     <LOSBadge los={simLOS(s.stats!.mean, s.utilization)} />
@@ -461,7 +462,9 @@ function MultiIntervalPanel({ result, alle = false }: { result: StochasticMultiR
       ))}
 
       <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
-        Carry-over: Fahrzeuge, die am Ende eines Intervalls noch warten und ins nächste übergehen.
+        Wartend am Ende: Fahrzeuge, die am Ende eines Intervalls noch warten (Mittel der Läufe). Sie fahren im Verkehr des folgenden Intervalls ab;
+        ihre ganze Wartezeit zählt im Intervall ihrer Ankunft. Nach dem letzten Intervall läuft dessen Verkehr noch einmal so lange weiter (Annahme).
+        ≥: Ein Teil der Fahrzeuge fährt auch dann nicht ab, die Werte sind Mindestwerte.
         Gesamtlaufzeit: {Math.round(result.totalDurationMs)} ms
       </div>
     </div>
@@ -579,6 +582,8 @@ export function SimulationBlatt({ result, lauf, nodeName, armCount, veraltet, ka
     'Stochastische Simulation auf Basis der SN 640 022 mit Grenz-/Folgezeitlücken nach HBS 2015.',
     ...(arms ? [] : ['Die Verkehrsstärken des Laufs sind nicht gespeichert; das Blatt zeigt darum nur die Einstellungen der Simulation.']),
     'Jeder Lauf streut, darum weichen die Zahlen bei jedem Start leicht ab.',
+    'Annahme: Nach dem Ende der Simulationsdauer läuft der Verkehr noch einmal so lange weiter, damit wartende Fahrzeuge abfahren können. Wer auch dann nicht abfährt, zählt mit der Wartezeit bis dorthin (Mindestwert, mit ≥ bezeichnet).',
+    ...(multi ? ['Mehrere Intervalle: Die Warteschlange läuft über die Intervallgrenze weiter. Die Wartezeit eines Fahrzeugs zählt im Intervall seiner Ankunft.'] : []),
     'Die Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.',
   ]
 
@@ -673,7 +678,7 @@ export function SimulationBlatt({ result, lauf, nodeName, armCount, veraltet, ka
               </tbody>
             </table>
           </>}
-          <HerkunftLegende arten={herkunft} />
+          <HerkunftLegende arten={herkunft} unbekannt={!!karte && !karte.herkunft} />
         </>}
       </Abschnitt>
 
@@ -703,6 +708,10 @@ export default function SimulationApp({ uebernahme: kartenUebernahme }: { uebern
   })
   const [karte, setKarte] = useState(() => uebernahme ? kartenBezugAus(uebernahme, 'simulation') : null)
   const [schaetzung, setSchaetzung] = useState<Schaetzung | null>(null)
+  // Arme ohne Modellwert, für die «kein Verkehr» bestätigt ist
+  const [nullOk, setNullOk] = useState<number[]>([])
+  // Herkunft der Werte: aus der Übernahme, nach dem Laden aus der Datei
+  const herkunftU = useMemo(() => { const h = herkunftAus(karte); return h?.armCount === armCount ? h : undefined }, [karte, armCount])
   const [gapOverrides,  setGapOverrides]  = useState<GapOverrides>({})
   const [gapGewaehlt,   setGapGewaehlt]   = useState(false)
   const [useIntervals,  setUseIntervals]  = useState(false)
@@ -753,12 +762,15 @@ export default function SimulationApp({ uebernahme: kartenUebernahme }: { uebern
   const inputKey = JSON.stringify({ armCount, baseArms, pedestrians, gapOverrides, useIntervals, intervals, simConfig })
   const [resultKey, setResultKey] = useState('')
 
+  // Mit Intervallen stehen die Ströme je Intervall: Der Modellvorschlag gilt dann nicht mehr
+  const armSummen = baseArms.map(a => a.leftVolume + a.straightVolume + a.rightVolume)
+  const modellU = useIntervals ? undefined : herkunftU
   const offen = armGewaehlt
-    ? offenSimulation({
+    ? [...offenSimulation({
         arms: baseArms, beine: [pedestrians.armA, pedestrians.armC, pedestrians.armB, pedestrians.armD],
         intervalle: useIntervals ? intervals : null, zeitluecken: gapGewaehlt,
         runs: simConfig.runs, useCowan: simConfig.useCowan, tcSigma: simConfig.tcSigma,
-      })
+      }), ...offeneModellAngaben(modellU, armSummen, nullOk)]
     : ['Knotentyp']
 
   function stopWorker() {
@@ -827,13 +839,14 @@ export default function SimulationApp({ uebernahme: kartenUebernahme }: { uebern
     exportTool({
       tool: 'simulation', filePrefix: 'Simulation',
       name: nodeName, fallbackName: 'simulation', melden,
-      data: { armCount, baseArms, pedestrians, gapOverrides, gapGewaehlt, useIntervals, intervals, simConfig, ...(karte ? { karte } : {}), ...(schaetzung ? { schaetzung } : {}) },
+      data: { armCount, baseArms, pedestrians, gapOverrides, gapGewaehlt, useIntervals, intervals, simConfig, ...(karte ? { karte } : {}), ...(schaetzung ? { schaetzung } : {}), ...(nullOk.length ? { stromNullBestaetigt: nullOk } : {}) },
     })
 
   const handleImport = () =>
     importTool('simulation', (d, name) => {
       setKarte(kartenBezugLesen(d.karte))
       setMitKarte(false)
+      setNullOk(bestaetigtLesen(d.stromNullBestaetigt))
       const n = oneOf<3 | 4>([3, 4], d.armCount, 3)
       const leer = d.leereFelder === true
       const obj = (v: unknown) => (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>
@@ -949,6 +962,8 @@ export default function SimulationApp({ uebernahme: kartenUebernahme }: { uebern
 
       {!armGewaehlt && <OffeneAngaben liste={offen} />}
 
+      {armGewaehlt && <ModellLuecken u={modellU} summen={armSummen} bestaetigt={nullOk} onBestaetigen={i => setNullOk(n => [...n, i])} />}
+
       {/* ── Layout: Input | Ergebnisse ── */}
       {armGewaehlt && <div className="layout-grid">
 
@@ -970,7 +985,7 @@ export default function SimulationApp({ uebernahme: kartenUebernahme }: { uebern
             const pedKey: PedArmKey = i === 0 ? 'armA' : i === 1 ? 'armC' : i === 2 ? 'armB' : 'armD'
             const leg = pedestrians[pedKey] ?? defaultLeg()
             return (
-              <ArmCard key={arm.id} arm={arm} index={i} isHS={i < 2} herkunft={uebernahme?.arme[i]} schaetzung={useIntervals ? undefined : schaetzung?.stroeme[i]}
+              <ArmCard key={arm.id} arm={arm} index={i} isHS={i < 2} herkunft={herkunftU?.arme[i]} schaetzung={useIntervals ? undefined : schaetzung?.stroeme[i]}
                 armCount={armCount} hideMixedLane hideIsland live
                 opposingHSSeparateLane={i >= 2 ? (baseArms[i === 2 ? 0 : 1]?.hasSeparateTurnLane ?? false) : false}
                 onChange={a => setArm(i, a)}
@@ -1002,7 +1017,7 @@ export default function SimulationApp({ uebernahme: kartenUebernahme }: { uebern
                   Mehrere Zeitintervalle
                 </span>
                 <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>
-                  Mit Carry-over-Queue zwischen Intervallen
+                  Die Warteschlange läuft über die Intervalle weiter
                 </span>
               </div>
             </div>
@@ -1247,7 +1262,7 @@ export default function SimulationApp({ uebernahme: kartenUebernahme }: { uebern
       {/* Druckblatt: Resultat mit den Eingaben, mit denen es gerechnet wurde */}
       {isActive && result && showBl && createPortal(
         <SimulationBlatt result={result} lauf={lauf} nodeName={nodeName} armCount={armCount}
-          veraltet={resultKey !== inputKey} karte={karte} uebernahme={uebernahme} schaetzung={schaetzung} onClose={closeBl} />,
+          veraltet={resultKey !== inputKey} karte={karte} uebernahme={herkunftU} schaetzung={schaetzung} onClose={closeBl} />,
         document.body,
       )}
     </main>

@@ -6,7 +6,7 @@
 // Stufe 3:  Rückstau höherrangiger Ströme analog F13–F20 (Ziff. 11, S. 6)
 // Feature A: Konfigurierbare Grenz-/Folgezeitlücken (tc/tf) pro Strom-Typ
 // Feature C: Fussgänger*innen sperren die Fahrtrichtung, die sie überqueren
-// Feature D: Mehrere Zeitintervalle mit Carry-over-Queue
+// Feature D: Mehrere Zeitintervalle mit fortlaufender Warteschlange
 // Referenz: Troutbeck & Brilon, Traffic Flow Theory Kap. 8
 
 import { analyzeSN640022 } from './sn640022Calculator'
@@ -253,6 +253,8 @@ type ArmKey = 'A' | 'B' | 'C' | 'D'
 // Hauptstrom und Fussgänger*innen laufen über das Periodenende hinaus weiter: Fahrzeuge,
 // die bei T noch warten, finden danach weiterhin Konfliktverkehr vor (sonst würde die
 // Restschlange bei Überlast unrealistisch schnell abgebaut). Ankünfte nur in [0, T].
+// Annahme: Der Horizont ist 2·T. Weiter ist der Konfliktverkehr nicht bekannt; eine Abfahrt
+// danach gilt als nicht beobachtet (siehe findDeparture und runLine).
 function conflictHorizon(cfg: FullConfig): number {
   return 2 * cfg.T
 }
@@ -417,10 +419,16 @@ const CROSSES: Record<number, ArmKey[]> = {
 // Grenzzeitlücke, die vorher gefundene Lücke kann inzwischen zu kurz sein.
 // usable[i] sagt, ob die Lücke vor conflicts[i] für diesen Strom frei ist (Rückstau
 // höherrangiger Ströme, siehe gapAvailability); ohne Angabe sind alle Lücken frei.
+// horizon: bis hierhin ist der Konfliktverkehr bekannt. Nach dem letzten Konfliktfahrzeug
+// gilt eine Lücke nur als frei, wenn bis zum Horizont mindestens tc_i bleiben. Sonst ist
+// die Abfahrt nicht beobachtet und das Ergebnis Infinity: Das Ende der Daten ist kein
+// Nachweis einer freien Lücke. Ohne Angabe endet die Beobachtung beim letzten
+// Konfliktfahrzeug; ganz ohne Konfliktverkehr ist die Fahrt frei.
 export function findDeparture(
   seekStart: number, conflicts: Float64Array, tc_i: number, blocks: Interval[],
-  usable?: Uint8Array,
+  usable?: Uint8Array, horizon?: number,
 ): number {
+  const ende = horizon ?? (conflicts.length > 0 ? conflicts[conflicts.length - 1] : Infinity)
   let start = seekStart
   while (true) {
     let lo = 0, hi = conflicts.length
@@ -435,6 +443,7 @@ export function findDeparture(
       prev = conflicts[ptr]
       ptr++
     }
+    if (ptr >= conflicts.length && ende - prev < tc_i) return Infinity
     // Abfahrt bei Beginn der akzeptierten Lücke (Vorbeifahrt des letzten Konfliktfahrzeugs).
     // Nachrückende fahren frühestens t_f später und brauchen ab dort wieder t_c:
     // In einer Lücke der Länge t finden so n Fahrzeuge Platz, wenn t ≥ t_c + (n−1)·t_f
@@ -479,25 +488,16 @@ interface Line {
 }
 
 interface LineVehicle {
-  arrival: number
-  si:      number   // Index in Line.streams
-  tc:      number
-  carried: boolean  // aus dem vorangehenden Intervall übernommen
+  arrival: number   // [s] ab Beginn des Intervalls; negativ: wartet seit einem früheren Intervall
+  sn:      number   // Stromnummer
+  tc:      number   // persönliche Grenzzeitlücke, einmal je Fahrzeug
+  origin:  number   // Intervall der Ankunft: Dort zählt die ganze Wartezeit
 }
 
-// Ankünfte einer Haltelinie: übernommene Fahrzeuge bei t = 0, dann Poisson-Prozess.
-// carried[si] = übernommene Fahrzeuge je Strom; sie behalten ihre Fahrbeziehung und stehen
-// nach ihrer Zahl abwechselnd in der Schlange. Persönliche Grenzzeitlücke einmal je Fahrzeug.
-function generateVehicles(line: Line, carried: readonly number[], cfg: FullConfig): LineVehicle[] {
-  const vehicle = (arrival: number, si: number, isCarried: boolean): LineVehicle =>
-    ({ arrival, si, tc: sampleTc(line.streams[si].tc, cfg), carried: isCarried })
-
-  const out: LineVehicle[] = []
-  const reihe: { pos: number; si: number }[] = []
-  carried.forEach((c, si) => { for (let k = 0; k < c; k++) reihe.push({ pos: (k + 0.5) / c, si }) })
-  reihe.sort((a, b) => a.pos - b.pos)
-  for (const r of reihe) out.push(vehicle(0, r.si, true))
-
+// Ankünfte einer Haltelinie: zuerst die noch wartenden Fahrzeuge aus dem vorangehenden Intervall
+// in ihrer Reihenfolge, dann ein Poisson-Prozess. Persönliche Grenzzeitlücke einmal je Fahrzeug.
+function generateVehicles(line: Line, waiting: readonly LineVehicle[], origin: number, cfg: FullConfig): LineVehicle[] {
+  const out: LineVehicle[] = [...waiting]
   const totalQ = line.streams.reduce((s, st) => s + st.q, 0)
   if (totalQ <= 0) return out
   const weights: number[] = []
@@ -512,17 +512,20 @@ function generateVehicles(line: Line, carried: readonly number[], cfg: FullConfi
   while (true) {
     t += -Math.log(cfg.rng()) / lambda
     if (t >= cfg.T) break
-    out.push(vehicle(t, streamAt(cfg.rng()), false))
+    const st = line.streams[streamAt(cfg.rng())]
+    out.push({ arrival: t, sn: st.streamNumber, tc: sampleTc(st.tc, cfg), origin })
   }
   return out
 }
 
 interface LinePass {
-  delays:     number[][]  // je Index in Line.streams
+  // Abgeschlossene Wartezeiten; open: Abfahrt nicht beobachtet, delay ist dann die Wartezeit bis zum Ende der Beobachtung (Mindestwert)
+  done:       { origin: number; sn: number; delay: number; open: boolean }[]
   busy:       number
-  endBacklog: number[]    // je Index in Line.streams: Fahrzeuge, die erst nach T abfahren → Übertrag ins nächste Intervall
-  arrivals:   number      // neu angekommene Fahrzeuge
-  overflow:   number      // davon bei vollem Stauraum angekommen
+  rest:       LineVehicle[]   // warten bei T noch und gehen ins nächste Intervall (nie im letzten)
+  endBacklog: number[]        // je Index in Line.streams: Fahrzeuge, die bei T noch warten
+  arrivals:   number          // neu angekommene Fahrzeuge
+  overflow:   number          // davon bei vollem Stauraum angekommen
 }
 
 // Alle Fahrzeuge einer Haltelinie in Ankunftsreihenfolge abfertigen. Jedes Fahrzeug fährt
@@ -530,35 +533,47 @@ interface LinePass {
 // (Sättigungsabfluss 3600/t_f; Troutbeck & Brilon 1997, Kap. 8.4.1, S. 8-12).
 // Ein voller Stauraum hält niemanden zurück: Die Fahrzeuge warten dahinter weiter. Gezählt
 // wird, wie viele ihn bei Ankunft voll antreffen (Rückstau über den Stauraum hinaus).
-function runLine(line: Line, vehicles: LineVehicle[], run: RunContext, usableOf: (s: LineStream, n: number) => Uint8Array | undefined, T: number): LinePass {
+// Wer bei T noch wartet, hat seine Wartezeit nicht abgeschlossen: Folgt ein Intervall, geht das
+// Fahrzeug mit Ankunftszeit und Grenzzeitlücke dorthin und fährt im Verkehr des Folgeintervalls ab.
+// Im letzten Intervall läuft dessen Verkehr bis zum Horizont weiter (Annahme); wer auch dann
+// nicht abfährt, zählt mit der Wartezeit bis zum Horizont als Mindestwert (open).
+// Die Auslastung rechnet in jedem Intervall mit dem weiterlaufenden Verkehr dieses Intervalls.
+function runLine(line: Line, vehicles: LineVehicle[], run: RunContext, usableOf: (s: LineStream, n: number) => Uint8Array | undefined,
+  T: number, horizon: number, origin: number, last: boolean): LinePass {
   const conflicts = line.streams.map(s => run.conflictsOf(s))
   const blocks    = line.streams.map(s => run.blocksOf(s))
   const usable    = line.streams.map((s, i) => usableOf(s, conflicts[i].length))
-  const delays: number[][] = line.streams.map(() => [])
+  const index     = new Map(line.streams.map((s, i) => [s.streamNumber, i]))
+  const done: LinePass['done'] = [], rest: LineVehicle[] = []
   const endBacklog = line.streams.map(() => 0)
   const departures: number[] = []
   let belegtBis = -Infinity, sysStart = 0, busy = 0, arrivals = 0, overflow = 0
 
   for (const v of vehicles) {
+    const si = index.get(v.sn)!
     while (sysStart < departures.length && departures[sysStart] <= v.arrival) sysStart++
-    if (!v.carried) {
+    if (v.origin === origin) {
       arrivals++
       if (departures.length - sysStart >= line.storage) overflow++
     }
 
-    const tf        = line.streams[v.si].tf
+    const tf         = line.streams[si].tf
+    const ab         = Math.max(v.arrival, 0)   // übernommene Fahrzeuge suchen ab Beginn des Intervalls
     const vorgaenger = departures.length > 0 ? departures[departures.length - 1] : -Infinity
-    const departure = findDeparture(Math.max(v.arrival, vorgaenger + tf), conflicts[v.si], v.tc, blocks[v.si], usable[v.si])
+    // Ohne Konfliktverkehr und ohne Sperrzeiten ist die Fahrt auch nach dem Horizont frei
+    const bekannt    = conflicts[si].length > 0 || blocks[si].length > 0 ? horizon : Infinity
+    const departure  = findDeparture(Math.max(ab, vorgaenger + tf), conflicts[si], v.tc, blocks[si], usable[si], bekannt)
 
-    // Übernommene Fahrzeuge: ihre Wartezeit gehört zum vorangehenden Intervall
-    if (!v.carried) delays[v.si].push(departure - v.arrival)
     departures.push(departure)
-    if (departure > T) endBacklog[v.si]++
-    const ende = departure + tf
-    busy += Math.max(0, ende - Math.max(v.arrival, belegtBis))
+    if (departure > T) endBacklog[si]++
+    if (departure > T && !last) rest.push({ ...v, arrival: v.arrival - T })
+    else if (departure === Infinity) done.push({ origin: v.origin, sn: v.sn, delay: horizon - v.arrival, open: true })
+    else done.push({ origin: v.origin, sn: v.sn, delay: departure - v.arrival, open: false })
+    const ende = Math.min(departure + tf, horizon)
+    busy += Math.max(0, ende - Math.max(ab, belegtBis))
     belegtBis = Math.max(belegtBis, ende)
   }
-  return { delays, busy, endBacklog, arrivals, overflow }
+  return { done, busy, rest, endBacklog, arrivals, overflow }
 }
 
 // ── Ein Simulationslauf ───────────────────────────────────────────────────────
@@ -611,7 +626,7 @@ function saturatedDepartures(s: LineStream, run: RunContext, cfg: FullConfig): n
   const blocks    = run.blocksOf(s)
   let count = 0, t = 0
   while (true) {
-    t = findDeparture(t, conflicts, sampleTc(s.tc, cfg), blocks)
+    t = findDeparture(t, conflicts, sampleTc(s.tc, cfg), blocks, undefined, conflictHorizon(cfg))
     if (t >= cfg.T) return count
     count++
     t += s.tf
@@ -668,6 +683,9 @@ export interface StochasticStreamResult {
   stats: DelayStats | null
   // Auslastung der Haltelinie (siehe oben); NS-Ströme eines Arms teilen die Haltelinie
   utilization: number
+  // Mittlere Zahl Fahrzeuge je Lauf, deren Abfahrt bis zum Ende der Beobachtung nicht eintrat. Sie stehen mit der Wartezeit
+  // bis dorthin in stats: Mittelwert und Quantile sind dann Mindestwerte. Fehlt bei älteren gespeicherten Resultaten
+  open?: number
 }
 
 // Stauraum der Nebenstrasse: Anteil der Fahrzeuge, die ihn bei Ankunft voll antreffen
@@ -697,7 +715,7 @@ export interface SimInterval {
 export interface StochasticIntervalResult {
   label:     string
   result:    StochasticSN640022Result
-  carryOver: number  // Durchschnittliche Fahrzeuge, die ins nächste Intervall übergehen
+  carryOver: number  // Fahrzeuge, die am Ende des Intervalls noch warten (Mittel der Läufe); sie fahren im Folgeintervall ab
 }
 
 export interface StochasticMultiResult {
@@ -710,18 +728,18 @@ export interface StochasticMultiResult {
 
 const CAPACITY_RUNS = 30  // Läufe für die Grundleistungsfähigkeit (siehe gapAvailability)
 
-function runInternal(
-  volumes: number[][],
-  flags: SN640022LaneFlags,
-  rawVolumes: number[][] | undefined,
-  config: StochasticConfig,
-  carried: Map<number, number>,   // übernommene Fahrzeuge je Strom
-): { result: StochasticSN640022Result; endBacklog: Map<number, number> } | null {
+interface Prepared {
+  cfg:       FullConfig                // T des Intervalls, gemeinsamer Zufallsgenerator
+  analytical: NonNullable<ReturnType<typeof analyzeSN640022>>
+  lineDefs:  { key: string; storage: number; streams: LineStream[] }[]
+  newRun:    () => RunContext
+  usableOf:  (s: LineStream, n: number) => Uint8Array | undefined
+}
+
+// Was ein Intervall vor den Läufen braucht: Ströme, Haltelinien, Umwelt und die Rückstaukopplung
+function prepare(volumes: number[][], flags: SN640022LaneFlags, rawVolumes: number[][] | undefined, cfg: FullConfig): Prepared | null {
   const analytical = analyzeSN640022(volumes, flags, rawVolumes)
   if (!analytical) return null
-
-  const cfg = resolveConfig(config)
-  const t0 = performance.now()
   const raw = rawVolumes ?? volumes
   const isCrossing = volumes.length === 4
 
@@ -754,16 +772,12 @@ function runInternal(
       crosses: CROSSES[s.streamNumber],
     }]
   }))
-  // Eine Haltelinie gibt es, solange ein Strom Verkehr hat oder noch übernommene Fahrzeuge warten
-  const makeLine = (key: string, numbers: number[], storage: number): Line | null => {
-    const streams = numbers.map(n => streamDefs.get(n)).filter((s): s is LineStream => !!s && (s.q > 0 || (carried.get(s.streamNumber) ?? 0) > 0))
-    return streams.length > 0 ? { key, storage, streams } : null
-  }
-  const lines = (isCrossing
-    ? [makeLine('1', [1], Infinity), makeLine('7', [7], Infinity),
-       makeLine('B', [4, 5, 6], cfg.storageB), makeLine('D', [10, 11, 12], cfg.storageD)]
-    : [makeLine('7', [7], Infinity), makeLine('B', [4, 6], cfg.storageB)])
-    .filter((l): l is Line => l !== null)
+  const lineDef = (key: string, numbers: number[], storage: number) =>
+    ({ key, storage, streams: numbers.map(n => streamDefs.get(n)).filter((s): s is LineStream => !!s) })
+  const lineDefs = isCrossing
+    ? [lineDef('1', [1], Infinity), lineDef('7', [7], Infinity),
+       lineDef('B', [4, 5, 6], cfg.storageB), lineDef('D', [10, 11, 12], cfg.storageD)]
+    : [lineDef('7', [7], Infinity), lineDef('B', [4, 6], cfg.storageB)]
 
   const newRun = () => generateRun(mainFlows, legs, vehicleRates, cfg)
 
@@ -776,58 +790,84 @@ function runInternal(
     for (let i = 0; i < n; i++) flagsOfGaps[i] = cfg.rng() < p ? 1 : 0
     return flagsOfGaps
   }
+  return { cfg, analytical, lineDefs, newRun, usableOf }
+}
 
-  const delaysOf = new Map<number, number[]>()
-  const busy = new Map<string, number>()
-  const backlog = new Map<number, number>()
-  const angekommen = new Map<string, number>(), ueberlauf = new Map<string, number>()
+// Alle Intervalle gemeinsam: Jeder Lauf geht mit fortlaufender Warteschlange durch alle Intervalle. Ein Fahrzeug, das am Ende
+// eines Intervalls noch wartet, behält Ankunftszeit, Fahrbeziehung und Grenzzeitlücke und fährt im Verkehr des Folgeintervalls ab.
+// Seine ganze Wartezeit zählt genau einmal, im Intervall seiner Ankunft.
+function simulate(
+  intervals: { volumes: number[][]; rawVolumes?: number[][]; T?: number }[],
+  flags: SN640022LaneFlags,
+  config: StochasticConfig,
+): { result: StochasticSN640022Result; carryOver: number }[] | null {
+  const t0 = performance.now()
+  const base = resolveConfig(config)
+  const prepared: Prepared[] = []
+  for (const iv of intervals) {
+    const cfg = iv.T === undefined ? base : { ...resolveConfig({ ...config, T: iv.T }), rng: base.rng }
+    const p = prepare(iv.volumes, flags, iv.rawVolumes, cfg)
+    if (!p) return null
+    prepared.push(p)
+  }
+
   const add = <K,>(m: Map<K, number>, k: K, x: number) => m.set(k, (m.get(k) ?? 0) + x)
-  const vehiclesOf = (line: Line) => generateVehicles(line, line.streams.map(s => carried.get(s.streamNumber) ?? 0), cfg)
-  for (let i = 0; i < cfg.runs; i++) {
-    const run = newRun()
-    for (const line of lines) {
-      const p = runLine(line, vehiclesOf(line), run, usableOf, cfg.T)
-      add(busy, line.key, p.busy)
-      add(angekommen, line.key, p.arrivals)
-      add(ueberlauf, line.key, p.overflow)
-      line.streams.forEach((s, si) => {
-        add(backlog, s.streamNumber, p.endBacklog[si])
-        const all = delaysOf.get(s.streamNumber) ?? []
-        for (const d of p.delays[si]) all.push(d)
-        delaysOf.set(s.streamNumber, all)
-      })
+  const je = <V,>(neu: () => V) => prepared.map(neu)
+  const delaysOf = je(() => new Map<number, number[]>()), openOf = je(() => new Map<number, number>())
+  const busy = je(() => new Map<string, number>()), backlog = je(() => new Map<number, number>())
+  const angekommen = je(() => new Map<string, number>()), ueberlauf = je(() => new Map<string, number>())
+  const lineOf = je(() => new Map<number, string>())   // Ströme, die im Intervall an einer Haltelinie standen
+
+  for (let i = 0; i < base.runs; i++) {
+    const wartend = new Map<string, LineVehicle[]>()
+    prepared.forEach((p, k) => {
+      const run = p.newRun(), last = k === prepared.length - 1
+      for (const def of p.lineDefs) {
+        const waiting = wartend.get(def.key) ?? []
+        // Eine Haltelinie gibt es, solange ein Strom Verkehr hat oder noch übernommene Fahrzeuge warten
+        const streams = def.streams.filter(s => s.q > 0 || waiting.some(v => v.sn === s.streamNumber))
+        // Wartende eines Stroms, den es im Intervall nicht mehr gibt (andere Knotenform), fallen weg
+        const line: Line = { key: def.key, storage: def.storage, streams }
+        if (streams.length === 0) { wartend.set(def.key, []); continue }
+        const vehicles = generateVehicles(line, waiting.filter(v => streams.some(s => s.streamNumber === v.sn)), k, p.cfg)
+        const pass = runLine(line, vehicles, run, p.usableOf, p.cfg.T, conflictHorizon(p.cfg), k, last)
+        wartend.set(def.key, pass.rest)
+        add(busy[k], def.key, pass.busy)
+        add(angekommen[k], def.key, pass.arrivals)
+        add(ueberlauf[k], def.key, pass.overflow)
+        streams.forEach((s, si) => { add(backlog[k], s.streamNumber, pass.endBacklog[si]); lineOf[k].set(s.streamNumber, def.key) })
+        for (const d of pass.done) {
+          const all = delaysOf[d.origin].get(d.sn) ?? []
+          all.push(d.delay)
+          delaysOf[d.origin].set(d.sn, all)
+          if (d.open) add(openOf[d.origin], d.sn, 1)
+        }
+      }
+    })
+  }
+
+  const durationMs = (performance.now() - t0) / prepared.length
+  return prepared.map((p, k) => {
+    const overflow: StorageOverflow[] = p.lineDefs
+      .filter(l => (l.key === 'B' || l.key === 'D') && Number.isFinite(l.storage) && (angekommen[k].get(l.key) ?? 0) > 0)
+      .map(l => ({ arm: l.key as 'B' | 'D', storage: l.storage, share: (ueberlauf[k].get(l.key) ?? 0) / angekommen[k].get(l.key)! }))
+    const streams: StochasticStreamResult[] = p.analytical.streams.map(s => {
+      const key = lineOf[k].get(s.streamNumber)
+      return {
+        streamNumber: s.streamNumber,
+        name:         s.name,
+        rang:         s.rang,
+        qpi:          s.qpi,
+        stats:        computeStats(delaysOf[k].get(s.streamNumber) ?? []),
+        utilization:  key === undefined ? 0 : (busy[k].get(key) ?? 0) / (base.runs * p.cfg.T),
+        open:         (openOf[k].get(s.streamNumber) ?? 0) / base.runs,
+      }
+    })
+    return {
+      result: { streams, overflow, runs: base.runs, durationMs, config: intervals[k].T === undefined ? config : { ...config, T: intervals[k].T } },
+      carryOver: [...backlog[k].values()].reduce((a, v) => a + v, 0) / base.runs,
     }
-  }
-
-  const streamUtil = new Map<number, number>()
-  const endBacklog = new Map<number, number>()
-  for (const line of lines) {
-    for (const s of line.streams) {
-      streamUtil.set(s.streamNumber, (busy.get(line.key) ?? 0) / (cfg.runs * cfg.T))
-      endBacklog.set(s.streamNumber, (backlog.get(s.streamNumber) ?? 0) / cfg.runs)
-    }
-  }
-  const overflow: StorageOverflow[] = lines
-    .filter(l => (l.key === 'B' || l.key === 'D') && Number.isFinite(l.storage) && (angekommen.get(l.key) ?? 0) > 0)
-    .map(l => ({ arm: l.key as 'B' | 'D', storage: l.storage, share: (ueberlauf.get(l.key) ?? 0) / angekommen.get(l.key)! }))
-
-  const streams: StochasticStreamResult[] = analytical.streams.map(s => ({
-    streamNumber:   s.streamNumber,
-    name:           s.name,
-    rang:           s.rang,
-    qpi:            s.qpi,
-    stats:          computeStats(delaysOf.get(s.streamNumber) ?? []),
-    utilization:    streamUtil.get(s.streamNumber) ?? 0,
-  }))
-
-  return {
-    result: {
-      streams, overflow, runs: cfg.runs,
-      durationMs: performance.now() - t0,
-      config,
-    },
-    endBacklog,
-  }
+  })
 }
 
 // Rückstaukopplung analog F13–F20 (Ziff. 11, S. 6): Ein Nebenstrom kann eine Lücke nur
@@ -864,10 +904,10 @@ export function runStochasticSN640022(
   rawVolumes?: number[][],
   config: StochasticConfig = {},
 ): StochasticSN640022Result | null {
-  return runInternal(volumes, flags, rawVolumes, config, new Map())?.result ?? null
+  return simulate([{ volumes, rawVolumes }], flags, config)?.[0].result ?? null
 }
 
-// Feature D: Mehrere Zeitintervalle mit Carry-over-Queue
+// Feature D: Mehrere Zeitintervalle mit fortlaufender Warteschlange (siehe simulate)
 export function runStochasticSN640022Multi(
   intervals: SimInterval[],
   flags: SN640022LaneFlags,
@@ -875,24 +915,10 @@ export function runStochasticSN640022Multi(
 ): StochasticMultiResult | null {
   if (intervals.length === 0) return null
   const t0 = performance.now()
-  const results: StochasticIntervalResult[] = []
-  // Noch wartende Fahrzeuge je Strom (HS-Linksabbieger und NS-Ströme); sie behalten ihre Fahrbeziehung
-  let backlog = new Map<number, number>()
-
-  for (const iv of intervals) {
-    const carried = new Map([...backlog].map(([k, v]) => [k, Math.round(v)]))
-    const r = runInternal(iv.volumes, flags, iv.rawVolumes, { ...config, T: iv.T }, carried)
-    if (!r) return null
-    backlog = r.endBacklog
-    results.push({
-      label:     iv.label,
-      result:    r.result,
-      carryOver: Math.round([...backlog.values()].reduce((s, v) => s + v, 0)),
-    })
-  }
-
+  const r = simulate(intervals, flags, config)
+  if (!r) return null
   return {
-    intervals: results,
+    intervals: r.map((x, k) => ({ label: intervals[k].label, result: x.result, carryOver: Math.round(x.carryOver) })),
     totalDurationMs: performance.now() - t0,
     config,
   }

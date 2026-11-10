@@ -53,6 +53,13 @@ export function entryFactor(gradient: GradientPCE, mix?: RbVehicleMix): number {
           + c.fLW * mix.pctLW + c.fLZ * mix.pctLZ) / tot
 }
 
+// Mischung passend zur Neigung: Fahrräder gibt es nur bei ±0 % (Tabelle 2, Seite 9). Bei anderer Neigung hat ihr Anteil keinen Faktor
+// und zählte als Verkehr ohne Belastung; er wird darum auf 0 gesetzt. ohneFR nennt den entfernten Anteil [%], 0 ohne Änderung
+export function mixZurNeigung(mix: RbVehicleMix | undefined, gradient: GradientPCE | null): { mix: RbVehicleMix | undefined; ohneFR: number } {
+  if (!mix || !(mix.pctFR > 0) || gradient === null || gradient === '±0%') return { mix, ohneFR: 0 }
+  return { mix: { ...mix, pctFR: 0 }, ohneFR: mix.pctFR }
+}
+
 // PW-Äquivalentfaktor der Kreiselfahrbahn — immer bei ±0 % Neigung (Norm S. 9).
 export function ringFactor(mix?: RbVehicleMix): number {
   return entryFactor('±0%', mix)

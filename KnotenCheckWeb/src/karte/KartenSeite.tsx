@@ -15,7 +15,7 @@ import { armTempoAmtlich, ladeAmtlich, type ArmTempo } from './ortEbenen'
 import { abbiegerHolen, MODELL_ABBIEGER_QUELLE, type AbbiegerStand } from './modellAbbieger'
 import KnotenKarte, { ARM_HAUPT_FARBE, ARM_NEBEN_FARBE, KNOTEN_FARBE, type KartenLinie } from './KnotenKarte'
 import { armName, FGS_ABSTAND_M, moeglicheRechner, rechnerVorschlag, type KartenArm, type KnotenVorschlag, knotenVorschlag } from './knotenVorschlag'
-import { klasseText, ladeArmNeigung, NEIGUNG_LINIE_M, type ArmNeigung } from './neigung'
+import { klasseText, ladeArmNeigung, NEIGUNG_LINIE_M, NEIGUNG_VOLL, type ArmNeigung } from './neigung'
 import { RECHNER_NAME, type KnotenUebernahme, type RechnerKey, type Spur } from './rechner'
 import Trenner, { PANEL_VORGABE } from './Trenner'
 import { ALLES, anfangsPaar, armeMitLabel, hauptPaare, SPITZE_TEXT, uebernahmeAus, type Auswahl, type HauptPaar, type Spitze } from './uebernahme'
@@ -292,7 +292,7 @@ export default function KartenSeite({ aktiv, onStart, onUebernehmen }: Props) {
                           {arm.signal && <span className="quelle-chip">{SIGNAL_TEXT[arm.signal]} · OSM</span>}
                           {!arm.zufahrt && <span className="quelle-chip">nur Ausfahrt · OSM</span>}
                           {arm.stichM !== null && <span className="quelle-chip">Stichstück · OSM</span>}
-                          {n?.klasse && <span className="quelle-chip q-annahme" title={`Gemessen ${n.prozent} %, in Fahrrichtung zum Knoten, über ${NEIGUNG_LINIE_M} m ab dem Knoten (Annahme)`}>{klasseText(n.klasse)} · {n.modell}</span>}
+                          {n?.klasse && <span className="quelle-chip q-annahme" title={`Gemessen ${n.prozent} %, in Fahrrichtung zum Knoten, über ${n.laengeM !== undefined && n.laengeM < NEIGUNG_VOLL * NEIGUNG_LINIE_M ? `${Math.round(n.laengeM)} m statt ${NEIGUNG_LINIE_M}` : NEIGUNG_LINIE_M} m ab dem Knoten (Annahme)`}>{klasseText(n.klasse)} · {n.modell}</span>}
                           {arm.fgs && <span className="quelle-chip">FGS{arm.fgs.insel ? ' mit Insel' : ''} · OSM</span>}
                           {streifenText(arm) && <span className="quelle-chip">{streifenText(arm)} · OSM</span>}
                         </div>
@@ -376,7 +376,7 @@ export default function KartenSeite({ aktiv, onStart, onUebernehmen }: Props) {
                   </tbody>
                 </table>
               )}
-              {modellStand && modellStand.offen.length > 0 && <p className="klein">Ohne Modellwert: {armLabels.filter(x => modellStand.offen.includes(x.arm.key)).map(x => x.label).join(', ')}. Die Ströme dieser Arme bleiben von Hand einzugeben.</p>}
+              {uebernahme.arme.some(a => a.stroemeOffen) && <p className="klein">Ohne Modellwert: {uebernahme.arme.filter(a => a.stroemeOffen).map(a => a.label).join(', ')}. Die Ströme dieser Arme sind im Rechner einzugeben oder als «kein Verkehr» zu bestätigen; bis dahin gibt es kein Ergebnis.</p>}
             </fieldset>
           </section>
         )}

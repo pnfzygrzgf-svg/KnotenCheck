@@ -2,7 +2,8 @@ import { useState, useMemo, useEffect, useRef, useCallback, type ReactNode } fro
 import UebernahmeHinweis from './karte/UebernahmeHinweis'
 import BelastungsVergleich from './karte/BelastungsVergleich'
 import { querschnitteKnoten } from './karte/vergleich'
-import { kartenBezugAus, kartenBezugLesen, lsaTempo, type KartenBezug, type KnotenUebernahme, type UebernahmeArm } from './karte/rechner'
+import { bestaetigtLesen, herkunftAus, kartenBezugAus, kartenBezugLesen, lsaTempo, offeneModellAngaben, type KartenBezug, type KnotenUebernahme, type UebernahmeArm } from './karte/rechner'
+import ModellLuecken from './karte/ModellLuecken'
 import { Abschnitt, BerichtKopf, BerichtRahmen, Gesamtergebnis, Herkunft, HerkunftLegende, HinweisListe, QuellenAbschnitt } from './bericht/Bericht'
 import { kartenHerkunft, schaetzArt, stromArt, type HerkunftArt } from './bericht/herkunft'
 import type { ArmStroeme } from './engine/armmengen'
@@ -12,7 +13,7 @@ import { HerkunftMarke } from './HerkunftMarke'
 import { GRUNDLAGEN } from './hilfeTexte'
 import { createPortal } from 'react-dom'
 import {
-  calculateLSAV2, defaultLanesAndPhases, armStreamIds, armMovements, STREAM_LABELS, suggestPhasePlan,
+  calculateLSAV2, defaultPhasesFor, armStreamIds, armMovements, STREAM_LABELS, suggestPhasePlan,
   tzFor, tzFromSpeed, tzModeFromFile, Z_PRACTICAL, TZ_NORM,
 } from './engine/lsaCalculatorV2'
 import { exportTool, importTool } from './saveLoad'
@@ -420,7 +421,7 @@ function PhasePlanSection({ lanes, phaseStates, onChange, onApplyDefault, onSugg
       </div>
       <div style={{ display:'flex', gap:20, marginBottom:10, flexWrap:'wrap' }}>
         <span style={{ fontSize:12, color:'var(--text-muted)' }}>
-          <span style={{ fontWeight:600 }}>Vorschlag laden:</span> Fixer Standard HS (A+C) | NS (B{lanes.some(l=>l.armIndex===3)?'+D':''}), unabhängig von Verkehrsstärken
+          <span style={{ fontWeight:600 }}>Vorschlag laden:</span> Fixer Standard HS (A+C) | NS (B{lanes.some(l=>l.armIndex===3)?'+D':''}), unabhängig von Verkehrsstärken; alle Fahrstreifen eines Arms gemeinsam, Fussgängerstreifen bitte selbst zuordnen
         </span>
         <span style={{ fontSize:12, color:'var(--text-muted)' }}>
           <span style={{ fontWeight:600 }}>Minimaler Phasenplan:</span> Kleinstmögliche Phasenzahl für aktive Ströme (Ziffer 11, Seite 9)
@@ -1302,7 +1303,7 @@ export function LSAPrintSheet({ nodeName, armCount, arms, volumes, moveLane, fgs
           <li>Umlaufzeit: {manualZ > 0 ? `von Hand gewählt, Z = ${manualZ} s${result.zRaised ? ` (gerechnet mit dem Minimum Z = ${result.Z} s)` : ''}` : 'automatisch aus Tab. 2, Seite 10'}</li>
           <li>Zwischenzeit: {tzMode === 'norm' ? 'Norm-Pauschale' : 'nach zulässiger Geschwindigkeit gestaffelt (Annahme)'}, T_Z = {result.tZ} s je Phase</li>
         </ul>
-        <HerkunftLegende arten={herkunft} />
+        <HerkunftLegende arten={herkunft} unbekannt={!!karte && !karte.herkunft} />
       </Abschnitt>
 
       <HinweisListe hinweise={hinweise} />
@@ -1375,6 +1376,8 @@ export default function LSAApp({ uebernahme: kartenUebernahme }: { uebernahme?: 
   const letzteArmzahl = useRef(armCount)
   const [karte, setKarte] = useState(() => uebernahme ? kartenBezugAus(uebernahme, 'lsa') : null)
   const [schaetzung, setSchaetzung] = useState<Schaetzung | null>(null)
+  // Arme ohne Modellwert, für die «kein Verkehr» bestätigt ist
+  const [nullOk, setNullOk] = useState<number[]>([])
   const [showBl, setShowBl] = useState(false)
   const openBl  = useCallback(() => setShowBl(true),  [])
   const closeBl = useCallback(() => setShowBl(false), [])
@@ -1434,16 +1437,9 @@ export default function LSAApp({ uebernahme: kartenUebernahme }: { uebernahme?: 
     setPhaseStates(suggested.map(ph => ({ id: ph.id, selectedLaneIds: ph.laneIds })))
   }
 
-  // Standard-Vorschlag laden
+  // Standard-Vorschlag laden, auf alle Fahrstreifen der Arme gelegt
   function applyDefault() {
-    const { lanes: defLanes, phases: defPhases } = defaultLanesAndPhases(armCount)
-    const armLabels = armCount===3 ? ['A','C','B'] : ['A','C','B','D']
-    const defToReal: Record<string,string> = {}
-    defLanes.forEach((dl,i) => { defToReal[dl.id] = `${armLabels[i]}-FS1` })
-    setPhaseStates(defPhases.map(dp => ({
-      id: dp.id,
-      selectedLaneIds: dp.laneIds.map(id=>defToReal[id]).filter(Boolean),
-    })))
+    setPhaseStates(defaultPhasesFor(armCount, lanes).map(ph => ({ id: ph.id, selectedLaneIds: ph.laneIds })))
   }
 
   // Bei armCount-Änderung: Eingaben leeren, der Phasenplan bleibt offen. Beim Start nichts tun:
@@ -1462,7 +1458,7 @@ export default function LSAApp({ uebernahme: kartenUebernahme }: { uebernahme?: 
     exportTool({
       tool: 'lsa', filePrefix: 'LSA',
       name: nodeName, melden,
-      data: { lsaSchema: 3, nodeName, armCount, arms, moveLane, fgsConfig, phaseStates, targetLos, manualZ, tzMode, ...(karte ? { karte } : {}), ...(schaetzung ? { schaetzung } : {}) },
+      data: { lsaSchema: 3, nodeName, armCount, arms, moveLane, fgsConfig, phaseStates, targetLos, manualZ, tzMode, ...(karte ? { karte } : {}), ...(schaetzung ? { schaetzung } : {}), ...(nullOk.length ? { stromNullBestaetigt: nullOk } : {}) },
     })
 
   const handleImport = () =>
@@ -1501,6 +1497,7 @@ export default function LSAApp({ uebernahme: kartenUebernahme }: { uebernahme?: 
       setNodeName(typeof d.nodeName === 'string' ? d.nodeName : '')
       setKarte(kartenBezugLesen(d.karte))
       setMitKarte(false)
+      setNullOk(bestaetigtLesen(d.stromNullBestaetigt))
       setArmCount(newCount)
       setArmGewaehlt(true)
       setArms(loadedArms)
@@ -1535,6 +1532,7 @@ export default function LSAApp({ uebernahme: kartenUebernahme }: { uebernahme?: 
     setSchaetzung(null)
     setKarte(null)
     setMitKarte(false)
+    setNullOk([])
     melden('Zurückgesetzt')
   }
 
@@ -1590,12 +1588,14 @@ export default function LSAApp({ uebernahme: kartenUebernahme }: { uebernahme?: 
 
   // Zwischenzeit: Norm-Pauschale oder Annahme (Staffelung, Maximum über alle Arme)
   // Marken «Karte» und «Modell» an den Feldern, nur solange die Armzahl noch die der Übernahme ist
-  const herkunftU = uebernahme?.armCount === armCount ? uebernahme : undefined
+  // Herkunft der Werte: aus der Übernahme, nach dem Laden aus der Datei
+  const herkunftU = useMemo(() => { const h = herkunftAus(karte); return h?.armCount === armCount ? h : undefined }, [karte, armCount])
+  const armSummen = arms.slice(0, armCount).map((a, i) => armMovements(armCount, i).reduce((s, m) => s + (a[m.direction] ?? 0), 0))
   const laneAus = useMemo(() => herkunftU ? moveLaneAus(herkunftU) : {}, [herkunftU])
   const tZ = useMemo(() => (tzMode ? tzFor(tzMode, arms.map(a => a.vDesign)) : null), [tzMode, arms])
 
   const offen = armGewaehlt
-    ? offenLsa({ armCount, arms, moveLane, fgs: fgsConfig, tzMode, targetLos, phasenplan: phases.some(p => p.laneIds.length > 0) })
+    ? [...offenLsa({ armCount, arms, moveLane, fgs: fgsConfig, tzMode, targetLos, phasenplan: phases.some(p => p.laneIds.length > 0) }), ...offeneModellAngaben(herkunftU, armSummen, nullOk)]
     : ['Knotentyp']
   const fertig = offen.length === 0
 
@@ -1612,6 +1612,7 @@ export default function LSAApp({ uebernahme: kartenUebernahme }: { uebernahme?: 
       {uebernahme && <UebernahmeHinweis u={uebernahme} rechner="lsa" />}
       <SoFunktionierts rechner="lsa" />
       {karte && <BelastungsVergleich vergleich={karte.vergleich} querschnitte={querschnitteKnoten(arms)} />}
+      {armGewaehlt && <ModellLuecken u={herkunftU} summen={armSummen} bestaetigt={nullOk} onBestaetigen={i => setNullOk(n => [...n, i])} />}
 
 
       {/* ── Kopfzeile ─── */}
@@ -1807,7 +1808,7 @@ export default function LSAApp({ uebernahme: kartenUebernahme }: { uebernahme?: 
         manualZ={manualZ}
         onClose={closeBl}
         karte={karte}
-        uebernahme={uebernahme}
+        uebernahme={herkunftU}
         schaetzung={schaetzung}
       />,
       document.body

@@ -2,10 +2,11 @@ import { useState, useMemo, useCallback, type CSSProperties, type ReactNode } fr
 import UebernahmeHinweis from './karte/UebernahmeHinweis'
 import BelastungsVergleich from './karte/BelastungsVergleich'
 import { querschnitteKreisel } from './karte/vergleich'
-import { kartenBezugAus, kartenBezugLesen, type KartenBezug, type KnotenUebernahme, type UebernahmeArm } from './karte/rechner'
+import { bestaetigtLesen, herkunftAus, kartenBezugAus, kartenBezugLesen, offeneModellAngaben, type KartenBezug, type KnotenUebernahme, type UebernahmeArm } from './karte/rechner'
+import ModellLuecken from './karte/ModellLuecken'
 import { createPortal } from 'react-dom'
 import { calculateRoundabout, computeQKfromTurnings, computeQAfromTurnings, entryTypesFromFile,
-  entryFactor, ringFactor, RB_PCE_MOTOR, FG_MAX_NORM, QK_MAX_NORM, LA_MAX_2_2, ROUNDABOUT_TYPES } from './engine/roundaboutCalculator'
+  entryFactor, mixZurNeigung, ringFactor, RB_PCE_MOTOR, FG_MAX_NORM, QK_MAX_NORM, LA_MAX_2_2, ROUNDABOUT_TYPES } from './engine/roundaboutCalculator'
 import { conform, conformFixed, oneOf, wahl } from './engine/conform'
 import { offenKreisel } from './engine/offeneAngaben'
 import type { RoundaboutType, LevelOfService, EntryResult, ExitResult,
@@ -703,7 +704,7 @@ export function Bewertungsblatt({ nodeName, armCount, arms, result, onClose, kar
             })}
           </tbody>
         </table>
-        <HerkunftLegende arten={herkunft} />
+        <HerkunftLegende arten={herkunft} unbekannt={!!karte && !karte.herkunft} />
       </Abschnitt>
 
       <HinweisListe hinweise={hinweise} />
@@ -750,6 +751,10 @@ export default function RoundaboutApp({ uebernahme: kartenUebernahme }: { uebern
     }))
   const [karte, setKarte] = useState(() => uebernahme ? kartenBezugAus(uebernahme, 'sn024a') : null)
   const [schaetzung, setSchaetzung] = useState<Schaetzung | null>(null)
+  // Arme ohne Modellwert, für die «kein Verkehr» bestätigt ist
+  const [nullOk, setNullOk] = useState<number[]>([])
+  // Herkunft der Werte: aus der Übernahme, nach dem Laden aus der Datei
+  const herkunftU = useMemo(() => { const h = herkunftAus(karte); return h?.armCount === armCount ? h : undefined }, [karte, armCount])
   const [showBl, setShowBl] = useState(false)
   const openBl  = useCallback(() => setShowBl(true),  [])
   const closeBl = useCallback(() => setShowBl(false), [])
@@ -763,11 +768,12 @@ export default function RoundaboutApp({ uebernahme: kartenUebernahme }: { uebern
     exportTool({
       tool: 'sn024a', filePrefix: 'SN024a',
       name: nodeName, fallbackName: 'kreisel', melden,
-      data: { nodeName, armCount, arms, ...(karte ? { karte } : {}), ...(schaetzung ? { schaetzung } : {}) },
+      data: { nodeName, armCount, arms, ...(karte ? { karte } : {}), ...(schaetzung ? { schaetzung } : {}), ...(nullOk.length ? { stromNullBestaetigt: nullOk } : {}) },
     })
 
   const handleImport = () =>
     importTool('sn024a', d => {
+        setNullOk(bestaetigtLesen(d.stromNullBestaetigt))
         setNodeName(typeof d.nodeName === 'string' ? d.nodeName : '')
         setKarte(kartenBezugLesen(d.karte))
         setMitKarte(false)
@@ -779,16 +785,22 @@ export default function RoundaboutApp({ uebernahme: kartenUebernahme }: { uebern
         const leer = d.leereFelder === true, types = entryTypesFromFile(d, 4)
         const neigungen = Object.keys(RB_PCE_MOTOR) as GradientPCE[]
         const janein = (v: unknown) => (leer ? (typeof v === 'boolean' ? v : null) : v === true)
+        // Fahrräder gibt es nur bei ±0 % (Tabelle 2, Seite 9), wie beim Wechsel der Neigung in der Armkarte. Ein Anteil bei anderer Neigung hätte
+        // keinen Faktor und zählte als Verkehr ohne Belastung: Er wird beim Laden auf 0 gesetzt und gemeldet
+        const ohneFR: string[] = []
         setArms(conformFixed([defaultArm(), defaultArm(), defaultArm(), defaultArm()], d.arms).map((a, i) => {
-          const mix = a.mix ? conform<RbVehicleMix>({ pctFR: 0, pctMR: 0, pctLW: 0, pctLZ: 0 }, a.mix) : undefined
+          const gradient = leer ? wahl(neigungen, a.gradient) : oneOf(neigungen, a.gradient, '±0%')
+          const { mix, ohneFR: weg } = mixZurNeigung(a.mix ? conform<RbVehicleMix>({ pctFR: 0, pctMR: 0, pctLW: 0, pctLZ: 0 }, a.mix) : undefined, gradient)
+          if (weg > 0 && i < n) ohneFR.push(`Arm ${i + 1} (${String(weg).replace('.', ',')} %)`)
           return {
             ...a, mix,
             type: leer ? wahl(ROUNDABOUT_TYPES, a.type) : types[i],
-            gradient: leer ? wahl(neigungen, a.gradient) : oneOf(neigungen, a.gradient, '±0%'),
+            gradient,
             exitWide: janein(a.exitWide), exitTwoLanes: janein(a.exitTwoLanes),
             mischung: leer ? wahl(['pauschal', 'detail'] as const, a.mischung) : mix ? 'detail' : 'pauschal',
           }
         }))
+        return ohneFR.length ? `Fahrradanteil auf 0 gesetzt, weil es ihn nur bei ±0 % Neigung gibt: ${ohneFR.join(', ')}. Bitte die Mischung prüfen.` : undefined
       }, melden)
 
   function handleReset() {
@@ -798,13 +810,16 @@ export default function RoundaboutApp({ uebernahme: kartenUebernahme }: { uebern
     setSchaetzung(null)
     setKarte(null)
     setMitKarte(false)
+    setNullOk([])
     melden('Zurückgesetzt')
   }
 
   // Neue Identität genau dann, wenn sich Arme oder Armzahl ändern (Abhängigkeit der Memos unten)
   const activeArms = useMemo(() => arms.slice(0, armCount), [arms, armCount])
 
-  const offen = useMemo(() => (armGewaehlt ? offenKreisel(activeArms) : ['Anzahl Arme']), [armGewaehlt, activeArms])
+  const armSummen = useMemo(() => activeArms.map(a => a.right + a.left + (armCount === 4 ? a.straight : 0)), [activeArms, armCount])
+  const offen = useMemo(() => (armGewaehlt ? [...offenKreisel(activeArms), ...offeneModellAngaben(herkunftU, armSummen, nullOk)] : ['Anzahl Arme']),
+    [armGewaehlt, activeArms, herkunftU, armSummen, nullOk])
 
   // Q_K aus Abbiegeströmen (Fz/h) — Formel: Abb. 10 / Herleitung Ring-Querschnitt
   const qkFzh = useMemo(() => computeQKfromTurnings(
@@ -859,6 +874,7 @@ export default function RoundaboutApp({ uebernahme: kartenUebernahme }: { uebern
       {uebernahme && <UebernahmeHinweis u={uebernahme} rechner="sn024a" />}
       <SoFunktionierts rechner="sn024a" />
       {karte && <BelastungsVergleich vergleich={karte.vergleich} querschnitte={querschnitteKreisel(arms.slice(0, armCount))} />}
+      {armGewaehlt && <ModellLuecken u={herkunftU} summen={armSummen} bestaetigt={nullOk} onBestaetigen={i => setNullOk(n => [...n, i])} />}
 
 
       {/* Knoten-Konfiguration */}
@@ -936,7 +952,7 @@ export default function RoundaboutApp({ uebernahme: kartenUebernahme }: { uebern
         <div className={`arms-grid${armCount === 4 ? ' arms-grid-4' : ''}`}>
           {activeArms.map((arm, i) => (
             <ArmCard key={i} arm={arm} index={i} armCount={armCount}
-                     qkFzh={qkFzh[i]} qkPWE={qkPWE[i]} onChange={a => setArm(i, a)} herkunft={uebernahme?.arme[i]} schaetzung={schaetzung?.stroeme[i]} />
+                     qkFzh={qkFzh[i]} qkPWE={qkPWE[i]} onChange={a => setArm(i, a)} herkunft={herkunftU?.arme[i]} schaetzung={schaetzung?.stroeme[i]} />
           ))}
         </div>
 
@@ -1043,7 +1059,7 @@ export default function RoundaboutApp({ uebernahme: kartenUebernahme }: { uebern
 
     {isActive && result && showBl && createPortal(
       <Bewertungsblatt nodeName={nodeName} armCount={armCount} arms={activeArms} result={result}
-        onClose={closeBl} karte={karte} uebernahme={uebernahme} schaetzung={schaetzung} knotenbild={knotenbild} />,
+        onClose={closeBl} karte={karte} uebernahme={herkunftU} schaetzung={schaetzung} knotenbild={knotenbild} />,
       document.body
     )}
     </>

@@ -1,12 +1,18 @@
 import { describe, test, expect } from 'vitest'
+import { renderToString } from 'react-dom/server'
+import { createElement } from 'react'
 import { kreuz, neg } from '../knotenkern/geo'
 import { knotenVorschlag, moeglicheRechner, rechnerVorschlag, vermutlichRechtsvortritt, type KartenArm, type KnotenVorschlag } from './knotenVorschlag'
 import { armStreifen, spurenLesen } from './fahrstreifen'
 import { bernLesen, lokalLinieZuordnen, modellZuordnen, npvmLesen, type ArmBelastung, type ModellStrecke } from './belastung'
-import { neigungsklasse, NEIGUNG_LINIE_M } from './neigung'
+import { neigungsklasse, NEIGUNG_LINIE_M, NEIGUNG_VOLL } from './neigung'
+import { stromHerkunft } from '../bericht/herkunft'
+import { HerkunftLegende } from '../bericht/Bericht'
+import { ladeOsmRoh, sperreNachAntwort, sperreZuruecksetzen } from '../knotenkern/daten/osm'
 import { abweichung, querschnitteKnoten, querschnitteKreisel, lokalTitel } from './vergleich'
 import {
-  belegtFuer, eigenerLinks, eigenerRechts, intersectionAus, kartenBezugAus, kartenBezugLesen, kombination, type ArmStreifen,
+  belegtFuer, bestaetigtLesen, eigenerLinks, eigenerRechts, herkunftAus, intersectionAus, kartenBezugAus, kartenBezugLesen, kombination, offeneModellAngaben,
+  offeneModellArme, type ArmStreifen,
 } from './rechner'
 import { ALLES, anfangsPaar, armeOrdnen, hauptKnickt, hauptPaare, kreiselOrdnen, kreiselTyp, tempoQuelle, uebernahmeAus } from './uebernahme'
 
@@ -562,5 +568,151 @@ describe('lokalTitel', () => {
   test('bleibt allgemein bei mehreren oder keiner Quelle', () => {
     expect(lokalTitel([arm('Stadt Bern, a'), arm('Kanton Zürich, b')])).toBe('Lokale Daten')
     expect(lokalTitel([arm(null)])).toBe('Lokale Daten')
+  })
+})
+
+// ── Prüfung vom 10.11.2026: Befunde KC-01 bis KC-03, KC-08, KC-10 und KC-11 ──
+
+describe('KC-01: Arm ohne Modellwert ist kein Nullverkehr', () => {
+  const x = vorschlag(knotenRoh([haupt('Hauptweg', 90), haupt('Hauptweg', 270), { az: 180, name: 'Nebenweg' }]))
+  const p = anfangsPaar(x)!, [a, c, b] = armeOrdnen(x, p)
+  const stand = { spitze: 'morgen' as const, matrix: { [a.key]: { [c.key]: 300, [b.key]: 50 }, [c.key]: { [a.key]: 300, [b.key]: 100 }, [b.key]: {} }, sv: {}, offen: [b.key] }
+  const u = uebernahmeAus(x, p, {}, { ...ALLES, abbieger: 'morgen' }, {}, 'x', stand)!
+  test('der Arm bekommt keine Zahlen mit Modellherkunft und ist als offen vermerkt', () => {
+    expect(u.arme[2].stroeme).toBeUndefined()
+    expect(u.arme[2].stroemeOffen).toBe(true)
+    expect(u.arme[0].stroeme).toEqual({ left: 0, straight: 300, right: 50 })
+    expect(u.arme[0].stroemeOffen).toBeUndefined()
+    expect(u.hinweise.join(' ')).toContain('Arm B: kein passender Modellwert')
+  })
+  test('der Rechner bleibt offen, obwohl A und C Verkehr haben; Eingabe oder Bestätigung gibt frei', () => {
+    const summen = intersectionAus(u).arms.map(k => k.leftVolume + k.straightVolume + k.rightVolume)
+    expect(summen).toEqual([350, 400, 0])
+    expect(offeneModellAngaben(u, summen, [])).toEqual(['Arm B: Ströme (kein Modellwert; eingeben oder «kein Verkehr» bestätigen)'])
+    expect(offeneModellAngaben(u, summen, [2])).toEqual([])
+    expect(offeneModellAngaben(u, [350, 400, 20], [])).toEqual([])
+  })
+  test('echte Nullwerte des Modells bleiben Modellwerte, ohne Modell ist nichts offen', () => {
+    const voll = uebernahmeAus(x, p, {}, { ...ALLES, abbieger: 'morgen' }, {}, 'x', { ...stand, matrix: { ...stand.matrix, [b.key]: { [a.key]: 0, [c.key]: 12 } }, offen: [] })!
+    expect(voll.arme[2].stroeme).toEqual({ left: 0, straight: 0, right: 12 })
+    expect(offeneModellArme(voll, [350, 400, 12], [])).toEqual([])
+    expect(offeneModellArme(uebernahmeAus(x, p)!, [0, 0, 0], [])).toEqual([])
+    expect(offeneModellArme(undefined, [0, 0, 0], [])).toEqual([])
+  })
+  test('Datei-Rundlauf behält den offenen Arm und die Bestätigung', () => {
+    const k = kartenBezugLesen(JSON.parse(JSON.stringify(kartenBezugAus(u, 'sn022'))))
+    expect(offeneModellArme(herkunftAus(k), [350, 400, 0], [])).toEqual([2])
+    expect(bestaetigtLesen(JSON.parse('[2, "x", 9, -1]'))).toEqual([2])
+    expect(bestaetigtLesen(undefined)).toEqual([])
+  })
+})
+
+describe('KC-02: Einbahn vom Knoten weg und Modellverkehr zum Knoten', () => {
+  const x = vorschlag(knotenRoh([haupt('Hauptweg', 90), haupt('Hauptweg', 270), { az: 180, name: 'Nebenweg', tags: { oneway: 'yes' } }]))
+  const p = anfangsPaar(x)!, [a, c, b] = armeOrdnen(x, p)
+  const matrix = (vonB: Record<string, number>) => ({ [a.key]: { [c.key]: 300, [b.key]: 50 }, [c.key]: { [a.key]: 300, [b.key]: 100 }, [b.key]: vonB })
+  test('Widerspruch: nicht übernommen, gemeldet und offen; Verkehr nach B bleibt', () => {
+    const u = uebernahmeAus(x, p, {}, { ...ALLES, abbieger: 'morgen' }, {}, 'x', { spitze: 'morgen', matrix: matrix({ [a.key]: 200 }), sv: {}, offen: [] })!
+    expect(b.zufahrt).toBe(false)
+    expect(u.arme[2].stroeme).toBeUndefined()
+    expect(u.arme[2].stroemeOffen).toBe(true)
+    expect(u.hinweise.join(' ')).toContain('Arm B ist in OSM Einbahn vom Knoten weg, das Modell führt dort 200 Fz/h zum Knoten')
+    expect(u.hinweise.join(' ')).not.toContain('Ströme dort bleiben 0')
+    expect(u.arme[0].stroeme!.right).toBe(50)
+    expect(u.arme[1].stroeme!.left).toBe(100)
+    expect(intersectionAus(u).arms[2]).toMatchObject({ leftVolume: 0, straightVolume: 0, rightVolume: 0 })
+  })
+  test('ohne Widerspruch: Ströme 0 ohne Modellmarke, nichts offen', () => {
+    const u = uebernahmeAus(x, p, {}, { ...ALLES, abbieger: 'morgen' }, {}, 'x', { spitze: 'morgen', matrix: matrix({}), sv: {}, offen: [b.key] })!
+    expect(u.arme[2].stroeme).toBeUndefined()
+    expect(u.arme[2].stroemeOffen).toBeUndefined()
+    expect(u.hinweise.join(' ')).toContain('Ströme dort bleiben 0')
+    expect(u.hinweise.join(' ')).not.toContain('kein passender Modellwert')
+  })
+})
+
+describe('KC-03: gleich nahe Modellstrecken mit anderen Spitzenwerten', () => {
+  const strecke = (nr: number, y: number, x: Partial<ModellStrecke>): ModellStrecke =>
+    ({ nr, dtv: 1000, msp: 100, asp: 100, svMorgen: { lw: 2, lz: 0 }, svAbend: { lw: 2, lz: 0 }, teile: [[[0, y], [80, y]]], ...x })
+  const arm: [number, number][] = [[0, 0], [50, 0]]
+  const offen = (zweite: Partial<ModellStrecke>) => {
+    const s1 = strecke(1, 3, {}), s2 = strecke(2, -3, zweite)
+    return [modellZuordnen([s1, s2], arm), modellZuordnen([s2, s1], arm)]
+  }
+  test('gleicher DTV, andere Morgenspitze, Abendspitze oder anderer Schwerverkehr: in beiden Reihenfolgen offen', () => {
+    for (const anders of [{ msp: 500 }, { asp: 500 }, { svMorgen: { lw: 20, lz: 0 } }, { svAbend: { lw: 2, lz: 5 } }, { svMorgen: null }]) {
+      for (const r of offen(anders)) { expect(r.strecke).toBeNull(); expect(r.hinweis).toContain('Mehrere passende Modellstrecken') }
+    }
+  })
+  test('gleiche Werte auf zwei Strecken bleiben zulässig', () => {
+    for (const r of offen({})) expect(r.strecke?.msp).toBe(100)
+  })
+})
+
+describe('KC-08: Höhenprofil kürzer als die Messlänge', () => {
+  const x = vorschlag(knotenRoh([haupt('Hauptweg', 90), haupt('Hauptweg', 270), { az: 180, name: 'Nebenweg' }]))
+  const p = anfangsPaar(x)!, [a, c] = armeOrdnen(x, p)
+  const n = (laengeM: number) => ({ prozent: 0, klasse: '±0%' as const, modell: 'swissALTI3D', hinweis: null, laengeM })
+  test('20 m von 50 m stehen beim Arm, nie pauschal «50 m gemessen»', () => {
+    const text = uebernahmeAus(x, p, { [a.key]: n(20), [c.key]: n(49.6) })!.belegt.find(b => b.art === 'neigung')!.text
+    expect(text).toContain('A ±0 % (nur über 20 m)')
+    expect(text).toContain('C ±0 %')
+    expect(text).not.toContain('C ±0 % (nur')
+  })
+  test('die Grenze liegt bei 90 % der Messlänge', () => {
+    expect(NEIGUNG_LINIE_M * NEIGUNG_VOLL).toBe(45)
+    const text = (l: number) => uebernahmeAus(x, p, { [a.key]: n(l) })!.belegt.find(b => b.art === 'neigung')!.text
+    expect(text(44.9)).toContain('(nur über 45 m)')
+    expect(text(45)).not.toContain('nur über')
+  })
+})
+
+describe('KC-10: Herkunft bleibt im Datei-Rundlauf', () => {
+  const x = vorschlag(knotenRoh([haupt('Hauptweg', 90), haupt('Hauptweg', 270), { az: 180, name: 'Nebenweg', tags: { maxspeed: '30' } }]))
+  const p = anfangsPaar(x)!, [a, c, b] = armeOrdnen(x, p)
+  const stand = { spitze: 'morgen' as const, matrix: { [a.key]: { [c.key]: 200, [b.key]: 30 }, [c.key]: { [a.key]: 180, [b.key]: 20 }, [b.key]: { [a.key]: 15, [c.key]: 25 } }, sv: { [a.key]: { lw: 6.5, lz: 1.2 } }, offen: [] }
+  const u = uebernahmeAus(x, p, { [a.key]: { prozent: 2, klasse: '+2%', modell: 'swissALTI3D', hinweis: null } }, { ...ALLES, abbieger: 'morgen', schwerverkehr: 'morgen' }, {}, 'x', stand)!
+  const geladen = herkunftAus(kartenBezugLesen(JSON.parse(JSON.stringify(kartenBezugAus(u, 'lsa')))))!
+  test('unveränderte Werte tragen nach dem Laden dieselben Zeichen', () => {
+    for (let i = 0; i < 3; i++) for (const art of ['left', 'straight', 'right'] as const) {
+      expect(stromHerkunft(geladen, i, art, u.arme[i].stroeme![art])).toBe('M')
+      expect(stromHerkunft(geladen, i, art, u.arme[i].stroeme![art] + 1)).toBeNull()   // von Hand geändert
+    }
+    expect(geladen.arme.map(q => q.name)).toEqual(u.arme.map(q => q.name))
+    expect(geladen.arme[0]).toMatchObject({ neigung: '+2%', schwerverkehr: { lw: 6.5, lz: 1.2 } })
+    expect(geladen.arme[2]).toMatchObject({ tempo: 30, tempoQuelle: 'OSM' })
+    expect(geladen.arme[0].linie).toBeUndefined()   // die Armlinie steht nur einmal in der Datei
+    expect(geladen).toMatchObject({ armCount: 3, name: u.name, id: u.id })
+  })
+  test('ältere Datei ohne Herkunft: nichts erfunden, das Druckblatt sagt es', () => {
+    const alt = JSON.parse(JSON.stringify(kartenBezugAus(u, 'lsa')))
+    delete alt.herkunft
+    expect(herkunftAus(kartenBezugLesen(alt))).toBeUndefined()
+    expect(herkunftAus(null)).toBeUndefined()
+    expect(renderToString(createElement(HerkunftLegende, { arten: [], unbekannt: true }))).toContain('in dieser älteren Datei nicht gespeichert')
+    expect(renderToString(createElement(HerkunftLegende, { arten: ['M'] }))).toContain('von Hand eingegeben oder geändert')
+  })
+  test('beschädigte Herkunft wird verworfen', () => {
+    const k = JSON.parse(JSON.stringify(kartenBezugAus(u, 'lsa')))
+    k.herkunft.arme.pop()
+    expect(kartenBezugLesen(k)!.herkunft).toBeUndefined()
+    const q = JSON.parse(JSON.stringify(kartenBezugAus(u, 'lsa')))
+    q.herkunft.arme[0].stroeme = { left: 'x', straight: 1, right: 2 }
+    q.herkunft.arme[0].neigung = '7%'
+    const arm = kartenBezugLesen(q)!.herkunft!.arme[0]
+    expect(arm.stroeme).toBeUndefined()
+    expect(arm.neigung).toBeUndefined()
+  })
+})
+
+describe('KC-11: schon abgebrochener Overpass-Auftrag', () => {
+  test('endet mit AbortError, ohne Netzabruf', async () => {
+    sperreNachAntwort(429, '1')
+    const ctrl = new AbortController()
+    ctrl.abort()
+    const fehler = await ladeOsmRoh(46.95, 7.44, 300, ctrl.signal).then(() => null, (e: unknown) => e)
+    sperreZuruecksetzen()
+    expect(fehler).toBeInstanceOf(DOMException)
+    expect((fehler as DOMException).name).toBe('AbortError')
   })
 })

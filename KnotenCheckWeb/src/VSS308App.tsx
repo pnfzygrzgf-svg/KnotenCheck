@@ -2,7 +2,8 @@ import { useState, useMemo, useCallback, type CSSProperties, type ReactNode } fr
 import UebernahmeHinweis from './karte/UebernahmeHinweis'
 import BelastungsVergleich from './karte/BelastungsVergleich'
 import { querschnitteKnoten } from './karte/vergleich'
-import { kartenBezugAus, kartenBezugLesen, type KartenBezug, type KnotenUebernahme, type UebernahmeArm } from './karte/rechner'
+import { bestaetigtLesen, herkunftAus, kartenBezugAus, kartenBezugLesen, offeneModellAngaben, type KartenBezug, type KnotenUebernahme, type UebernahmeArm } from './karte/rechner'
+import ModellLuecken from './karte/ModellLuecken'
 import { createPortal } from 'react-dom'
 import { calculateVSS308, normalizeArm308 } from './engine/vss2011308Calculator'
 import { conformFixed, oneOf, wahl } from './engine/conform'
@@ -673,7 +674,7 @@ export function Bewertungsblatt308({ nodeName, nodeType, arms, result, onClose, 
             })}
           </tbody>
         </table>
-        <HerkunftLegende arten={herkunft} />
+        <HerkunftLegende arten={herkunft} unbekannt={!!karte && !karte.herkunft} />
       </Abschnitt>
 
       <HinweisListe hinweise={hinweise} />
@@ -726,6 +727,10 @@ export default function VSS308App({ uebernahme: kartenUebernahme }: { uebernahme
   const [arms, setArms]           = useState<ArmInput[]>(() => uebernahme ? armsAus(uebernahme) : defaultArms('4arm'))
   const [karte, setKarte] = useState(() => uebernahme ? kartenBezugAus(uebernahme, 'vss308') : null)
   const [schaetzung, setSchaetzung] = useState<Schaetzung | null>(null)
+  // Arme ohne Modellwert, für die «kein Verkehr» bestätigt ist
+  const [nullOk, setNullOk] = useState<number[]>([])
+  // Herkunft der Werte: aus der Übernahme, nach dem Laden aus der Datei
+  const herkunftU = useMemo(() => { const h = herkunftAus(karte); return h?.armCount === (nodeType === '3arm' ? 3 : 4) ? h : undefined }, [karte, nodeType])
   const [showBl, setShowBl] = useState(false)
   const openBl  = useCallback(() => setShowBl(true),  [])
   const closeBl = useCallback(() => setShowBl(false), [])
@@ -746,11 +751,12 @@ export default function VSS308App({ uebernahme: kartenUebernahme }: { uebernahme
     exportTool({
       tool: 'vss308', filePrefix: 'VSS308',
       name: nodeName, melden,
-      data: { nodeName, nodeType, arms, ...(karte ? { karte } : {}), ...(schaetzung ? { schaetzung } : {}) },
+      data: { nodeName, nodeType, arms, ...(karte ? { karte } : {}), ...(schaetzung ? { schaetzung } : {}), ...(nullOk.length ? { stromNullBestaetigt: nullOk } : {}) },
     })
 
   const handleImport = () =>
     importTool('vss308', d => {
+        setNullOk(bestaetigtLesen(d.stromNullBestaetigt))
         setNodeName(typeof d.nodeName === 'string' ? d.nodeName : '')
         setKarte(kartenBezugLesen(d.karte))
         setMitKarte(false)
@@ -779,6 +785,7 @@ export default function VSS308App({ uebernahme: kartenUebernahme }: { uebernahme
     setSchaetzung(null)
     setKarte(null)
     setMitKarte(false)
+    setNullOk([])
     melden('Zurückgesetzt')
   }
 
@@ -788,7 +795,9 @@ export default function VSS308App({ uebernahme: kartenUebernahme }: { uebernahme
   }), [nodeType, arms])
 
   const result = useMemo(() => calculateVSS308(calcInput), [calcInput])
-  const offen = armGewaehlt ? offenVss308(nodeType === '3arm' ? arms.slice(0, 3) : arms) : ['Knotentyp']
+  const aktiveArme = nodeType === '3arm' ? arms.slice(0, 3) : arms
+  const armSummen = aktiveArme.map(a => a.left + a.straight + a.right)
+  const offen = armGewaehlt ? [...offenVss308(aktiveArme), ...offeneModellAngaben(herkunftU, armSummen, nullOk)] : ['Knotentyp']
   const fertig = offen.length === 0
   const overall = result.overallLevelOfService
   const noTraffic = result.arms.every(a => a.qFz <= 0)
@@ -833,6 +842,7 @@ export default function VSS308App({ uebernahme: kartenUebernahme }: { uebernahme
       {uebernahme && <UebernahmeHinweis u={uebernahme} rechner="vss308" />}
       <SoFunktionierts rechner="vss308" />
       {karte && <BelastungsVergleich vergleich={karte.vergleich} querschnitte={querschnitteKnoten(arms)} />}
+      {armGewaehlt && <ModellLuecken u={herkunftU} summen={armSummen} bestaetigt={nullOk} onBestaetigen={i => setNullOk(n => [...n, i])} />}
 
 
       {/* Bezeichnung + Knotentyp-Auswahl */}
@@ -892,7 +902,7 @@ export default function VSS308App({ uebernahme: kartenUebernahme }: { uebernahme
             {activeArms.map((arm, i) => (
               <ArmCard key={i} arm={arm} index={i} nodeType={nodeType}
                 result={fertig ? result.arms[i] : undefined}
-                onChange={a => updateArm(i, a)} herkunft={uebernahme?.arme[i]} schaetzung={schaetzung?.stroeme[i]} />
+                onChange={a => updateArm(i, a)} herkunft={herkunftU?.arme[i]} schaetzung={schaetzung?.stroeme[i]} />
             ))}
           </div>
         </div>
@@ -997,7 +1007,7 @@ export default function VSS308App({ uebernahme: kartenUebernahme }: { uebernahme
 
     {isActive && fertig && showBl && createPortal(
       <Bewertungsblatt308 nodeName={nodeName} nodeType={nodeType} arms={activeArms} result={result}
-        onClose={closeBl} karte={karte} uebernahme={uebernahme} schaetzung={schaetzung} knotenbild={schematic} />,
+        onClose={closeBl} karte={karte} uebernahme={herkunftU} schaetzung={schaetzung} knotenbild={schematic} />,
       document.body
     )}
     </>
