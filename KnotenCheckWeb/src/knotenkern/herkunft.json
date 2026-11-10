@@ -1,9 +1,9 @@
 {
  "hinweis": "Wortgleiche Kopie aus dem SichtweitenCheck (scripts/knotenkern_holen.mjs), MIT-Lizenz siehe LICENSE in diesem Ordner. Nicht von Hand ändern; der Test src/knotenkern/herkunft.test.ts prüft die SHA-256 je Datei.",
  "quelle": "SichtweitenCheck",
- "version": "0.9.6",
- "commit": "7409a43436e2e461ee160a8fb743d740aa539cbb",
- "datum": "2026-11-07T22:13:07+01:00",
+ "version": "0.9.7",
+ "commit": "e51605e43ff987007d6cb8968aefeaf680420808",
+ "datum": "2026-11-10T12:35:12+01:00",
  "dateien": {
   "Ortssuche.tsx": "436a52ff6d1635b2e1bfbeacfad4ac751e0e940f037b3977dc72450fbd5f1344",
   "ausschnitt.ts": "6afae17c95c1e38d073882a03287216e78984db1482a5b80a5a48c384065ba09",
@@ -20,7 +20,7 @@
   "rechner/netz.ts": "0bfd24e3a6c38658509841303af47ee48ad474c3a1361af0400febc96170ca4d",
   "verknuepfung.test.ts": "9620a6f64f752f0580bbfc5af2b0313a12609459425dd9b7ad754c841c68c617",
   "verknuepfung.ts": "98c1ad1651abcb350ab58ee3130d3f03c6fc7cbe9129457feab18cd71f3be6ef",
-  "daten/anbieter/gemeinsam/avKarte.ts": "a271a96ada8c937566dd809f703ad2798f583b50308f4dffa7804c67f8d26873",
+  "daten/anbieter/gemeinsam/avKarte.ts": "211284656094a8e9b72e7efab30ef722bd5a36c666a324be479f8336458552fe",
   "daten/anbieter/gemeinsam/bav.ts": "31e0568ace93a4ecf1ac19e4300a7e33d46ef417593fb86588280b3afad2178c",
   "daten/anbieter/gemeinsam/bedarfOrte.ts": "66aa741ffdcffc86e40c181e8b5c9d9f11a2eb37d4ca3f22366a69f4ed4bcacb",
   "daten/anbieter/gemeinsam/bundGeoAdmin.ts": "86402161d80e4cf06af225cb0c6e10a06c6d074e56921cad4289a0cc5aa281a6",

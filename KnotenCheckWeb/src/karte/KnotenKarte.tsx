@@ -107,10 +107,10 @@ export default function KnotenKarte({ aktiv, breite, fokus, gewaehlt, linien, on
   const ort = useOrtEbenen(karte, ORT_EBENEN.map(e => e.id).filter(id => ebenenAn.has(id)))
   const hk = useHoehenkurven(karte, null)
   const avEbene = useAvAusschnitt(karte, ebenenAn.has('av'))
-  const [avArten, setAvArten] = useState(() => { try { return avArtenLesen(localStorage.getItem('kc.avArten')) } catch { return avArtenLesen(null) } })
+  const [avArten, setAvArten] = useState(() => { try { return avArtenLesen(localStorage.getItem('kc.avArten2')) } catch { return avArtenLesen(null) } })
   const avArtSetzen = (art: string, an: boolean) => setAvArten(alt => {
     const neu = new Set(alt); if (an) neu.add(art); else neu.delete(art)
-    try { localStorage.setItem('kc.avArten', JSON.stringify([...neu])) } catch { /* nur für diese Sitzung */ }
+    try { localStorage.setItem('kc.avArten2', JSON.stringify([...neu])) } catch { /* nur für diese Sitzung */ }
     return neu
   })
   const [beschriften, setBeschriften] = useState(false)
