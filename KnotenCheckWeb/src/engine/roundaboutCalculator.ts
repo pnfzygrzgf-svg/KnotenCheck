@@ -53,6 +53,11 @@ export function entryFactor(gradient: GradientPCE, mix?: RbVehicleMix): number {
           + c.fLW * mix.pctLW + c.fLZ * mix.pctLZ) / tot
 }
 
+/** Anwendungsgrenzen der VSS 40 024a (Ziffer 1 und 5, S. 3) */
+export const KREISEL_GRENZEN = 'Gilt nicht für Kreisel mit Rechtsvortritt, Tram- oder Bahnquerung, Lichtsignalen an Zufahrten, Fussgängerstreifen zur Mittelinsel, ' +
+  'Verflechtungen, für Doppelkreisel und stark ovale Formen (Ziffer 5, Seite 3). Vorausgesetzt ist, dass kein Rückstau vom Nachbarknoten die Kreiselfahrbahn ' +
+  'blockiert (Ziffer 1, Seite 3). Zweistreifig markierte Kreiselfahrbahnen rechnet der Rechner nach VSS 2005/301 (Typ 2/2).'
+
 // Mischung passend zur Neigung: Fahrräder gibt es nur bei ±0 % (Tabelle 2, Seite 9). Bei anderer Neigung hat ihr Anteil keinen Faktor
 // und zählte als Verkehr ohne Belastung; er wird darum auf 0 gesetzt. ohneFR nennt den entfernten Anteil [%], 0 ohne Änderung
 export function mixZurNeigung(mix: RbVehicleMix | undefined, gradient: GradientPCE | null): { mix: RbVehicleMix | undefined; ohneFR: number } {
@@ -182,19 +187,20 @@ export function exitCapacityFor(type: RoundaboutType, fg: number, wide = false, 
 // ── Ausfahrtsvolumen Q_A aus Abbiegeströmen (Umkehrung von Abb. 10, S. 18) ──────────
 // Q_A[j] = Summe aller Bewegungen, die an Arm j ausfahren. Erhält die Einheit
 // der Eingabe-Arrays (Fz/h oder PWE/h, falls bereits gewichtet übergeben).
-// Annahme im Rechner: Gewichtung mit f der Herkunftsarme, auch mit der Neigung ihrer Einfahrt;
-// die Norm nennt für Ausfahrten keinen Faktor (Ziffer 9.2, S. 8–9).
+// Im Rechner wie Q_K mit dem Ring-f der Herkunftsarme gewichtet (Werte bei 0 %): Ausfahrende kommen von der Kreiselfahrbahn
+// (Ziffer 9.2, S. 8–9; Tab. 2, Fussnote 4, S. 9). Bis 11.11.2026 mit dem f der Einfahrt samt Neigung.
 //   right[i]    → fährt an Arm (i+1) aus
 //   straight[i] → fährt an Arm (i+2) aus   (nur 4-Arm)
 //   left[i]     → fährt an Arm (i+3) bzw. (i+2) aus   (4-/3-Arm)
+// uturns: Wender je Arm; sie verlassen den Kreisel an ihrem eigenen Arm (Ziffer 8.3, Seite 7: alle Knotenströme)
 export function computeQAfromTurnings(
-  rights: number[], straights: number[], lefts: number[], armCount: 3 | 4
+  rights: number[], straights: number[], lefts: number[], armCount: 3 | 4, uturns: number[] = [],
 ): number[] {
   const n = armCount
   return Array.from({ length: n }, (_, j) =>
-    n === 4
+    (n === 4
       ? rights[(j - 1 + n) % n] + straights[(j - 2 + n) % n] + lefts[(j - 3 + n) % n]
-      : rights[(j - 1 + n) % n] + lefts[(j - 2 + n) % n]
+      : rights[(j - 1 + n) % n] + lefts[(j - 2 + n) % n]) + (uturns[j] ?? 0)
   )
 }
 
@@ -328,16 +334,18 @@ export function computeQKfromOD(qe: number[], qa: number[], qk0: number): number
 // Herleitung: Ring-Querschnitt vor Arm i enthält Fz, die noch nicht ausgefahren sind:
 //   4-Arm: Q_K[i] = straight[i-1] + left[i-1] + left[i-2]   (mod 4)
 //   3-Arm: Q_K[i] = left[i-1]                                (mod 3)
+// uturns: Wender je Arm; sie fahren an allen anderen Einfahrten vorbei (Ziffer 8.3, Seite 7: alle Knotenströme)
 export function computeQKfromTurnings(
-  _rights: number[], straights: number[], lefts: number[], armCount: 3 | 4
+  _rights: number[], straights: number[], lefts: number[], armCount: 3 | 4, uturns: number[] = [],
 ): number[] {
   const n = armCount
   return Array.from({ length: n }, (_, i) => {
     const p1 = (i - 1 + n) % n
     const p2 = (i - 2 + n) % n
-    return n === 4
+    const wender = Array.from({ length: n }, (_, j) => (j === i ? 0 : uturns[j] ?? 0)).reduce((s, x) => s + x, 0)
+    return (n === 4
       ? straights[p1] + lefts[p1] + lefts[p2]
-      : lefts[p1]
+      : lefts[p1]) + wender
   })
 }
 

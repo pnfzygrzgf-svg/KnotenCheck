@@ -4,7 +4,8 @@
 import type { CSSProperties, ReactNode } from 'react'
 import type { SN640022Result, SN640022StreamResult, LevelOfService } from './engine/types'
 import type { IntersectionConfiguration, ArmConfiguration } from './engine/armConfiguration'
-import { armLabel, armFactor, pctPW } from './engine/armConfiguration'
+import { ausserhalbAbb2, ausserhalbAbb4, DIAGRAMM_HINWEIS, WARTEZEIT_HINWEIS } from './engine/sn640022Calculator'
+import { armLabel, armFactor, pctPW, RECHTSABBIEGER_HINWEIS, SN022_GRENZEN, starkeRechtsabbieger } from './engine/armConfiguration'
 import type { KartenBezug, KnotenUebernahme } from './karte/rechner'
 import { Abschnitt, BerichtKopf, BerichtRahmen, Gesamtergebnis, Herkunft, HerkunftLegende, HinweisListe, QuellenAbschnitt } from './bericht/Bericht'
 import { kartenHerkunft, schaetzArt, stromHerkunft, svHerkunft, type HerkunftArt } from './bericht/herkunft'
@@ -153,6 +154,10 @@ export function Berechnungsblatt({ cfg, result, onClose, karte, uebernahme, scha
       : 'Mindestens zwei Ströme je Nebenstrassen-Arm teilen sich einen Fahrstreifen.'} Die Norm kennt Mischstreifen nur, wenn Fahrstreifen im
       Knotenbereich von mehreren Strömen benutzt werden (Ziffer 12, Seite 7). Bei getrennten Streifen sind die Einzelströme massgebend, die
       Gesamtstufe ist dann zu streng.</>] : []),
+    ...starkeRechtsabbieger(cfg.arms).map(RECHTSABBIEGER_HINWEIS),
+    ...(result.streams.some(s => ausserhalbAbb2(s.qpi) || ausserhalbAbb4(s.volumePWE, s.capacity)) || result.mixedLanes.some(m => ausserhalbAbb4(m.volumeFzh, m.capacity)) ? [DIAGRAMM_HINWEIS] : []),
+    WARTEZEIT_HINWEIS,
+    SN022_GRENZEN,
     'Die Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.',
   ]
 
@@ -187,7 +192,7 @@ export function Berechnungsblatt({ cfg, result, onClose, karte, uebernahme, scha
               <th style={THC}>Leistungsfähigkeit L [PWE/h]</th>
               <th style={THC}>Mittl. Wartezeit w [s]</th>
               <th style={THC}>Qualitätsstufe</th>
-              <th style={TH}>Vergleich</th>
+              <th style={TH}>Vergleich mit 45 s (Stufe D, wie in den Beispielen der Norm)</th>
             </tr>
           </thead>
           <tbody>
@@ -198,7 +203,7 @@ export function Berechnungsblatt({ cfg, result, onClose, karte, uebernahme, scha
                   <td style={TDC}>{s.streamNumber} &nbsp;<span style={{ color:'#666', fontSize:10 }}>({s.name})</span></td>
                   <td style={{ ...TDR, color: rOk ? '#166534' : '#991b1b', fontWeight: rOk ? 400 : 700 }}>{nr(s.reserve)}</td>
                   <td style={TDR}>{nr(s.capacity)}</td>
-                  <td style={TDR}>{s.volumePWE > 0 ? wStr(s.delay) : '–'}</td>
+                  <td style={TDR}>{s.volumePWE > 0 ? wStr(s.delay) : '–'}{ausserhalbAbb4(s.volumePWE, s.capacity) ? '*' : ''}</td>
                   {s.volumePWE > 0
                     ? <td style={{ ...TDC, background: LOS_BG[s.levelOfService], fontWeight: 700 }}>{s.levelOfService}</td>
                     : <td style={TDC}>–</td>}
@@ -214,7 +219,7 @@ export function Berechnungsblatt({ cfg, result, onClose, karte, uebernahme, scha
                   <td style={TD}><em>{m.name}</em></td>
                   <td style={{ ...TDR, color: rOk ? '#166534' : '#991b1b', fontWeight: rOk ? 400 : 700 }}>{nr(m.reserve)}</td>
                   <td style={TDR}>{nr(m.capacity)}</td>
-                  <td style={TDR}>{m.volumeFzh > 0 ? wStr(m.delay) : '–'}</td>
+                  <td style={TDR}>{m.volumeFzh > 0 ? wStr(m.delay) : '–'}{ausserhalbAbb4(m.volumeFzh, m.capacity) ? '*' : ''}</td>
                   {m.volumeFzh > 0
                     ? <td style={{ ...TDC, background: LOS_BG[m.levelOfService], fontWeight: 700 }}>{m.levelOfService}</td>
                     : <td style={TDC}>–</td>}
@@ -289,13 +294,13 @@ export function Berechnungsblatt({ cfg, result, onClose, karte, uebernahme, scha
                 <td style={TDR}>{nr(streamFzh(s.streamNumber, cfg))}</td>
                 <td style={TDR}>{n1(s.volumePWE)}</td>
                 <td style={TDR}>{n1(s.qpi)}</td>
-                <td style={TDR}><strong>{nr(s.basicCapacity)}</strong></td>
+                <td style={TDR}><strong>{nr(s.basicCapacity)}</strong>{ausserhalbAbb2(s.qpi) ? '*' : ''}</td>
               </tr>
             ))}
           </tbody>
         </table>
 
-        {rang2.length > 0 && <><h3>Leistungsfähigkeit der zweitrangigen Ströme</h3><LFTable streams={rang2} /></>}
+        {rang2.length > 0 && <><h3>Leistungsfähigkeit der zweitrangigen Ströme</h3><LFTable streams={rang2} px={result.px} /></>}
         {rang3.length > 0 && <><h3>Leistungsfähigkeit der drittrangigen Ströme</h3><LFTable streams={rang3} /></>}
         {rang4.length > 0 && <><h3>Leistungsfähigkeit der viertrangigen Ströme</h3><LFTable streams={rang4} /></>}
 
@@ -509,10 +514,14 @@ function BelastungenFall2({ cfg, armOrder }: {
 
 // ── LF-Tabelle (generisch für Rang 2/3/4) ─────────────────────────────────────
 
-function LFTable({ streams }: { streams: SN640022StreamResult[] }) {
-  // p0,i* steht nur da, wenn ein Linksabbiegestreifen fehlt (Ziff. 14, S. 7–8)
+function LFTable({ streams, px }: { streams: SN640022StreamResult[]
+  /** p_x der Kreuzung: steht unter der Tabelle der zweitrangigen Ströme, wie im Normbeispiel (S. 13) */
+  px?: number }) {
+  // p0,i* steht nur da, wenn ein Linksabbiegestreifen fehlt (Ziff. 14, S. 7–8); p_y und p_z nur bei den Strömen 5 und 11 der Kreuzung
   const showStar = streams.some(s => s.p0Star !== undefined)
+  const showPy = streams.some(s => s.py !== undefined)
   return (
+    <>
     <table style={T}>
       <thead>
         <tr>
@@ -521,6 +530,8 @@ function LFTable({ streams }: { streams: SN640022StreamResult[] }) {
           <th style={THC}>Auslastungsgrad a<sub>i</sub></th>
           <th style={THC}>Wahrscheinlichkeit Staufreiheit p<sub>0,i</sub></th>
           {showStar && <th style={THC}>p<sub>0,i</sub>* (Rückstau Hauptstrasse)</th>}
+          {showPy && <th style={THC}>p<sub>y,i</sub> [F17]</th>}
+          {showPy && <th style={THC}>p<sub>z,i</sub> [F18]</th>}
         </tr>
       </thead>
       <tbody>
@@ -533,10 +544,15 @@ function LFTable({ streams }: { streams: SN640022StreamResult[] }) {
               <td style={TDR}>{n3(s.utilizationDegree)}</td>
               <td style={TDR}>{n3(p0)}</td>
               {showStar && <td style={TDR}>{s.p0Star !== undefined ? n3(s.p0Star) : '—'}</td>}
+              {showPy && <td style={TDR}>{s.py !== undefined ? n3(s.py) : '—'}</td>}
+              {showPy && <td style={TDR}>{s.pz !== undefined ? n3(s.pz) : '—'}</td>}
             </tr>
           )
         })}
       </tbody>
     </table>
+    {px !== undefined && <p className="bericht-unter">p<sub>x</sub> = p<sub>0,1</sub> · p<sub>0,7</sub> = {n3(px)} [F14], Seite 6{showStar ? '; wo der Linksabbiegestreifen fehlt, mit p₀* statt p₀ (Ziffer 14, Seiten 7–8)' : ''}.
+      Damit L<sub>5</sub> = p<sub>x</sub> · G<sub>5</sub> und L<sub>11</sub> = p<sub>x</sub> · G<sub>11</sub> [F15, F16]; L<sub>4</sub> = p<sub>z,11</sub> · p<sub>0,12</sub> · G<sub>4</sub> und L<sub>10</sub> = p<sub>z,5</sub> · p<sub>0,6</sub> · G<sub>10</sub> [F19, F20].</p>}
+    </>
   )
 }

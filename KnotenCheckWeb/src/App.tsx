@@ -4,7 +4,8 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import SN022App from './SN022App'
 import RoundaboutApp from './RoundaboutApp'
 import VSS308App from './VSS308App'
-import LSAApp from './LSAApp'
+// Der LSA-Rechner (LSAApp.tsx) ist seit 11.11.2026 aus der Oberfläche genommen: noch nicht weit genug entwickelt (Normprüfung, Befund LSA-1).
+// Der Code bleibt im Repo und in den Tests.
 import SimulationApp from './SimulationApp'
 import { ActiveModuleContext } from './activeModule'
 import { ModuleErrorBoundary } from './ModuleErrorBoundary'
@@ -24,14 +25,13 @@ type Mode = 'home' | 'karte' | RechnerKey
 
 // Link aus einem anderen Rechner (#karte?…): Angaben lesen, in der Adresse bleibt nur der Anker
 uebergabeUebernehmen('karte')
-const ANKER: readonly string[] = ['karte', 'sn022', 'sn024a', 'vss308', 'lsa', 'simulation']
+const ANKER: readonly string[] = ['karte', 'sn022', 'sn024a', 'vss308', 'simulation']
 const modeAusAdresse = (): Mode => (ANKER.includes(location.hash.slice(1)) ? location.hash.slice(1) as Mode : 'home')
 
 const MODE_BUTTONS = [
   { key: 'sn022',      label: 'Einmündung & Kreuzung',      sub: 'SN 640 022' },
   { key: 'vss308',     label: 'Ungesteuerter Knoten mit Fussgänger*innen', sub: 'VSS 2011/308' },
   { key: 'sn024a',     label: 'Kreisverkehr',                sub: 'SN 640 024a' },
-  { key: 'lsa',        label: 'LSA-Knoten',                  sub: '(unvollständig)' },
   { key: 'simulation', label: 'Simulation',                   sub: 'Wartezeit-Verteilungen' },
 ] as const
 
@@ -95,7 +95,6 @@ export default function App() {
     { key: 'sn022',      el: <SN022App uebernahme={uebernahmen.sn022} /> },
     { key: 'sn024a',     el: <RoundaboutApp uebernahme={uebernahmen.sn024a} /> },
     { key: 'vss308',     el: <VSS308App uebernahme={uebernahmen.vss308} /> },
-    { key: 'lsa',        el: <LSAApp uebernahme={uebernahmen.lsa} /> },
     { key: 'simulation', el: <SimulationApp uebernahme={uebernahmen.simulation} /> },
   ]
 

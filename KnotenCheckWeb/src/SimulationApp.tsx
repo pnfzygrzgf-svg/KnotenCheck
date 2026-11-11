@@ -43,6 +43,18 @@ import { RechnerFuss } from './Fusszeile'
 
 // ── Legende ───────────────────────────────────────────────────────────────────
 
+// Zeitlückenverteilung (Normprüfung 11.11.2026, SIM-2): Die HBS-Zeitlücken gehören zu zufälligen Ankünften
+const EXPONENTIAL_TEXT = 'Zufällige Ankünfte. Dazu gehören die HBS-Zeitlücken (Brilon 2016, Seite 2); trifft die Kurven der SN 640 022.'
+const COWAN_TEXT = 'Kolonnenbildung (eigene Annahme: A = 7,0, t_m = 1,8 s). Mit den HBS-Zeitlücken liegt die Leistungsfähigkeit deutlich über der Norm (bei 1000 Fz/h rund ein Drittel).'
+
+// Wartezeitdefinition (Normprüfung 11.11.2026, SIM-3)
+const WARTEZEIT_SIM_HINWEIS = 'Die Simulation misst die Zeit bis zur Annahme der Lücke. Die Wartezeit der SN 640 022 (Abb. 4, Seite 9) enthält zusätzlich die ' +
+  'Bedienzeit 3600/L; bei kleiner Belastung liegt die Simulation darum rund 2 s tiefer. Die Stufen nach Tab. 3 (Seite 10) gelten so nur näherungsweise.'
+
+// Sperrdauer je Gruppe ist eine eigene Annahme (Normprüfung 11.11.2026, SIM-1)
+const SPERRDAUER_HINWEIS = 'Der Bericht VSS 2011/308 mindert die Leistungsfähigkeit gegenüber Fussgänger*innen mit (1 − y)³ ab, y = Q_Fg / (900 · ρ). ' +
+  'Bei mehr als rund 200 Fg/h rechnet die Simulation damit günstiger als der Bericht und der Rechner «Ungesteuerter Knoten mit Fussgänger*innen».'
+
 const LEGEND_ITEMS: LegendItem[] = [
   { abbr: 'Fz/h',      desc: 'Fahrzeuge pro Stunde — Roheingabe' },
   { abbr: 'PWE/h',     desc: 'Personenwageneinheiten pro Stunde — umgerechnet mit f (Tab. 1/2, SN 640 022)' },
@@ -50,7 +62,7 @@ const LEGEND_ITEMS: LegendItem[] = [
   { abbr: 'Rg',        desc: 'Rang — 1 = Hauptstrasse (kein Warten), 2 = HS-Linksabbieger / NS-Rechtseinbieger, 3 = NS-Kreuzen, 4 = NS-Linkseinbiegen. Ab Rang 3 ist eine Lücke nur frei, wenn die höherrangigen Ströme keinen Rückstau haben (Ziff. 11, S. 6, SN 640 022)' },
   { abbr: 't_c', unit: 's', desc: 'Grenzzeitlücke — Mindestzeitlücke im Hauptstrom, die ein Fahrer als ausreichend akzeptiert; je Manöver aus HBS 2015, Kap. S5, Tabelle S5-3 (Zeichen 205)' },
   { abbr: 't_f', unit: 's', desc: 'Folgezeitlücke — Mindestabstand zwischen zwei aufeinanderfolgenden Fahrzeugen, die in derselben Hauptstromlücke einfahren; aus HBS 2015, Kap. S5, Tabelle S5-3' },
-  { abbr: 'w',   unit: 's', desc: 'Simulierte mittlere Wartezeit — Mittelwert aller Wartezeiten (Abfahrtszeit − Ankunftszeit) über alle Fahrzeuge und alle Simulationsläufe' },
+  { abbr: 'w',   unit: 's', desc: 'Simulierte mittlere Wartezeit — Mittelwert aller Wartezeiten (Abfahrtszeit − Ankunftszeit) über alle Fahrzeuge und alle Simulationsläufe. ' + WARTEZEIT_SIM_HINWEIS },
   { abbr: '±σ',  unit: 's', desc: 'Standardabweichung der Wartezeiten — Mass für die Streuung; hohe σ bedeutet stark schwankende Wartezeiten zwischen einzelnen Fahrzeugen' },
   { abbr: 'P50', unit: 's', desc: 'Median — 50 % der Fahrzeuge warten kürzer als dieser Wert' },
   { abbr: 'P85', unit: 's', desc: '85. Perzentil — 85 % der Fahrzeuge warten kürzer; üblicher Planungswert für Dimensionierung' },
@@ -185,7 +197,7 @@ function PedFooter({ leg: rawLeg, isHS, onChange }: {
               ))}
             </select>
           </Row>
-          <Row label={isTUe ? 'Breite der Einmündung' : 'Fahrbahnbreite'} sub={`bestimmt die Sperrdauer · Querung mit v_FG = ${V_FG.toFixed(2)} m/s (VSS 40 240)`}>
+          <Row label={isTUe ? 'Breite der Einmündung' : 'Fahrbahnbreite'} sub={`bestimmt die Sperrdauer: Breite / ${V_FG.toFixed(2).replace('.', ',')} m/s (eigene Annahme; ${V_FG.toFixed(2).replace('.', ',')} m/s nach VSS 40 240, Ziffer 8.1, Seite 7)`}>
             <NumInput value={breite ?? 0} onChange={v => onChange({ ...leg, fahrbahnbreite: v > 0 ? v : undefined })} max={30} live />
             <span style={{ fontSize: 12, color: 'var(--text-muted)', width: 30 }}>m</span>
           </Row>
@@ -201,7 +213,8 @@ function PedFooter({ leg: rawLeg, isHS, onChange }: {
           )}
           {breite !== undefined && leg.rho > 0 && <div style={{ padding: '4px 14px 8px', fontSize: 12, color: 'var(--text-muted)' }}>
             Sperrzeit: {breite} m / {V_FG.toFixed(2)} m/s{leg.mittelinsel ? ' × 0.5 (Mittelinsel)' : ''} ={' '}
-            <strong>{tBlock.toFixed(1)} s</strong> je Gruppe · ≈ <strong>{Math.round(freq)}</strong> Sperrungen/h
+            <strong>{tBlock.toFixed(1)} s</strong> je Gruppe (Annahme) · ≈ <strong>{Math.round(freq)}</strong> Sperrungen/h
+            <div style={{ marginTop: 4 }}>{SPERRDAUER_HINWEIS}</div>
           </div>}
         </>
         )
@@ -368,7 +381,6 @@ function IntervalCard({ iv, baseArms, armCount, index, onUpdate, onRemove }: {
           {arms.map((arm, i) => (
             <ArmCard key={arm.id} arm={arm} index={i} isHS={i < 2}
               armCount={armCount} geometryLocked hideMixedLane hideIsland live
-              opposingHSSeparateLane={i >= 2 ? (baseArms[i === 2 ? 0 : 1]?.hasSeparateTurnLane ?? false) : false}
               onChange={a => setArm(i, a)} />
           ))}
         </div>
@@ -579,12 +591,14 @@ export function SimulationBlatt({ result, lauf, nodeName, armCount, veraltet, ka
   const hinweise: ReactNode[] = [
     ...(karte?.belegt ?? []),
     ...(schaetzung && arms && schaetzungGilt(schaetzung, arms.map(a => ({ left: a.leftVolume, straight: a.straightVolume, right: a.rightVolume }))) ? [schaetzung.text] : []),
-    'Stochastische Simulation auf Basis der SN 640 022 mit Grenz-/Folgezeitlücken nach HBS 2015.',
+    'Eigenes Modell, kein Normverfahren. Rangfolge und Konfliktströme nach SN 640 022, Grenz- und Folgezeitlücken nach HBS 2015, Lückenmodell nach Troutbeck & Brilon, Gruppengrösse der Fussgänger*innen nach VSS 2011/308. Sperrdauer, Streuung und Horizont sind eigene Annahmen.',
     ...(arms ? [] : ['Die Verkehrsstärken des Laufs sind nicht gespeichert; das Blatt zeigt darum nur die Einstellungen der Simulation.']),
+    ...((rc.useCowan ?? true) ? [`Zeitlückenverteilung Cowan M3: ${COWAN_TEXT}`] : []),
+    WARTEZEIT_SIM_HINWEIS,
     'Jeder Lauf streut, darum weichen die Zahlen bei jedem Start leicht ab.',
     'Annahme: Nach dem Ende der Simulationsdauer läuft der Verkehr noch einmal so lange weiter, damit wartende Fahrzeuge abfahren können. Wer auch dann nicht abfährt, zählt mit der Wartezeit bis dorthin (Mindestwert, mit ≥ bezeichnet).',
     ...(multi ? ['Mehrere Intervalle: Die Warteschlange läuft über die Intervallgrenze weiter. Die Wartezeit eines Fahrzeugs zählt im Intervall seiner Ankunft.'] : []),
-    'Die Ergebnisse ersetzen keine Überprüfung durch eine Fachperson.',
+    'Die Ergebnisse ersetzen keinen Nachweis nach Norm und keine Überprüfung durch eine Fachperson.',
   ]
 
   return (
@@ -596,7 +610,7 @@ export function SimulationBlatt({ result, lauf, nodeName, armCount, veraltet, ka
           <b>Hauptstrasse:</b> Arm A{strName(0)}, Arm C{strName(1)} · <b>Nebenstrasse:</b> Arm B{strName(2)}
           {!is3 && <>, Arm D{strName(3)}</>}
         </>}
-        norm="SN 640 022 (Rangfolge der Ströme, massgebende Hauptstrombelastung) mit Grenz- und Folgezeitlücken nach HBS 2015, Kapitel S5"
+        norm="Eigenes Modell, kein Normverfahren: Rangfolge und Konfliktströme nach SN 640 022, Grenz- und Folgezeitlücken nach HBS 2015, Kapitel S5"
         karte={karte} />
 
       {veraltet && (
@@ -987,7 +1001,6 @@ export default function SimulationApp({ uebernahme: kartenUebernahme }: { uebern
             return (
               <ArmCard key={arm.id} arm={arm} index={i} isHS={i < 2} herkunft={herkunftU?.arme[i]} schaetzung={useIntervals ? undefined : schaetzung?.stroeme[i]}
                 armCount={armCount} hideMixedLane hideIsland live
-                opposingHSSeparateLane={i >= 2 ? (baseArms[i === 2 ? 0 : 1]?.hasSeparateTurnLane ?? false) : false}
                 onChange={a => setArm(i, a)}
                 footer={
                   <PedFooter leg={leg} isHS={i < 2}
@@ -1076,8 +1089,8 @@ export default function SimulationApp({ uebernahme: kartenUebernahme }: { uebern
                     Zeitlückenverteilung Hauptstrom
                   </div>
                   {[
-                    { val: true,  label: 'Cowan M3',    desc: 'Kolonnenbildung (realistischer bei qpi > 600 Fz/h)' },
-                    { val: false, label: 'Exponential', desc: 'Einfachstes Modell, passt zu den Kurven der SN 640 022' },
+                    { val: false, label: 'Exponential', desc: EXPONENTIAL_TEXT },
+                    { val: true,  label: 'Cowan M3',    desc: COWAN_TEXT },
                   ].map(o => (
                     <label key={String(o.val)}
                       style={{ display: 'flex', alignItems: 'flex-start', gap: 8,
@@ -1254,9 +1267,7 @@ export default function SimulationApp({ uebernahme: kartenUebernahme }: { uebern
       <HilfeUnten rechner="simulation" legende={LEGEND_ITEMS} quellen={karte?.quellen} />
 
       <RechnerFuss>
-        Stochastische Simulation auf Basis der SN 640 022 (Strom-Topologie, Konfliktvolumen)
-        mit Grenz-/Folgezeitlücken nach HBS 2015. Die Ergebnisse ersetzen keine Überprüfung
-        durch eine Fachperson.
+        Eigenes Modell, kein Normverfahren. Rangfolge und Konfliktströme nach SN 640 022, Grenz- und Folgezeitlücken nach HBS 2015, Lückenmodell nach Troutbeck &amp; Brilon, Gruppengrösse der Fussgänger*innen nach VSS 2011/308. Sperrdauer, Streuung und Horizont sind eigene Annahmen. Die Ergebnisse ersetzen keinen Nachweis nach Norm und keine Überprüfung durch eine Fachperson.
       </RechnerFuss>
 
       {/* Druckblatt: Resultat mit den Eingaben, mit denen es gerechnet wurde */}

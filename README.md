@@ -15,7 +15,7 @@ Vibecoding. Don't trust, verify!
 | [Einmündung & Kreuzung](#einmündung-und-kreuzung-sn-640-022) | Vorfahrtgeregelte T-Knoten (3 Arme) und Kreuzungen (4 Arme) | SN 640 022 | Beta |
 | [Kreisverkehr](#kreisverkehr-sn-640-024a) | Kreisel der Typen 1/1, 2/1+ und 2/2 | SN 640 024a · VSS 2005/301 | Beta |
 | [Ungesteuerter Knoten mit Fussgänger*innen](#ungesteuerter-knoten-mit-fussgängerinnen-vss-2011308) | Einmündung und Kreuzung mit Fussgängerstreifen | VSS 2011/308 | Beta |
-| [LSA-Knoten](#lsa-knoten-vss-40-023a) | Knoten mit Lichtsignalanlage, freier Fahrstreifen- und Phasenplan | VSS 40 023a u. a. | Alpha |
+| [LSA-Knoten](#lsa-knoten-vss-40-023a) | Knoten mit Lichtsignalanlage, freier Fahrstreifen- und Phasenplan | VSS 40 023a u. a. | ausgeblendet |
 | [Simulation](#simulation) | Stochastische Simulation vorfahrtgeregelter Knoten: Wartezeit-Verteilungen statt Einzelwert | SN 640 022 · HBS 2015 · VSS 2011/308 | Beta |
 
 **Karte:** Knoten lassen sich auf der Karte wählen. Form, Arme, Namen und Hauptstrasse kommen als Vorschlag aus OpenStreetMap, dazu Neigung (swissALTI3D, in Bern DTM 2023), Fussgängerstreifen, Fahrstreifen und Tempo; alles ist zu prüfen. Der passende Rechner wird vorgeschlagen. Fussgängermengen gibt es in keiner Quelle, sie bleiben Handeingabe. Abbiegeströme bleiben ebenfalls Handeingabe, ausser man wählt ausdrücklich die Modellwerte des Bundes (NPVM) für die Morgen- oder Abendspitze; sie sind berechnet, nicht gezählt, und können stark abweichen. Modellwerte und lokale Zählwerte je Arm erscheinen neben den Eingaben als Vergleich, ohne Wirkung auf die Rechnung; der Schwerverkehrsanteil der Morgen- oder Abendspitze lässt sich ebenfalls ausdrücklich übernehmen. Links führen zum SichtweitenCheck, fgsCheck und VeloroutenCheck und von dort zurück.
@@ -45,6 +45,7 @@ Alle Berechnungen laufen vollständig im Browser. Es gibt keinen Server, dem Ein
 
 ## Versionen
 
+- **0.4.0** (11. November 2026): Normprüfung aller Rechner. Knoten mit Fussgänger*innen: Arm mit nachrangigem Strom mit C = 1, Linksabbieger der Nebenstrasse wartet auf die Gegenseite, Qualitätsstufen nach SN 640 022 Tab. 3. Kreisel: Bypass je Arm, Wender, Q_A mit den Faktoren der Kreiselfahrbahn. Anwendungsgrenzen der Normen und eigene Annahmen ausgewiesen. LSA-Knoten aus der Oberfläche genommen. Simulation als eigenes Modell bezeichnet.
 - **0.3.0** (8. November 2026): Abbiegeströme aus gezählten Armmengen schätzen: feste Startanteile, an Haupt- und Nebenstrasse verschieden, auf die gezählten Zu- und Wegfahrten ausgeglichen, mit der Marke «geschätzt». Simulation korrigiert: Folgezeitlücke auch für frei ankommende Fahrzeuge, ein voller Stauraum verwirft keine Fahrzeuge mehr und wird ausgewiesen, Rückstau bleibt zwischen Intervallen erhalten; Resultate können von früheren Berechnungen abweichen. Zurücksetzen und Laden einer Datei lösen den Bezug zur Karte. Modell-Abbieger ohne Tunnel und Brücken, neu auch an Hauptverkehrsstrassen ausserorts.
 - **0.2.3** (7. November 2026): Druckblätter im Aufbau der anderen Rechner: Vorschau mit «Drucken / Als PDF speichern», Kartenausschnitt mit Luftbild, Ergebnis zuerst, Rechenschritte, Eingaben mit Herkunft (Modell, Karte), Annahmen und Hinweise, Quellen in allen fünf Blättern.
 - **0.2.2** (7. November 2026): Darstellung an die anderen Rechner angeglichen: Startseite, Leiste mit Logo und Marke, gemeinsame Fusszeile, Schrift und Farben, gelbe Hinweise statt Kurzmeldungen, je Rechner «So funktioniert's», Legende, Grundlagen und Quellen sowie Datenschutz, Bedienung auf dem Handy. Tempo je Arm auch aus amtlichen Quellen; Abbiegeströme als eigene Wahl vor der Übernahme; Belastungstabelle nach Quelle gegliedert; die Karte behält den Knoten beim Wechsel in einen Rechner.
@@ -73,7 +74,7 @@ Das Verfahren gilt für Einmündungen (drei Arme) und Kreuzungen (vier Arme).
 
 **Was die Norm nicht berücksichtigt:** Die SN 640 022 berechnet ausschliesslich die Leistungsfähigkeit für **motorisierten Individualverkehr (MIV)**. Fussgänger*innen kommen im Berechnungsverfahren nicht vor. Wer die Qualität eines Knotens für den Fussverkehr beurteilen will, braucht andere Methoden — z. B. den Rechner [Ungesteuerter Knoten mit Fussgänger*innen](#ungesteuerter-knoten-mit-fussgängerinnen-vss-2011308).
 
-Der Rechner folgt dem **generellen Vorgehen nach Ziffer 5** der SN 640 022 (S. 2). Die Norm nennt acht Schritte; die angestrebte Qualitätsstufe und der Vergleich damit bleiben bei den Anwendenden, die übrigen sechs folgen hier:
+Der Rechner folgt dem **generellen Vorgehen nach Ziffer 5** der SN 640 022 (S. 2). Die Norm nennt acht Schritte; die angestrebte Qualitätsstufe ist nicht wählbar: Das Druckblatt vergleicht mit 45 s (Stufe D), wie die Beispiele der Norm (S. 11–14). Die übrigen sechs Schritte folgen hier:
 
 ### Schritt 1: Regime und Rangfolge festlegen
 
@@ -222,9 +223,9 @@ Die Kreiselfahrbahn Q_K verwendet immer die Werte bei Längsneigung ±0 % (Norm 
 
 Bevor die Einfahrten beurteilt werden, prüft die Norm (Ziffer 10), ob der Verkehr den Kreisel überhaupt **verlassen** kann: An jeder Ausfahrt muss das Ausfahrtsvolumen Q_A(i) unter der Ausfahrtsleistungsfähigkeit L_A(i) liegen.
 
-- **Q_A(i)** — Summe aller Bewegungen, die an Arm i den Kreisel verlassen [PWE/h]. **Annahme:** Die Abbiegeströme sind mit f der Herkunftsarme gewichtet, also auch mit der Neigung ihrer Einfahrt; die Norm nennt für Ausfahrten keinen Faktor (Ziffer 9.2, S. 8–9).
+- **Q_A(i)** — Summe aller Bewegungen, die an Arm i den Kreisel verlassen [PWE/h]. Die Abbiegeströme sind wie bei Q_K mit den Faktoren der Kreiselfahrbahn (Werte bei 0 %) gewichtet, weil Ausfahrende von der Kreiselfahrbahn kommen (Ziffer 9.2, S. 8–9; Tab. 2, Fussnote 4, S. 9).
 - **L_A(i)** — Ausfahrtsleistungsfähigkeit: maximal 1400 PWE/h ohne Fussgänger*innen, reduziert durch querenden Fussgängerverkehr je nach Ausfahrtsbreite B (3,5 m / 4,5 m), Abbildung 5, Seite 11.
-- **Typ 2/2:** Richtwerte aus VSS 2005/301 Ziffer 5.2.3, S. 64: 1700 Fz/h (einstreifige Ausfahrt) und 1850 Fz/h (zweistreifige Ausfahrt), beide ohne Fussgänger*innen. Es gilt der Typ des Arms, die Fahrstreifenzahl der Ausfahrt ist wählbar. Die Quelle nennt keinen Abzug für Fussgänger*innen («einzeln abklären», Ziffer 4.2, S. 58), und SN 640 024a schliesst zweistreifige Ausfahrten mit Fussgängerstreifen aus (Ziffer 1, S. 3). **Annahmen:** Der Abzug folgt anteilig Abbildung 5 (zweistreifig: 4,5-m-Kurve), und die Richtwerte in Fz/h werden direkt mit Q_A in PWE/h verglichen.
+- **Typ 2/2:** Richtwerte aus VSS 2005/301 Ziffer 5.2.3, S. 64: 1700 Fz/h (einstreifige Ausfahrt) und 1850 Fz/h (zweistreifige Ausfahrt), beide ohne Fussgänger*innen. Es gilt der Typ des Arms, die Fahrstreifenzahl der Ausfahrt ist wählbar. Die Quelle nennt keinen Abzug für Fussgänger*innen («einzeln abklären», Ziffer 4.2, S. 58), und SN 640 024a schliesst zweistreifige Ausfahrten mit Fussgängerstreifen aus (Ziffer 1, S. 3). Den einstreifigen Richtwert nennt Ziffer 6.2 (S. 68) ausdrücklich in PWE/h. **Annahmen:** Der Abzug folgt anteilig Abbildung 5 (zweistreifig: 4,5-m-Kurve), und der zweistreifige Richtwert in Fz/h wird direkt mit Q_A in PWE/h verglichen. Der Bericht empfiehlt aus Sicherheitsgründen einstreifige Ausfahrten (Ziffer 6.1.2, S. 67).
 
 Ist **Q_A > L_A** an einer Ausfahrt, blockiert stockender Abfluss die Kreiselfahrbahn — gemäss Norm sind dann andere Knotenformen zu suchen. KnotenCheck weist diesen Fall auch in der Gesamtbeurteilung und auf dem Bewertungsblatt aus.
 
@@ -420,7 +421,7 @@ Die Lagen in der letzten Spalte sind eine Annahme als Richtwert; Tab. 9 (S. 37) 
 
 **Trottoirüberfahrt:** An den Nebenstrassen-Armen (B, D) lässt sich statt eines Fussgängerstreifens eine Trottoirüberfahrt wählen; an den Hauptstrassen-Armen nicht. Auf der Trottoirüberfahrt haben Fussgänger*innen gegenüber den ein- und ausfahrenden Fahrzeugen Vortritt (VRV Art. 41 Abs. 2). KnotenCheck rechnet sie deshalb wie einen Fussgängerstreifen über die Nebenstrasse: β = (1 − y_Fg)³ für alle Ströme mit Ein- oder Ausfahrt an diesem Arm, gleiche Eingaben Q_Fg und ρ. Eine Mittelinsel gibt es bei der Trottoirüberfahrt nicht. Das ist eine eigene Annahme; VSS 2011/308 kennt die Trottoirüberfahrt nicht. Gespeicherte Dateien ohne Angabe der Querung werden wie bisher gelesen (Fussgängervolumen > 0 → Fussgängerstreifen).
 
-**Schritt 5 — Wartezeit und Stau (Gl. 1, S. 62)**
+**Schritt 5 — Wartezeit und Stau (Gl. 1, S. 18; wiederholt auf S. 62)**
 
 ```
 w = 900 × [(x−1) − 4C·(x/Q) + √((x−1)² + 8C·(x + 1 + 2C·(x/Q)) / (Q/x))]
@@ -431,7 +432,7 @@ mit `x = Q/L`, `C = 0.5` (Rang 1) oder `1.0` (alle anderen Ränge, S. 62)
 k = w [s] × L / 3600
 ```
 
-**Qualitätsstufen:** gleiche Schwellen wie SN 640 024a (A ≤ 10 s, B ≤ 20 s, C ≤ 30 s, D ≤ 45 s, E > 45 s, F = Überlast)
+**Qualitätsstufen:** nach SN 640 022, Tab. 3 (S. 10), auf die der Bericht verweist (S. 86): A < 10 s, B 10–15 s, C 15–25 s, D 25–45 s, E > 45 s, F = Überlast
 
 ### Ergebnis-Darstellung
 
@@ -441,6 +442,8 @@ k = w [s] × L / 3600
 ---
 
 ## LSA-Knoten (VSS 40 023a)
+
+**Seit 11. November 2026 aus der Oberfläche genommen.** Der Rechner ist noch nicht weit genug entwickelt; vor allem rechnet er Phasen mit unverträglichen Strömen (Mischphasen), die VSS 40 023a ausschliesst (Ziffer 5, S. 3). Der Code bleibt im Repo. Auf der Karte wird für Knoten mit Lichtsignal kein Rechner vorgeschlagen.
 
 ### Worum geht es?
 

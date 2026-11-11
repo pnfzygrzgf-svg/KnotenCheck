@@ -8,6 +8,8 @@ import type { Querung } from './querung'
 export interface KreiselAngaben {
   type: string | null
   right: number
+  bypass?: boolean | null   // nur gefragt, wenn es Rechtsabbieger gibt
+  uturn?: number
   straight: number
   left: number
   gradient: string | null
@@ -19,11 +21,12 @@ export interface KreiselAngaben {
 
 export function offenKreisel(arms: KreiselAngaben[]): string[] {
   const aus: string[] = []
-  const strom = (a: KreiselAngaben) => a.right + a.left + (arms.length === 4 ? a.straight : 0)
+  const strom = (a: KreiselAngaben) => a.right + a.left + (arms.length === 4 ? a.straight : 0) + (a.uturn ?? 0)
   if (!arms.some(a => strom(a) > 0)) aus.push('Abbiegeströme')
   arms.forEach((a, i) => {
     const arm = `Arm ${i + 1}`
     if (a.type === null) aus.push(`${arm}: Typ der Einfahrt`)
+    if (a.right > 0 && a.bypass === null) aus.push(`${arm}: Rechtsabbieger über Bypass`)
     if (a.type === '2/2' && a.exitTwoLanes === null) aus.push(`${arm}: Fahrstreifen der Ausfahrt`)
     if (!(a.type === '2/2' && a.exitTwoLanes === true) && a.exitWide === null) aus.push(`${arm}: Ausfahrtsbreite`)
     if (a.mischung === null) aus.push(`${arm}: pauschal oder detailliert`)

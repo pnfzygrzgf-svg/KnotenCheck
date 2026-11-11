@@ -47,13 +47,14 @@ export function querschnitteKnoten(arme: ArmStroeme[]): Querschnitt[] {
 }
 
 /** Querschnitt je Kreiselarm: rechts zum nächsten Arm, geradeaus zum übernächsten (nur vierarmig), links zum letzten vor der Einfahrt */
-export function querschnitteKreisel(arme: ArmStroeme[]): Querschnitt[] {
+export function querschnitteKreisel(arme: (ArmStroeme & { uturn?: number })[]): Querschnitt[] {
   const n = arme.length
   const aus = arme.map(() => ({ zu: 0, weg: 0, summe: 0 }))
   arme.forEach((a, i) => {
     fuege(aus, i, (i + 1) % n, a.right)
     if (n === 4) fuege(aus, i, (i + 2) % n, a.straight)
     fuege(aus, i, (i + n - 1) % n, a.left)
+    fuege(aus, i, i, a.uturn ?? 0)   // Wender: Zu- und Wegfahrt am eigenen Arm
   })
   return aus.map(x => ({ ...x, summe: x.zu + x.weg }))
 }

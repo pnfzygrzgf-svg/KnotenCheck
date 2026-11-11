@@ -30,4 +30,15 @@ describe('Druckblatt Einmündung & Kreuzung', () => {
     const ref = JSON.parse(readFileSync(REFERENZ, 'utf8')) as string[]
     expect(fehlendeZahlen(ref, zahlenAus(html))).toEqual([])
   })
+  test('Normprüfung 11.11.2026: Grenzen, Wartezeitformel, Zielvorgabe und Faktoren stehen auf dem Blatt', () => {
+    expect(html).toContain('Gilt nicht für Knoten mit Rechtsvortritt')                 // EK-1
+    expect(html).toContain('Formel nach Brilon 2008')                                  // EK-4
+    expect(html).toContain('Vergleich mit 45 s (Stufe D, wie in den Beispielen der Norm)')   // EK-5
+    expect(html).toMatch(/p<sub>x<\/sub> = p<sub>0,1<\/sub> · p<sub>0,7<\/sub> = 0[.,]\d{3} \[F14\]/)   // EK-6
+    expect(html).toContain('p<sub>z,i</sub> [F18]')
+  })
+  test('EK-3: Leistungsfähigkeit unter 200 PWE/h trägt ein Sternchen und die Erklärung', () => {
+    const tief = result!.streams.some(s => s.volumePWE > 0 && s.capacity < 200 && s.volumePWE < s.capacity)
+    expect(html.includes('ausserhalb der Diagramme der Norm')).toBe(tief)
+  })
 })

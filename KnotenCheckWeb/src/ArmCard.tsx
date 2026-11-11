@@ -71,14 +71,13 @@ function getMovements(index: number, armCount: number): { label: string; key: ke
 
 // ── MixedLaneHint ──────────────────────────────────────────────────────────────
 
-export function MixedLaneHint({ index, arm, opposingHSSeparateLane }: {
-  index: number; arm: ArmConfiguration; opposingHSSeparateLane: boolean
+export function MixedLaneHint({ index, arm }: {
+  index: number; arm: ArmConfiguration
 }) {
   const isB = index === 2
   const streams = isB
     ? { right: '6 (B→C)', left: '4 (B→A)', through: '5 (B→D)', leftThrough: '4+5', throughRight: '5+6', all: '4+5+6' }
     : { right: '12 (D→A)', left: '10 (D→C)', through: '11 (D→B)', leftThrough: '10+11', throughRight: '11+12', all: '10+11+12' }
-  const opposingArm = isB ? 'A' : 'C'
 
   // Bestimme kontextabhängige Empfehlung
   let recommendation: { combo: string; reason: string } | null = null
@@ -86,18 +85,6 @@ export function MixedLaneHint({ index, arm, opposingHSSeparateLane }: {
     recommendation = {
       combo: `Links+Kreuzen (${streams.leftThrough})`,
       reason: `Die Dreiecksinsel ist aktiv: Der NS-Rechtsabbieger (Strom ${streams.right}) wartet an einer baulich getrennten Haltlinie und gehört nicht zum Mischstreifen.`,
-    }
-  } else if (opposingHSSeparateLane) {
-    if (isB) {
-      recommendation = {
-        combo: `Links+Kreuzen (${streams.leftThrough})`,
-        reason: `Arm A hat einen separaten Rechtsabbiegestreifen: Strom ${streams.right} muss nur dem rechten Fahrstreifen von A Vortritt geben und erhält dadurch deutlich mehr Kapazität als Strom ${streams.left} und ${streams.through}. Das Berechnungsbeispiel Ziff. 22 der Norm (S. 13–14) wählt in diesem Fall Links+Kreuzen — der Rechtseinbieger wird separat beurteilt.`,
-      }
-    } else {
-      recommendation = {
-        combo: `Links+Kreuzen (${streams.leftThrough})`,
-        reason: `Arm C hat einen separaten Rechtsabbiegestreifen: Strom ${streams.right} muss nur dem rechten Fahrstreifen von C Vortritt geben und erhält mehr Kapazität. Annahme: gleich behandelt wie Arm B im Berechnungsbeispiel Ziff. 22 (S. 13–14); das Beispiel selbst zeigt für Arm D keinen solchen Fall.`,
-      }
     }
   }
 
@@ -137,8 +124,8 @@ export function MixedLaneHint({ index, arm, opposingHSSeparateLane }: {
       )}
       {!recommendation && (
         <div style={{ marginTop: 4, color: 'var(--text-muted)' }}>
-          <strong>Standard:</strong> Keine besonderen geometrischen Bedingungen erkannt.
-          Wähle «Alle», wenn der NS-Arm einstreifig ist — andernfalls entsprechend der Fahrstreifenmarkierung auf dem Arm {opposingArm} gegenüber.
+          Wähle nach den Fahrstreifen dieses Arms: «Alle», wenn er einstreifig ist, sonst die Kombination der Ströme, die sich einen Fahrstreifen teilen
+          (SN 640 022, Ziffer 12, Seite 7). Die Fahrstreifen der Hauptstrasse spielen dafür keine Rolle.
         </div>
       )}
     </div>
@@ -147,13 +134,12 @@ export function MixedLaneHint({ index, arm, opposingHSSeparateLane }: {
 
 // ── ArmCard ────────────────────────────────────────────────────────────────────
 
-export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, onChange, footer, geometryLocked, hideMixedLane, hideIsland, live, herkunft, schaetzung }: {
+export function ArmCard({ arm, index, isHS, armCount, onChange, footer, geometryLocked, hideMixedLane, hideIsland, live, herkunft, schaetzung }: {
   arm: ArmConfiguration; index: number; isHS: boolean; armCount: number
   /** Arm der Übernahme aus der Karte: Marken «Modell» bzw. «Karte», solange ein Wert noch gleich ist */
   herkunft?: UebernahmeArm
   /** Aus gezählten Armmengen geschätzte Ströme dieses Arms: Marke «geschätzt», solange ein Wert noch gleich ist */
   schaetzung?: ArmStroeme
-  opposingHSSeparateLane: boolean
   onChange: (a: ArmConfiguration) => void
   footer?: React.ReactNode
   // Nur Verkehrsmengen editierbar; Neigung & Geometrie stammen aus der Basis-Konfiguration
@@ -387,7 +373,7 @@ export function ArmCard({ arm, index, isHS, armCount, opposingHSSeparateLane, on
                   </div>
                 </div>
               ))}
-              <MixedLaneHint index={index} arm={arm} opposingHSSeparateLane={opposingHSSeparateLane} />
+              <MixedLaneHint index={index} arm={arm} />
             </>
           )}
         </>

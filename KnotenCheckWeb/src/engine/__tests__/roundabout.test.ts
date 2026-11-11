@@ -184,7 +184,8 @@ describe('calculateRoundabout (Norm-Gesamtbeispiel)', () => {
     fg: [100, 300, 250,   0],
   })
 
-  // Arm 1: delay>45s → E per Tab. 3 (F nur bei Overflow; Norm liest F aus Abb. 7)
+  // Arm 1: Tab. 7 (S. 20) gibt bei X = 0,95 und 67 s die Stufe F. Nach Tab. 3 (S. 14) ist F nur bei Überlastung
+  // (Zufluss grösser als Kapazität), also E; der Text zum Beispiel (S. 19) verlangt die Stufe aus Tab. 3. Der Rechner folgt Tab. 3.
   test('Arm 1 LOS = E (delay>45s, x<1)', () => expect(result.entries[0].levelOfService).toBe('E'))
   test('Arm 2 LOS = B',                  () => expect(result.entries[1].levelOfService).toBe('B'))
   test('Arm 3 LOS = C',                  () => expect(result.entries[2].levelOfService).toBe('C'))

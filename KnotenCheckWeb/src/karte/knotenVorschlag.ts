@@ -294,7 +294,7 @@ function gruppenVorschlag(osm: OsmDaten, netz: OsmNetz, gruppe: number[], infoVo
     meldung: armzahlMeldung(arme.length) }
 }
 
-export interface RechnerVorschlag { rechner: RechnerKey; grund: string }
+export interface RechnerVorschlag { rechner: RechnerKey | null; grund: string }
 
 /** Ohne Vortrittssignal in OSM und nur an Quartierstrassen (Annahme): vermutlich Rechtsvortritt. Gleichrangige Knoten rechnet KnotenCheck nicht */
 export const vermutlichRechtsvortritt = (v: KnotenVorschlag): boolean =>
@@ -305,7 +305,9 @@ export const RECHTSVORTRITT_TEXT = 'Kein Vortrittssignal in OSM und nur Quartier
 /** Passender Rechner mit Begründung */
 export function rechnerVorschlag(v: KnotenVorschlag): RechnerVorschlag {
   if (v.form === 'kreisel') return { rechner: 'sn024a', grund: 'Kreisel in OSM (junction=roundabout).' }
-  if (v.form === 'lsa') return { rechner: 'lsa', grund: 'Lichtsignal in OSM am Knoten oder auf einem Arm bis 30 m.' }
+  // Der LSA-Rechner ist aus der Oberfläche genommen (11.11.2026); die Verfahren ohne Lichtsignal gelten hier nicht (SN 640 022, Ziffer 1, Seite 1)
+  if (v.form === 'lsa') return { rechner: null, grund: 'Lichtsignal in OSM am Knoten oder auf einem Arm bis 30 m. Für Knoten mit Lichtsignalanlage gibt es zurzeit keinen Rechner; ' +
+    'die Verfahren ohne Lichtsignal gelten dort nicht (SN 640 022, Ziffer 1, Seite 1).' }
   if (v.fgs > 0) return { rechner: 'vss308',
     grund: `${v.fgs === 1 ? 'Ein Fussgängerstreifen' : `${v.fgs} Fussgängerstreifen`} in OSM bis ${FGS_ABSTAND_M} m vom Knoten.` }
   return { rechner: 'sn022', grund: v.hauptSicher ? 'Vortritt in OSM belegt, kein Fussgängerstreifen in OSM am Knoten.' :
@@ -316,5 +318,6 @@ export function rechnerVorschlag(v: KnotenVorschlag): RechnerVorschlag {
 export function moeglicheRechner(v: KnotenVorschlag): RechnerKey[] {
   if (v.form === 'kreisel') return ['sn024a']
   const erster = rechnerVorschlag(v).rechner
-  return [erster, ...(['sn022', 'vss308', 'lsa', 'simulation'] as RechnerKey[]).filter(r => r !== erster)]
+  if (erster === null) return []
+  return [erster, ...(['sn022', 'vss308', 'simulation'] as RechnerKey[]).filter(r => r !== erster)]
 }

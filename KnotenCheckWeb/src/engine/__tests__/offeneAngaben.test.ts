@@ -130,3 +130,15 @@ describe('Dateien', () => {
     expect(wahl(['a'], undefined)).toBeNull()
   })
 })
+
+describe('offenKreisel: Bypass (KR-2)', () => {
+  const arm = { type: '1/1', right: 100, straight: 0, left: 50, gradient: '±0%', exitWide: false, exitTwoLanes: null, mischung: 'pauschal' }
+  test('mit Rechtsabbiegern ist die Wahl Pflicht', () => {
+    expect(offenKreisel([{ ...arm, bypass: null }, arm, arm])).toEqual(['Arm 1: Rechtsabbieger über Bypass'])
+    expect(offenKreisel([{ ...arm, bypass: false }, arm, arm])).toEqual([])
+    expect(offenKreisel([{ ...arm, bypass: true }, arm, arm])).toEqual([])
+  })
+  test('ohne Rechtsabbieger wird nicht gefragt', () => {
+    expect(offenKreisel([{ ...arm, right: 0, bypass: null }, arm, arm])).toEqual([])
+  })
+})

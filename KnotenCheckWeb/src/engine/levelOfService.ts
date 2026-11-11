@@ -1,4 +1,4 @@
-// Qualitätsstufen A–F nach SN 640 022, Tab. 3
+// Qualitätsstufen A–F nach SN 640 022, Tab. 3 (S. 10); auch für den Rechner nach VSS 2011/308, der dafür auf diese Norm verweist (S. 86)
 // Port von LevelOfService.swift + LevelOfService.classify()
 
 import type { LevelOfService } from './types'
@@ -12,7 +12,7 @@ export function classifyLOS(delay: number, utilizationDegree: number): LevelOfSe
   return 'E'
 }
 
-// Qualitätsstufen nach SN 640 024a (Tab. 3) und VSS 2011/308 — nur Wartezeit:
+// Qualitätsstufen nach SN 640 024a (Tab. 3, S. 14), nur Wartezeit; für den Kreisverkehr:
 // A ≤10 s · B ≤20 s · C ≤30 s · D ≤45 s · E >45 s · F überlastet/unendlich
 export function classifyDelayLOS(delay: number): LevelOfService {
   if (!isFinite(delay)) return 'F'

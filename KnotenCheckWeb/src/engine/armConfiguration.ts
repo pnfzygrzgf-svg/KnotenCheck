@@ -150,6 +150,20 @@ export function armLabel(index: number): string {
   return ['A', 'C', 'B', 'D', 'E'][index] ?? `${index + 1}`
 }
 
+// Hauptstrassenarme (A, C), an denen mehr als die Hälfte der Zufahrt rechts abbiegt (Strom 3 bzw. 9). Nach SN 640 022 Ziffer 4, S. 2
+// missachten die Linkseinbieger (Strom 4 bzw. 10) dann den Vortritt; ihre Leistungsfähigkeit ist in der Regel höher als gerechnet.
+export function starkeRechtsabbieger(arms: ArmConfiguration[]): string[] {
+  return arms.slice(0, 2).flatMap((a, i) => {
+    const zufahrt = a.leftVolume + a.straightVolume + a.rightVolume
+    return zufahrt > 0 && a.rightVolume > 0.5 * zufahrt ? [armLabel(i)] : []
+  })
+}
+export const RECHTSABBIEGER_HINWEIS = (label: string) =>
+  `Arm ${label}: Mehr als 50 % der Zufahrt biegen rechts ab. Nach Ziffer 4 (Seite 2) ist die Leistungsfähigkeit der Linkseinbieger dann in der Regel höher als gerechnet.`
+/** Anwendungsgrenzen der SN 640 022 (Ziffer 1, S. 1 und Ziffer 4, S. 2) */
+export const SN022_GRENZEN = 'Gilt nicht für Knoten mit Rechtsvortritt und nicht für abknickende Hauptstrassen. Nur bedingt anwendbar bei vielen Fussgänger*innen oder Velos ' +
+  'und in der Nähe von Lichtsignalanlagen oder Bahnübergängen (Ziffer 1, Seite 1). Eingeschränkte Sicht und Kreuzungswinkel unter 70 gon können die Leistungsfähigkeit senken (Ziffer 4, Seite 2).'
+
 // Angaben der Arme, die für die Rechnung noch fehlen. Leere Stromfelder zählen als kein Verkehr,
 // mindestens ein Strom ist nötig. mischstreifen = false: Das Feld ist ausgeblendet (Simulation).
 export function offeneArmAngaben(arms: ArmConfiguration[], { mischstreifen = true, verkehr = true } = {}): string[] {

@@ -21,13 +21,13 @@ function fall(): ArmInput[] {
   ]
 }
 
-// Wie im Rechner (RoundaboutApp): Q_E mit dem f der Einfahrt, Q_K mit dem Ring-f, Q_A mit dem f der Herkunftsarme
+// Wie im Rechner (RoundaboutApp): Q_E mit dem f der Einfahrt, Q_K und Q_A mit dem Ring-f
 function rechnen(arms: ArmInput[]) {
   const f = (a: ArmInput) => entryFactor(a.gradient!, a.mix)
   const qe = arms.map(a => Math.round((a.right + a.straight + a.left) * f(a)))
   const qk = computeQKfromTurnings(arms.map(a => a.right * ringFactor(a.mix)), arms.map(a => a.straight * ringFactor(a.mix)),
     arms.map(a => a.left * ringFactor(a.mix)), 4).map(Math.round)
-  const qa = computeQAfromTurnings(arms.map(a => a.right * f(a)), arms.map(a => a.straight * f(a)), arms.map(a => a.left * f(a)), 4).map(Math.round)
+  const qa = computeQAfromTurnings(arms.map(a => a.right * ringFactor(a.mix)), arms.map(a => a.straight * ringFactor(a.mix)), arms.map(a => a.left * ringFactor(a.mix)), 4).map(Math.round)
   return calculateRoundabout({ type: arms.map(a => a.type!), qe, qk, fg: arms.map(a => a.fg), qa,
     exitWide: arms.map(a => a.exitWide === true), exitTwoLanes: arms.map(a => a.exitTwoLanes === true) })
 }
@@ -55,5 +55,31 @@ describe('Druckblatt Kreisverkehr', () => {
     expect(m).toBe(5)       // Arm 1 drei Ströme, Arm 2 zwei (links von Hand geändert)
     expect(k).toBe(5)       // Arm 1 Name, Typ, Neigung; Arm 2 und 3 Name; Arm 4 umbenannt
     expect(mit).toContain('Modellwert des NPVM')
+  })
+  test('KR-5: Reserve unter 100 PWE/h ist gekennzeichnet (Ziffer 13, Seite 15)', () => {
+    const knapp = result.entries.some(e => e.loaded && isFinite(e.delay) && e.reserve >= 0 && e.reserve < 100)
+    expect(html.includes('Dimensionierungsempfehlung der Norm nicht erfüllt')).toBe(knapp)
+    const r = calculateRoundabout({ type: ['1/1', '1/1', '1/1'], qe: [1020, 300, 300], qk: [100, 100, 100], fg: [0, 0, 0], qa: [300, 300, 300],
+      exitWide: [false, false, false], exitTwoLanes: [false, false, false] })
+    const blatt = renderToStaticMarkup(<Bewertungsblatt nodeName="" armCount={3} arms={arms.slice(0, 3)} result={r} onClose={() => {}} />)
+    expect(r.entries[0].reserve).toBeLessThan(100)
+    expect(blatt).toContain('Dimensionierungsempfehlung der Norm nicht erfüllt')
+    expect(blatt).toContain('color:#c2410c;font-weight:600')
+  })
+  test('KR-8: f_F unter 100 FG/h ist als Annahme gekennzeichnet', () => {
+    expect(arms.some(a => a.fg > 0 && a.fg < 100)).toBe(true)   // Arm 4 mit 60 FG/h
+    expect(html).toContain('Unter 100 FG/h zeigen Abb. 3 und 4 (Seite 10) keine Kurve')
+    const ohne = renderToStaticMarkup(<Bewertungsblatt nodeName="" armCount={4} arms={arms.map(a => ({ ...a, fg: a.fg && 120 }))} result={result} onClose={() => {}} />)
+    expect(ohne).not.toContain('Unter 100 FG/h')
+  })
+  test('KR-2: Rechtsabbieger über Bypass zählen nicht zu Q_E (VSS 40 024a, Ziffer 11, Seite 13)', () => {
+    const mitB = arms.map((a, i) => (i === 0 ? { ...a, bypass: true } : a))
+    const r = rechnen(mitB.map(a => ({ ...a, right: a.bypass ? 0 : a.right })))   // Q_E ohne Bypass-Verkehr
+    const blatt = renderToStaticMarkup(<Bewertungsblatt nodeName="" armCount={4} arms={mitB} result={r} onClose={() => {}} />)
+    expect(blatt).toContain('180 Fz/h Rechtsabbieger über Bypass, nicht in Q_E')
+    expect(blatt).toContain('>180 (Bypass)</td>')
+    // Arm 1: Q_E in Fz/h ohne die 180 Rechtsabbieger = 320 + 90
+    expect(blatt).toMatch(/<strong>Arm 1<\/strong><\/td><td[^>]*>\+2%<\/td><td[^>]*>pauschal<\/td><td[^>]*>[\d.]+<\/td><td[^>]*>410<\/td>/)
+    expect(html).not.toContain('über Bypass')
   })
 })

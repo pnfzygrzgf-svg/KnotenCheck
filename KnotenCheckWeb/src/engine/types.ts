@@ -95,6 +95,8 @@ export interface SN640022StreamResult {
   delay: number
   levelOfService: LevelOfService
   p0Star?: number     // p0,i* der Ströme 1/7 (Ziff. 14, S. 7–8), wenn der Linksabbiegestreifen fehlt
+  py?: number         // p_y,i der Ströme 5/11 an der Kreuzung [F17], S. 6
+  pz?: number         // p_z,i der Ströme 5/11 an der Kreuzung [F18], S. 6
 }
 
 export interface SN640022MixedResult {
@@ -113,6 +115,7 @@ export interface SN640022Result {
   streams: SN640022StreamResult[]
   mixedLanes: SN640022MixedResult[]
   overallLevelOfService: LevelOfService | null  // null: kein Strom belastet
+  px?: number         // p_x = p0,1 · p0,7 an der Kreuzung [F14], S. 6; mit p0* statt p0, wo der Linksabbiegestreifen fehlt
 }
 
 export type MixedLaneCombination = 'leftAndThrough' | 'throughAndRight' | 'all'

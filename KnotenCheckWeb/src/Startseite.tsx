@@ -28,12 +28,6 @@ const RECHNER = [
     badge: 'Beta' as const,
   },
   {
-    key: 'lsa',
-    title: 'LSA-Knoten',
-    desc: 'LSA-Knoten mit konfigurierbarem Fahrstreifen- und Phasenplan.',
-    badge: 'Alpha' as const,
-  },
-  {
     key: 'simulation',
     title: 'Simulation',
     desc: 'Zeigt, wie Wartezeiten an einem Vorfahrtknoten verteilt sind — nicht als einzelne Zahl, sondern als vollständiges Bild aus Hunderten simulierter Stunden.',

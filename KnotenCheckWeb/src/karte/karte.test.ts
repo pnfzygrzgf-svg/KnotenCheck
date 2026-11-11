@@ -124,8 +124,10 @@ describe('Rechnervorschlag', () => {
     const lsa = { type: 'node', id: 502, lat: LAT0, lon: LON0, tags: { highway: 'traffic_signals' } }
     const v = vorschlag(knotenRoh([haupt('Hauptweg', 90), haupt('Hauptweg', 270), { az: 180, name: 'Nebenweg' }], [lsa]))
     expect(v.form).toBe('lsa')
-    expect(rechnerVorschlag(v).rechner).toBe('lsa')
-    expect(moeglicheRechner(v)).toContain('sn022')
+    // Der LSA-Rechner ist aus der Oberfläche genommen: kein Rechner, mit Begründung
+    expect(rechnerVorschlag(v).rechner).toBeNull()
+    expect(rechnerVorschlag(v).grund).toContain('zurzeit keinen Rechner')
+    expect(moeglicheRechner(v)).toEqual([])
   })
   test('nur Quartierstrassen ohne Signal: Hinweis auf Rechtsvortritt, den die Rechner nicht kennen', () => {
     const q = (az: number, name: string): ArmDef => ({ az, name, hw: 'residential' })

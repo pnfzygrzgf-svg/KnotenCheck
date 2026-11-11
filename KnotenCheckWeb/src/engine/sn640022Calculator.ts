@@ -105,6 +105,17 @@ function pz(Py: number): number {
   return 0.65 * Py - Py / (Py + 3) + 0.6 * Math.sqrt(Py)
 }
 
+// ── Grenzen der Diagramme ─────────────────────────────────────────────────────
+// Abb. 2 (S. 5) reicht bis q_pi = 1800 Fz/h, die Kurvenschar der Abb. 4 (S. 9) beginnt bei L = 200 PWE/h. Ausserhalb rechnet der
+// Kern weiter (Gerade bzw. Formel); das ist eine Annahme und wird im Ergebnis mit einem Sternchen bezeichnet.
+export const ABB2_QPI_MAX = 1800
+export const ABB4_L_MIN = 200
+export const ausserhalbAbb2 = (qpi: number): boolean => qpi > ABB2_QPI_MAX
+/** q: Belastung des Stroms bzw. Mischstreifens [PWE/h]; ohne Verkehr und bei Überlast gibt es keine Wartezeit zu kennzeichnen */
+export const ausserhalbAbb4 = (q: number, L: number): boolean => q > 0 && L > 0 && q < L && L < ABB4_L_MIN
+export const WARTEZEIT_HINWEIS = 'Mittlere Wartezeit nach Abb. 4 (Seite 9). Die Norm gibt nur Kurven; gerechnet wird mit einer Formel nach Brilon 2008, die die Kurven nachbildet (Annahme).'
+export const DIAGRAMM_HINWEIS = '* ausserhalb der Diagramme der Norm (Abb. 2 bis 1800 Fz/h, Abb. 4 ab L = 200 PWE/h): mit der Formel weitergerechnet (Annahme).'
+
 // ── Wartezeit [F25] — Abb. 4, SN 640 022 ─────────────────────────────────────
 // Die Norm gibt w nur grafisch an (Abb. 4, «nach Kimber, Hollis, 1979»).
 // Algebraische Form: Wartezeitformel des HBS 2015 (= Bedienzeit 3600/L +
@@ -285,6 +296,9 @@ function kreuzung(v: number[][], raw: number[][], flags: SN640022LaneFlags, give
 
   const s4  = makeStream(4,  'B → A', 4, q4,  qp4,  G4,  L4)
   const s10 = makeStream(10, 'D → C', 4, q10, qp10, G10, L10)
+  // Faktoren für das Druckblatt, wie in den Tabellen des Normbeispiels (S. 13–14)
+  s5.py = Py5;   s5.pz = pz5
+  s11.py = Py11; s11.pz = pz11
 
   // Mischstreifen [F21]
   const mixBstreams = flags.mixedB === 'leftAndThrough'  ? [{ q: q4, L: L4 }, { q: q5, L: L5 }]
@@ -304,7 +318,7 @@ function kreuzung(v: number[][], raw: number[][], flags: SN640022LaneFlags, give
   const mixD = mixed(`Arm D (${mixDnums.join('+')})`, mixDnums, mixDstreams)
 
   const streams = [s1, s7, s6, s12, s5, s11, s4, s10]
-  return { streams, mixedLanes: [mixB, mixD], overallLevelOfService: overallLOS(streams, [mixB, mixD]) }
+  return { streams, mixedLanes: [mixB, mixD], overallLevelOfService: overallLOS(streams, [mixB, mixD]), px }
 }
 
 // ── Öffentliche API ───────────────────────────────────────────────────────────

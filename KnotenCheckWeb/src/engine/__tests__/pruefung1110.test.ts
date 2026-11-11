@@ -139,3 +139,161 @@ describe('KC-09: Standard-Vorschlag der LSA mit zweitem Fahrstreifen', () => {
     expect(phasen.flatMap(p => p.laneIds)).not.toContain('fgs-A')
   })
 })
+
+// ── Normprüfung vom 11.11.2026 ────────────────────────────────────────────────
+import { starkeRechtsabbieger } from '../armConfiguration'
+
+describe('EK-1: starke Rechtsabbieger der Hauptstrasse (SN 640 022 Ziffer 4, S. 2)', () => {
+  const arme = (a: [number, number, number], c: [number, number, number], b: [number, number, number] = [10, 0, 10]) =>
+    defaultIntersection(3).arms.map((x, i) => { const [l, s, r] = [a, c, b][i]; return { ...x, leftVolume: l, straightVolume: s, rightVolume: r } })
+  test('über 50 % der Zufahrt: der Arm wird genannt', () => {
+    expect(starkeRechtsabbieger(arme([0, 200, 300], [50, 400, 0]))).toEqual(['A'])
+    expect(starkeRechtsabbieger(arme([0, 100, 300], [0, 100, 150]))).toEqual(['A', 'C'])
+  })
+  test('genau 50 %, weniger oder kein Verkehr: kein Hinweis; die Nebenstrasse zählt nicht', () => {
+    expect(starkeRechtsabbieger(arme([0, 300, 300], [0, 400, 100]))).toEqual([])
+    expect(starkeRechtsabbieger(arme([0, 0, 0], [0, 0, 0], [0, 0, 500]))).toEqual([])
+  })
+})
+
+import { ausserhalbAbb2, ausserhalbAbb4 } from '../sn640022Calculator'
+
+describe('EK-3: Werte ausserhalb der Diagramme der SN 640 022 (Abb. 2, S. 5; Abb. 4, S. 9)', () => {
+  test('Abb. 2 reicht bis 1800 Fz/h', () => {
+    expect(ausserhalbAbb2(1800)).toBe(false)
+    expect(ausserhalbAbb2(1801)).toBe(true)
+  })
+  test('Abb. 4 beginnt bei L = 200 PWE/h; ohne Verkehr und bei Überlast kein Zeichen', () => {
+    expect(ausserhalbAbb4(50, 199)).toBe(true)
+    expect(ausserhalbAbb4(50, 200)).toBe(false)
+    expect(ausserhalbAbb4(0, 150)).toBe(false)
+    expect(ausserhalbAbb4(160, 150)).toBe(false)
+  })
+})
+
+import { analyzeSN640022 } from '../sn640022Calculator'
+
+describe('EK-6: Faktoren p_x, p_y, p_z der Kreuzung (SN 640 022 F14, F17, F18, S. 6; Normbeispiel Ziffer 22, S. 13–14)', () => {
+  const fz = [[0, 500, 220, 30], [550, 0, 90, 0], [170, 60, 0, 10], [20, 5, 15, 0]]
+  const pwe = [[0, 550, 242, 33], [605, 0, 99, 0], [187, 66, 0, 11], [22, 6, 17, 0]]
+  const flags = { ...noFlags, mixedB: 'leftAndThrough' as const, mixedD: 'throughAndRight' as const, armASeparateLane: true }
+  const r = analyzeSN640022(pwe, flags, fz)!
+  const s = (n: number) => r.streams.find(x => x.streamNumber === n)!
+  test('p_x wie in der Tabelle der zweitrangigen Ströme', () => expect(r.px!).toBeCloseTo(0.817, 2))
+  test('p_y und p_z der Ströme 5 und 11 wie in der Tabelle der drittrangigen Ströme', () => {
+    expect(s(5).py!).toBeCloseTo(0.780, 2)
+    expect(s(5).pz!).toBeCloseTo(0.831, 2)
+    expect(s(11).py!).toBeCloseTo(0.749, 2)
+    expect(s(11).pz!).toBeCloseTo(0.806, 2)
+  })
+  test('die Faktoren ergeben die Leistungsfähigkeiten: F15 und F19', () => {
+    expect(s(5).capacity).toBeCloseTo(r.px! * s(5).basicCapacity, 6)
+    const p012 = 1 - s(12).utilizationDegree
+    expect(s(4).capacity).toBeCloseTo(s(11).pz! * p012 * s(4).basicCapacity, 6)
+  })
+  test('andere Ströme und die Einmündung tragen keine Faktoren', () => {
+    expect(s(1).py).toBeUndefined()
+    expect(analyzeSN640022([[0, 500, 100], [400, 0, 50], [30, 40, 0]])!.px).toBeUndefined()
+  })
+})
+
+import { calculateVSS308, computeDelay } from '../vss2011308Calculator'
+
+describe('FG-1: Hauptstrassenarm mit wartepflichtigem Linksabbieger rechnet mit C = 1 (VSS 2011/308, Ziffer 4.2, S. 51)', () => {
+  const arm = (name: string, roadType: 'HS' | 'NS', o: object = {}) => ({ name, roadType, right: 0, straight: 0, left: 0, fg: 0, rho: 1, ...o })
+  const knoten = (a: object) => calculateVSS308({ type: '4arm', arms: [arm('A', 'HS', a), arm('C', 'HS', { straight: 700 }), arm('B', 'NS'), arm('D', 'NS')] as never })
+  test('mit Linksabbieger: C = 1, S = 1650', () => {
+    const a = knoten({ straight: 600, left: 150 }).arms[0]
+    expect(a.saturation).toBe(1650)
+    expect(a.delay).toBeCloseTo(computeDelay(a.qFz, a.capacity, 1), 6)
+    expect(a.delay).toBeCloseTo(22.2, 1)
+    expect(a.levelOfService).toBe('C')
+  })
+  test('ohne Linksabbieger bleibt der Arm Rang 1: C = 0,5, S = 1750', () => {
+    const a = knoten({ straight: 600, right: 100 }).arms[0]
+    expect(a.saturation).toBe(1750)
+    expect(a.delay).toBeCloseTo(computeDelay(a.qFz, a.capacity, 0.5), 6)
+  })
+  test('ein Linksabbieger ohne Verkehr ändert nichts', () => {
+    expect(knoten({ straight: 600, left: 0 }).arms[0].saturation).toBe(1750)
+  })
+  test('die Einzelströme bleiben wie bisher: Geradeaus Rang 1, Linksabbieger nachrangig', () => {
+    const r = knoten({ straight: 600, left: 150 })
+    expect(r.streams.find(s => s.id === 'A→C')!.saturation).toBe(1750)
+    expect(r.streams.find(s => s.id === 'A→D')!.saturation).toBe(1650)
+  })
+})
+
+describe('FG-2: Linksabbieger der Nebenstrasse wartet auf die gegenüberliegende Nebenstrasse (VSS 2011/308 Gl. 12, S. 61; Tab. 25, S. 58)', () => {
+  const arm = (name: string, roadType: 'HS' | 'NS', o: object = {}) => ({ name, roadType, right: 0, straight: 0, left: 0, fg: 0, rho: 1, ...o })
+  const kreuzung = (b: object, d: object, a: object = {}) => calculateVSS308({ type: '4arm',
+    arms: [arm('A', 'HS', { straight: 400, ...a }), arm('C', 'HS', { straight: 400 }), arm('B', 'NS', b), arm('D', 'NS', d)] as never })
+  const strom = (r: ReturnType<typeof kreuzung>, id: string) => r.streams.find(s => s.id === id)!
+  test('ohne Verkehr auf der Gegenseite wie bisher', () => {
+    expect(strom(kreuzung({ left: 100 }, {}), 'B→A').capacity).toBeCloseTo(264.0, 1)
+  })
+  test('Geradeaus und Rechts der Gegenseite mindern mit (1 − y)³, y = Q / 1650', () => {
+    const s = strom(kreuzung({ left: 100 }, { straight: 300, right: 200 }), 'B→A')
+    expect(s.capacity).toBeCloseTo(264.0 * (1 - 500 / 1650) ** 3, 1)
+    expect(s.capacity).toBeCloseTo(89.4, 1)
+    expect(s.delay).toBe(Infinity)
+  })
+  test('der Linksabbieger der Gegenseite und der eigene Geradeaus- und Rechtsstrom zählen nicht', () => {
+    expect(strom(kreuzung({ left: 100 }, { left: 300 }), 'B→A').capacity).toBeCloseTo(264.0, 1)
+    const r = kreuzung({ straight: 100, right: 100 }, { straight: 300, right: 200 })
+    expect(strom(r, 'B→D').capacity).toBeCloseTo(264.0, 1)
+    expect(strom(r, 'B→C').capacity).toBeCloseTo(264.0, 1)
+  })
+  test('gilt für beide Nebenstrassenarme; an der Einmündung gibt es keine Gegenseite', () => {
+    expect(strom(kreuzung({ straight: 300, right: 200 }, { left: 100 }), 'D→C').capacity).toBeCloseTo(89.4, 1)
+    const t = calculateVSS308({ type: '3arm', arms: [arm('A', 'HS', { straight: 400 }), arm('C', 'HS', { straight: 400 }), arm('B', 'NS', { left: 100 })] as never })
+    expect(t.streams.find(s => s.id === 'B→A')!.capacity).toBeCloseTo(264.0, 1)
+  })
+  test('ein Fussgängerstreifen auf der Hauptstrasse (Szenario II) hebt den Faktor nicht auf', () => {
+    const ohne = strom(kreuzung({ left: 100 }, {}, { fg: 200 }), 'B→A')
+    const mit = strom(kreuzung({ left: 100 }, { straight: 300, right: 200 }, { fg: 200 }), 'B→A')
+    expect(mit.capacity).toBeCloseTo(ohne.capacity * (1 - 500 / 1650) ** 3, 1)
+  })
+})
+
+describe('FG-5: Linksabbieger der Hauptstrasse steht im Konfliktverkehr mit S = 1650 (VSS 2011/308 Tab. 13, S. 39)', () => {
+  const arm = (name: string, roadType: 'HS' | 'NS', o: object = {}) => ({ name, roadType, right: 0, straight: 0, left: 0, fg: 0, rho: 1, ...o })
+  const t = (c: object) => calculateVSS308({ type: '3arm', arms: [arm('A', 'HS', { straight: 300 }), arm('C', 'HS', c), arm('B', 'NS', { left: 100 })] as never })
+    .streams.find(s => s.id === 'B→A')!
+  test('mit Linksabbieger: y = 600/1750 + 200/1650', () => {
+    expect(t({ straight: 300, left: 200 }).capacity).toBeCloseTo(1650 * (1 - (600 / 1750 + 200 / 1650)) ** 3, 1)
+    expect(t({ straight: 300, left: 200 }).capacity).toBeCloseTo(254.0, 1)
+  })
+  test('ohne Linksabbieger wie bisher: y = 800/1750', () => {
+    expect(t({ straight: 500 }).capacity).toBeCloseTo(1650 * (1 - 800 / 1750) ** 3, 1)
+  })
+})
+
+import { computeQAfromTurnings, computeQKfromTurnings, basicCapacity } from '../roundaboutCalculator'
+import { querschnitteKreisel } from '../../karte/vergleich'
+
+describe('KR-3: Wender am Kreisel (VSS 40 024a, Ziffer 8.3, S. 7)', () => {
+  // Normbeispiel Kapitel 17, Abb. 10 (S. 18): rechts / geradeaus / links je Arm [PWE/h]
+  const r = [110, 40, 210, 420], g = [380, 310, 300, 410], l = [260, 120, 60, 130]
+  test('ohne Wender: Q_K und Q_A wie Tab. 4 der Norm', () => {
+    expect(computeQKfromTurnings(r, g, l, 4)).toEqual([600, 770, 690, 480])
+    expect(computeQAfromTurnings(r, g, l, 4)).toEqual([840, 580, 550, 780])
+  })
+  test('50 Wender an Arm 1: Ring an den Einfahrten 2 bis 4 und Ausfahrt 1 je + 50', () => {
+    const w = [50, 0, 0, 0]
+    expect(computeQKfromTurnings(r, g, l, 4, w)).toEqual([600, 820, 740, 530])
+    expect(computeQAfromTurnings(r, g, l, 4, w)).toEqual([890, 580, 550, 780])
+    expect(Math.round(basicCapacity('1/1', 820))).toBe(667)   // Typ 1/1, Abb. 6: 1141 − 0,578 · 820
+  })
+  test('dreiarmig: Wender an jedem anderen Arm', () => {
+    expect(computeQKfromTurnings([0, 0, 0], [0, 0, 0], [10, 20, 30], 3, [0, 5, 0])).toEqual([35, 10, 25])
+  })
+  test('Querschnitt: Wender fahren am eigenen Arm zu und weg', () => {
+    const q = querschnitteKreisel([{ left: 0, straight: 0, right: 0, uturn: 40 }, { left: 0, straight: 0, right: 0 }, { left: 0, straight: 0, right: 0 }])
+    expect(q[0]).toEqual({ zu: 40, weg: 40, summe: 80 })
+  })
+  test('nur Wender eingetragen: Abbiegeströme sind nicht offen', () => {
+    const arm = { type: '1/1', right: 0, straight: 0, left: 0, gradient: '±0%', exitWide: false, exitTwoLanes: null, mischung: 'pauschal' }
+    expect(offenKreisel([{ ...arm, uturn: 30 }, arm, arm])).toEqual([])
+  })
+})

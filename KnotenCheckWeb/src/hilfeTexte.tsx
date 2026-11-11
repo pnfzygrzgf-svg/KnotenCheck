@@ -2,6 +2,8 @@
 
 import type { ReactNode } from 'react'
 import type { RechnerKey } from './karte/rechner'
+import { SN022_GRENZEN } from './engine/armConfiguration'
+import { KREISEL_GRENZEN } from './engine/roundaboutCalculator'
 
 export const SO: Record<RechnerKey, { schritte: ReactNode[]; grenzen: ReactNode }> = {
   sn022: {
@@ -11,7 +13,7 @@ export const SO: Record<RechnerKey, { schritte: ReactNode[]; grenzen: ReactNode 
       <><b>Bauliche Merkmale:</b> Rechtsabbiegestreifen, Dreiecksinsel und Linksabbiegestreifen ankreuzen, an der Nebenstrasse die Aufteilung der Fahrstreifen wählen.</>,
       <><b>Ergebnis:</b> rechts das Knotenbild mit der Qualitätsstufe je Strom und die Gesamtstufe. «Bericht / PDF» zeigt das Berechnungsblatt.</>,
     ],
-    grenzen: <>Die Norm kennt nur den Motorfahrzeugverkehr. Für Fussgänger*innen gibt es den Rechner «Ungesteuerter Knoten mit Fussgänger*innen» und die Simulation.</>,
+    grenzen: <>{SN022_GRENZEN} Für Fussgänger*innen gibt es den Rechner «Ungesteuerter Knoten mit Fussgänger*innen».</>,
   },
   vss308: {
     schritte: [
@@ -28,7 +30,7 @@ export const SO: Record<RechnerKey, { schritte: ReactNode[]; grenzen: ReactNode 
       <><b>Ströme:</b> je Arm die Abbiegeströme in Fz/h der Spitzenstunde eingeben, dazu Verkehrsmischung und Längsneigung.</>,
       <><b>Ergebnis:</b> Leistungsfähigkeit, Auslastung, Wartezeit und Qualitätsstufe je Einfahrt, dazu die Prüfung der Ausfahrten. «Bericht / PDF» zeigt das Bewertungsblatt.</>,
     ],
-    grenzen: <>Beim Typ 2/2 stützt sich die Rechnung auf wenige Messdaten; Werte ausserhalb der Kurven der Norm sind hochgerechnet und gekennzeichnet.</>,
+    grenzen: <>{KREISEL_GRENZEN} Beim Typ 2/2 stützt sich die Rechnung auf wenige Messdaten; Werte ausserhalb der Kurven der Norm sind hochgerechnet und gekennzeichnet.</>,
   },
   lsa: {
     schritte: [
@@ -74,6 +76,6 @@ export const GRUNDLAGEN: Record<RechnerKey, ReactNode[]> = {
     <>HBS 2015, Kapitel S5, Tabelle S5-3: Grenz- und Folgezeitlücken.</>,
     <>Troutbeck &amp; Brilon (FHWA 1997, Kapitel 8): Lückenannahme, Cowan-M3-Modell.</>,
     <>VSS 2011/308: Gruppengrösse der Fussgänger*innen.</>,
-    <>VSS 40 240: Gehgeschwindigkeit 0,8 m/s. Art. 47 Abs. 3 VRV: Mittelinsel teilt den Streifen; VSS 40 241: Mittelinsel ab 8,5 m.</>,
+    <>VSS 40 240: Gehgeschwindigkeit 0,8 m/s; daraus die Sperrdauer je Gruppe (eigene Annahme). Art. 47 Abs. 3 VRV: Mittelinsel teilt den Streifen; VSS 40 241: Mittelinsel ab 8,5 m.</>,
   ],
 }

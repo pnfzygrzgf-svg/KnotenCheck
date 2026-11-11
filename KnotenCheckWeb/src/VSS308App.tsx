@@ -213,7 +213,7 @@ function ArmCard({ arm, index, nodeType, result, onChange, herkunft, schaetzung 
               sie haben die Mittelinsel noch nicht erreicht. Das Fahrzeug muss nicht warten.
               <br /><br />
               <strong style={{ color: '#78350f' }}>Rechnerisch:</strong> Da die Verteilung
-              der Fg auf beide Hälften unbekannt ist, wird konservativ{' '}
+              der Fg auf beide Hälften unbekannt ist, wird als Näherung{' '}
               <strong>Q_Fg / 2 = {arm.fg / 2} Fg/h</strong> als wirksames Volumen eingesetzt.
               <br /><br />
               <strong style={{ color: '#78350f' }}>Aktivieren wenn:</strong> Eine physische Insel
@@ -414,13 +414,14 @@ const NODE_TYPE_LABEL: Record<NodeType, string> = {
   'equal': 'Gleicher Rang — Rechtsvortritt (4 Arme)',
 }
 
+// Beurteilung nach SN 640 022, Tab. 3 (S. 10)
 const LOS_DESC: Record<LevelOfService, string> = {
-  A: 'Sehr gut — keine Wartezeiten',
-  B: 'Gut — kurze Wartezeiten',
-  C: 'Befriedigend',
-  D: 'Ausreichend — merkliche Wartezeiten',
-  E: 'Mangelhaft — lange Wartezeiten',
-  F: 'Überlastet — Stau',
+  A: 'Sehr gut — ausgezeichnete Verkehrsqualität',
+  B: 'Sehr gut — gute Verkehrsbedingungen',
+  C: 'Gut — befriedigende Qualität',
+  D: 'Ausreichend',
+  E: 'Kritisch — mangelhafte Qualität',
+  F: 'Überlastung — völlig ungenügender Zustand',
 }
 
 const BL_TH: CSSProperties = {
@@ -468,7 +469,7 @@ export function Bewertungsblatt308({ nodeName, nodeType, arms, result, onClose, 
   const hinweise: ReactNode[] = [
     ...(karte?.belegt ?? []),
     ...(schaetzung && schaetzungGilt(schaetzung, arms) ? [schaetzung.text] : []),
-    <><b>Annahme Einfahrten:</b> Jede Einfahrt gilt als Mischstreifen (analog SN 640 022, Ziff. 13, S. 7): x = Σ Q/L, L = ΣQ/x; nur β ist volumengewichtet.</>,
+    <><b>Annahme Einfahrten:</b> Jede Einfahrt gilt als Mischstreifen (analog SN 640 022, Ziff. 13, S. 7): x = Σ Q/L, L = ΣQ/x; nur β ist volumengewichtet. Der Arm rechnet mit C = 1, sobald ein belasteter Strom nachrangig ist, zum Beispiel ein Linksabbieger der Hauptstrasse: C = 0,5 setzt eine feste Bedienzeit voraus (VSS 2011/308, Ziffer 4.2, Seite 51).</>,
     ...(normArms.some(a => a.querung === 'trottoirueberfahrt') ? [<><b>Annahme Trottoirüberfahrt:</b> Fussgänger*innen haben Vortritt
       (VRV Art. 41 Abs. 2). Gerechnet wie ein Fussgängerstreifen über die Nebenstrasse (ohne Mittelinsel), VSS 2011/308 kennt die
       Trottoirüberfahrt nicht.</>] : []),
@@ -629,8 +630,8 @@ export function Bewertungsblatt308({ nodeName, nodeType, arms, result, onClose, 
         <p className="bericht-unter">
           Pro Strom: β = ∏(1 − y_i)³ über alle senkrechten vortrittsberechtigten Ströme (HS-Fz und/oder Fg, Ein- und Ausfahrt); y_HS = Summe Q/S aller HS-Ströme. HS-Linksabbieger: zusätzlich (1 − y_gegen)³ aus Geradeaus + Rechts des gegenüberliegenden HS-Arms (Tab. 25, S. 58).
           L = S·β (Szenario I, Gl. 5, S. 60); NS-Ströme und HS-Linksabbieger mit parallelen vortrittsberechtigten Fg-Strömen (Streifen auf nicht überfahrenen HS-Armen, Marker «Sz II»): L = S·y_par + S·(1−y_par)·β (Szenario II, Gl. 6, S. 61). S_Fg = 900·ρ Fg/h (ρ = mittlere Gruppengrösse, Tab. 9, S. 37).
-          S und C (Gl. 1, S. 62): HS-Ströme ohne Fg S = 1750 Fz/h, C = 0.5 (Rang 1); wer Fg Vortritt gewährt, HS-Linksabbieger und NS-Ströme S = 1650 Fz/h, C = 1 (Tab. 26, S. 68).
-          Einfahrten als Mischstreifen (siehe Annahmen). LOS: A ≤10 s · B ≤20 s · C ≤30 s · D ≤45 s · E &gt;45 s · F Überlast.
+          S und C (Gl. 1, S. 18; wiederholt auf S. 62): HS-Ströme ohne Fg S = 1750 Fz/h, C = 0.5 (Rang 1); wer Fg Vortritt gewährt, HS-Linksabbieger und NS-Ströme S = 1650 Fz/h, C = 1 (Tab. 26, S. 68). Der Linksabbieger der Nebenstrasse wartet an der Kreuzung auch auf den Gegenverkehr der gegenüberliegenden Nebenstrasse: Faktor (1−y)³ mit y = Q/1650 (Annahme nach Gl. 12, S. 61, und Tab. 25, S. 58).
+          Einfahrten als Mischstreifen (siehe Annahmen). Qualitätsstufen nach SN 640 022, Tab. 3 (Seite 10), auf die der Bericht verweist (Seite 86): A &lt;10 s · B 10–15 s · C 15–25 s · D 25–45 s · E &gt;45 s · F Überlast.
         </p>
       </Abschnitt>
 
@@ -688,7 +689,7 @@ export function Bewertungsblatt308({ nodeName, nodeType, arms, result, onClose, 
 const LEGEND_ITEMS: LegendItem[] = [
   { abbr: 'Fz/h',   desc: 'Fahrzeuge pro Stunde — Roheingabe Abbiegeströme' },
   { abbr: 'Fg/h',   desc: 'Fussgänger*innen pro Stunde am Fussgängerstreifen dieser Einfahrt — Gesamtvolumen, unabhängig davon ob eine Mittelinsel vorhanden ist' },
-  { abbr: 'MI',     desc: 'Mittelinsel (Verkehrsinsel) am Fussgängerstreifen — teilt den Streifen in zwei selbständige Teile (Art. 47 Abs. 3 VRV). Fahrzeuge müssen Fg, die die Insel noch nicht erreicht haben, keinen Vortritt gewähren. Rechnerisch: wirksames Q_Fg = Q_Fg / 2 (konservative Annahme gleichmässiger Verteilung auf beide Hälften).' },
+  { abbr: 'MI',     desc: 'Mittelinsel (Verkehrsinsel) am Fussgängerstreifen — teilt den Streifen in zwei selbständige Teile (Art. 47 Abs. 3 VRV). Fahrzeuge müssen Fg, die die Insel noch nicht erreicht haben, keinen Vortritt gewähren. Rechnerisch: wirksames Q_Fg = Q_Fg / 2 (Näherung: gleichmässige Verteilung auf beide Hälften).' },
   { abbr: 'HS',     desc: 'Hauptstrasse — Rang 1 (S = 1750 Fz/h, C = 0.5), hat Vortritt gegenüber NS-Fahrzeugen. Nachrangig mit S = 1650 Fz/h, C = 1 sind Ströme, die Fussgänger*innen Vortritt gewähren (Tab. 26, S. 68), und Linksabbieger gegenüber dem Gegenverkehr (Geradeaus + Rechts des gegenüberliegenden HS-Arms)' },
   { abbr: 'NS',     desc: 'Nebenstrasse — Rang 2, muss Rang-1-Ströme und Fussgänger*innen abwarten' },
   { abbr: 'Q',  unit: 'Fz/h', desc: 'Belastung eines Stroms — Summe aller Fahrzeuge in dieser Bewegungsrichtung pro Stunde' },
@@ -698,9 +699,9 @@ const LEGEND_ITEMS: LegendItem[] = [
   { abbr: 'β',      desc: 'Reduktionsfaktor — Π aller β_i der senkrechten Ströme (Gl. 12, S. 61); β_i je Verkehrsart (Abb. 23, S. 61): Bus/Tram = (1−y_i)¹ · Abbieg. Fz/Fg = (1−y_i)³ · Kreisverkehr = (1−y_i)² · Gleicher Rang = y_i/(y₁+y_i) (Kap. 5, VSS 2011/308)' },
   { abbr: 'L',  unit: 'Fz/h', desc: 'Kapazität des Stroms — Szenario I: L = S × β (Gl. 5, S. 60); Szenario II (paralleler vortrittsberechtigter Fg-Strom blockiert den Konfliktverkehr): L = S·y_par + S·(1−y_par)·β (Gl. 6, S. 61, Abb. 22, S. 60)' },
   { abbr: 'x',      desc: 'Auslastungsgrad = Q / L; x ≥ 1 bedeutet Überlast' },
-  { abbr: 'w',  unit: 's',    desc: 'Mittlere Wartezeit — nach Gl. 1 (VSS 2011/308, S. 62); C = 0.5 für Rang 1, C = 1.0 für Rang 2 und gleichen Rang' },
+  { abbr: 'w',  unit: 's',    desc: 'Mittlere Wartezeit — nach Gl. 1 (VSS 2011/308, S. 18; wiederholt auf S. 62); C = 0.5 für Rang 1, C = 1.0 für Rang 2 und gleichen Rang' },
   { abbr: 'k',  unit: 'Fz',   desc: 'Staulänge = w × L / 3600 — mittlere Anzahl wartender Fahrzeuge' },
-  { abbr: 'LOS',    desc: 'Qualitätsstufe A–F nach VSS 2011/308: A ≤10s · B ≤20s · C ≤30s · D ≤45s · E >45s · F Überlast' },
+  { abbr: 'LOS',    desc: 'Qualitätsstufe A–F nach SN 640 022, Tab. 3 (Seite 10); VSS 2011/308 verweist dafür auf diese Norm (Seite 86): A <10 s · B 10–15 s · C 15–25 s · D 25–45 s · E >45 s · F Überlast' },
 ]
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
@@ -985,8 +986,8 @@ export default function VSS308App({ uebernahme: kartenUebernahme }: { uebernahme
               (Menendez/Guler/Puffe). Pro Strom: β = ∏(1−y<sub>i</sub>)³
               über alle senkrechten vortrittsberechtigten Ströme (HS-Fz + Fg Ein-/Ausfahrt); HS-Linksabbieger zusätzlich (1−y_gegen)³ gegen den Gegenverkehr.
               S_Fg = 900·ρ (bei Mittelinsel Q_Fg/2, Art. 47 Abs. 3 VRV). L = S·β (Szenario I, Gl. 5, S. 60); für NS-Ströme und HS-Linksabbieger mit parallelen vortrittsberechtigten Fg-Strömen (Fussgängerstreifen auf HS-Armen, die der Strom nicht überfährt) gilt L = S·y_par + S·(1−y_par)·β (Szenario II, Gl. 6, S. 61) — der Streifen blockiert den HS-Konfliktverkehr und verschafft dem Strom Zeitfenster.
-              Einfahrten: Arm als Mischstreifen (Annahme, analog SN 640 022, Ziff. 13, S. 7): x = Σ Q/L, L = ΣQ/x; nur β ist volumengewichtet.
-              HS-Ströme ohne Fg: S = 1750, C = 0.5 (Rang 1). Wer Fg Vortritt gewährt, HS-Linksabbieger und NS-Ströme: S = 1650, C = 1 (Tab. 26, S. 68).
+              Einfahrten: Arm als Mischstreifen (Annahme, analog SN 640 022, Ziff. 13, S. 7): x = Σ Q/L, L = ΣQ/x; nur β ist volumengewichtet. Mit einem nachrangigen Strom im Arm gilt C = 1 (Ziffer 4.2, Seite 51).
+              HS-Ströme ohne Fg: S = 1750, C = 0.5 (Rang 1). Wer Fg Vortritt gewährt, HS-Linksabbieger und NS-Ströme: S = 1650, C = 1 (Tab. 26, S. 68). Der Linksabbieger der Nebenstrasse wartet an der Kreuzung auch auf den Gegenverkehr der gegenüberliegenden Nebenstrasse: Faktor (1−y)³ mit y = Q/1650 (Annahme nach Gl. 12, S. 61, und Tab. 25, S. 58).
             </div>
             </>}
 

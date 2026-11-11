@@ -9,8 +9,8 @@ import ModellLuecken from './karte/ModellLuecken'
 import { createPortal } from 'react-dom'
 import { Berechnungsblatt } from './Berechnungsblatt'
 import { KnotenDiagramm } from './KnotenDiagramm'
-import { analyzeSN640022 } from './engine/sn640022Calculator'
-import { armLabel } from './engine/armConfiguration'
+import { analyzeSN640022, ausserhalbAbb2, ausserhalbAbb4, DIAGRAMM_HINWEIS, WARTEZEIT_HINWEIS } from './engine/sn640022Calculator'
+import { armLabel, RECHTSABBIEGER_HINWEIS, starkeRechtsabbieger } from './engine/armConfiguration'
 import {
   defaultIntersection, toSNVolumes, toSNRawVolumes, toSNLaneFlags,
   conformIntersection, offeneArmAngaben,
@@ -61,7 +61,7 @@ function MixedCard({ m }: { m: SN640022MixedResult }) {
         </div>
         <div>
           <span style={{ color: 'var(--text-muted)' }}>Wartezeit </span>
-          <strong>{empty ? '–' : delayText(m.delay)}</strong>
+          <strong>{empty ? '–' : delayText(m.delay)}{ausserhalbAbb4(m.volumeFzh, m.capacity) ? '*' : ''}</strong>
         </div>
       </div>
     </div>
@@ -81,7 +81,7 @@ function StreamRow({ s }: { s: SN640022StreamResult }) {
       <div style={{ flex: 1 }}>
         <div style={{ fontSize: 14, fontWeight: 500 }}>{streamMovementName(s.streamNumber)}</div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-          {s.name} · L = {Math.round(s.capacity)} PWE/h{empty ? '' : ` · ${delayText(s.delay)}`}
+          {s.name} · L = {Math.round(s.capacity)} PWE/h{empty ? '' : ` · ${delayText(s.delay)}${ausserhalbAbb4(s.volumePWE, s.capacity) ? '*' : ''}`}
         </div>
       </div>
       {empty ? <NoTraffic /> : <LOSBadge los={s.levelOfService} />}
@@ -105,7 +105,7 @@ const LEGEND_ITEMS: LegendItem[] = [
   { abbr: 'Q',    unit: 'PWE/h', desc: 'Verkehrsnachfrage (eigene Belastung) des Stroms — gewichtete Nachfrage dieses Stroms; entspricht qᵢ der SN 640 022 (nicht zu verwechseln mit qpi)' },
   { abbr: 'R',    unit: 'PWE/h', desc: 'Reserve = L − Q; negativ = Überlast' },
   { abbr: 'a',         desc: 'Auslastungsgrad = Q / L (dimensionslos)' },
-  { abbr: 'w',    unit: 's',     desc: 'Mittlere Wartezeit — nach Kimber-Hollis (SN 640 022)' },
+  { abbr: 'w',    unit: 's',     desc: WARTEZEIT_HINWEIS },
   { abbr: 'QS',        desc: 'Qualitätsstufe A–F nach Tab. 3 (SN 640 022): A <10s · B 10–15s · C 15–25s · D 25–45s · E >45s · F Überlast' },
 ]
 
@@ -178,6 +178,10 @@ function ResultsPanel({ result }: {
         </>
       )}
 
+      {(result.streams.some(s => ausserhalbAbb2(s.qpi) || ausserhalbAbb4(s.volumePWE, s.capacity)) || result.mixedLanes.some(m => ausserhalbAbb4(m.volumeFzh, m.capacity))) && (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, marginTop: 10 }}>{DIAGRAMM_HINWEIS}</div>
+      )}
+
       {/* Detailtabelle (toggle) */}
       <button onClick={() => setShowDetails(d => !d)}
         className="knopf zweit breit" style={{ marginTop: 20 }}>
@@ -203,13 +207,13 @@ function ResultsPanel({ result }: {
                   <td style={{ padding: '5px 8px', color: 'var(--text)', whiteSpace: 'nowrap' }}>{s.name}</td>
                   <td style={{ padding: '5px 8px', textAlign: 'center', color: 'var(--text-muted)' }}>{s.rang}</td>
                   <td style={{ padding: '5px 8px', textAlign: 'right' }}>{Math.round(s.qpi)}</td>
-                  <td style={{ padding: '5px 8px', textAlign: 'right' }}>{Math.round(s.basicCapacity)}</td>
+                  <td style={{ padding: '5px 8px', textAlign: 'right' }}>{Math.round(s.basicCapacity)}{ausserhalbAbb2(s.qpi) ? '*' : ''}</td>
                   <td style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 600 }}>{Math.round(s.capacity)}</td>
                   <td style={{ padding: '5px 8px', textAlign: 'right',
                                color: s.reserve < 0 ? '#dc2626' : '#16a34a' }}>{Math.round(s.reserve)}</td>
                   <td style={{ padding: '5px 8px', textAlign: 'right' }}>{s.utilizationDegree.toFixed(3)}</td>
                   <td style={{ padding: '5px 8px', textAlign: 'right' }}>
-                    {s.volumePWE <= 0 ? '–' : isFinite(s.delay) ? Math.round(s.delay) : '∞'}
+                    {s.volumePWE <= 0 ? '–' : isFinite(s.delay) ? Math.round(s.delay) : '∞'}{ausserhalbAbb4(s.volumePWE, s.capacity) ? '*' : ''}
                   </td>
                   <td style={{ padding: '5px 8px', textAlign: 'center' }}>
                     {s.volumePWE <= 0 ? '–' : <LOSBadge los={s.levelOfService} />}
@@ -389,11 +393,6 @@ export default function SN022App({ uebernahme: kartenUebernahme }: { uebernahme?
           {cfg.arms.map((arm, i) => (
             <ArmCard key={arm.id} arm={arm} index={i} isHS={i < 2} herkunft={herkunftU?.arme[i]} schaetzung={schaetzung?.stroeme[i]}
               armCount={cfg.arms.length} live
-              opposingHSSeparateLane={
-                i === 2 ? (cfg.arms[0]?.hasSeparateTurnLane ?? false)
-              : i === 3 ? (cfg.arms[1]?.hasSeparateTurnLane ?? false)
-              : false
-              }
               onChange={a => setArm(i, a)} />
           ))}
         </div>
@@ -409,7 +408,7 @@ export default function SN022App({ uebernahme: kartenUebernahme }: { uebernahme?
           </div>
 
           {result
-            ? <ResultsPanel result={result} />
+            ? <>{starkeRechtsabbieger(cfg.arms).map(l => <div key={l} className="hinweis klein" style={{ marginBottom: 10 }}>{RECHTSABBIEGER_HINWEIS(l)}</div>)}<ResultsPanel result={result} /></>
             : <OffeneAngaben liste={offen} />
           }
 

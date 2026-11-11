@@ -4,7 +4,7 @@
 // Menendez / Guler / Puffe, September 2015
 
 import type { LevelOfService } from './types'
-import { classifyDelayLOS, worstLOS } from './levelOfService'
+import { classifyLOS, worstLOS } from './levelOfService'
 import { resolveQuerung, type Querung } from './querung'
 
 export type RoadType = 'HS' | 'NS' | 'equal'
@@ -158,7 +158,7 @@ export interface VSS308Result {
   overallLevelOfService: LevelOfService
 }
 
-// ── Wartezeit nach Gl. 1, S. 62 (VSS 2011/308) ───────────────────────────────
+// ── Wartezeit nach Gl. 1, S. 18, wiederholt auf S. 62 (VSS 2011/308) ───────────────────────────────
 // w(x,Q) = 900 × [(x−1) − 4C·(x/Q) + √((x−1)² + 8C·(x+1+2C·(x/Q)) / (Q/x))]
 // C = 0.5 für Rang 1, C = 1.0 für Rang 2 und gleicher Rang
 export function computeDelay(Q: number, L: number, C: number): number {
@@ -172,8 +172,10 @@ export function computeDelay(Q: number, L: number, C: number): number {
   return 900 * ((x - 1) - 4 * C * xDivQ + Math.sqrt(inner))
 }
 
-// ── LOS-Klassierung (analog SN 640 022 Tab. 3) ────────────────────────────────
-export const computeLOS = classifyDelayLOS
+// ── Qualitätsstufen ───────────────────────────────────────────────────────────
+// Der Bericht verweist für die Stufen auf das «LOS-Konzept [5]» (S. 86); [5] ist SN 640 022. Es gelten darum die Grenzen von deren
+// Tab. 3 (S. 10): A < 10 s · B 10–15 s · C 15–25 s · D 25–45 s · E > 45 s · F Überlast (Entscheid vom 11.11.2026, vorher Grenzen der SN 640 024a)
+export const computeLOS = (delay: number): LevelOfService => classifyLOS(delay, 0)
 
 // ── Hauptberechnung ───────────────────────────────────────────────────────────
 
@@ -202,10 +204,10 @@ export function calculateVSS308(input: VSS308Input): VSS308Result {
     const turnsAcross = d.movement === 'left' && d.toArmIndex >= 0 && oppositeHS(d.fromArmIndex) >= 0
     return !yieldsToFg(d) && !turnsAcross
   }
-  // Sättigungsgrad von HS-Strömen als Konfliktverkehr: S = 1650 für Ströme, die Fussgänger*innen
-  // Vortritt gewähren (Tab. 26, S. 68), sonst S = 1750. Ohne Fg bleibt y = Q_HS / 1750.
+  // Sättigungsgrad von HS-Strömen als Konfliktverkehr: y = Q / S mit dem S des Stroms selbst (Tab. 13, S. 39; Beispiel Tab. 26, S. 68).
+  // Rang 1 hat S = 1750; wer Fussgänger*innen oder als Linksabbieger dem Gegenverkehr Vortritt gewährt, S = 1650.
   const ySum = (ds: StreamDef[]) =>
-    ds.reduce((s, d) => s + getFlow(arms[d.fromArmIndex], d.movement) / (yieldsToFg(d) ? S_M2 : S_M1), 0)
+    ds.reduce((s, d) => s + getFlow(arms[d.fromArmIndex], d.movement) / (hsIsRank1(d) ? S_M1 : S_M2), 0)
 
   // Gesamte HS-Belastung für NS-β (konfligierende Ströme aus den HS-Armen)
   const yHS = ySum(defs.filter(d => d.toArmIndex >= 0 && arms[d.fromArmIndex].roadType === 'HS'))
@@ -242,6 +244,7 @@ export function calculateVSS308(input: VSS308Input): VSS308Result {
     let C: number
     let scenario: 'I' | 'II' = 'I'
     let yParallel = 0
+    let betaGegenNS = 1   // nur Linksabbieger der Nebenstrasse an der Kreuzung, siehe unten
 
     if (roadType === 'HS') {
       // Senkrechte höherrangige Ströme = Fg-Entry + Fg-Exit
@@ -276,6 +279,17 @@ export function calculateVSS308(input: VSS308Input): VSS308Result {
         yParallel = parallelFg()
         if (yParallel > 0) scenario = 'II'
       }
+      // Linksabbieger der Nebenstrasse an der Kreuzung: muss auch dem Gegenverkehr der gegenüberliegenden Nebenstrasse (Geradeaus
+      // und Rechts) Vortritt gewähren, wie Strom 4 gegen 11 und 12 in SN 640 022 (Ziffer 7, S. 3). Der Bericht nennt den Fall nicht
+      // eigens; nach Gl. 12 (S. 61) zählt jeder kreuzende Strom mit Vortritt, gegen abbiegende Fahrzeuge mit (1−y)³ (Tab. 25, S. 58).
+      // Annahme: y mit S = 1650, weil die Ströme der Gegenseite selbst nachrangig sind. Fussgängerstreifen auf der Hauptstrasse
+      // halten diesen Gegenverkehr nicht an: Der Faktor wirkt darum auf die ganze Leistungsfähigkeit, auch im Szenario II.
+      const gegen = def.fromArmIndex === 2 ? 3 : def.fromArmIndex === 3 ? 2 : -1
+      if (def.movement === 'left' && toArm && gegen >= 0 && gegen < arms.length && arms[gegen].roadType === 'NS') {
+        const yGegen = defs.filter(d => d.fromArmIndex === gegen && d.toArmIndex >= 0 && d.movement !== 'left')
+          .reduce((s, d) => s + getFlow(arms[gegen], d.movement) / S_M2, 0)
+        betaGegenNS = betaCubic(yGegen)
+      }
     } else {
       // Gleicher Rang (Rechtsvortritt): β = y_this / (y_this + y_partner)
       const partnerIdx = def.fromArmIndex === 0 ? 1
@@ -297,9 +311,9 @@ export function calculateVSS308(input: VSS308Input): VSS308Result {
     }
 
     // Gl. 5 (Szenario I) bzw. Gl. 6 (Szenario II)
-    const capacity = scenario === 'II'
+    const capacity = betaGegenNS * (scenario === 'II'
       ? Math.max(0, saturation * (yParallel + (1 - yParallel) * beta))
-      : Math.max(0, saturation * beta)
+      : Math.max(0, saturation * beta))
     const utilizationDegree = capacity > 0 ? Q / capacity : (Q > 0 ? Infinity : 0)
     const delay             = computeDelay(Q, capacity, C)
     const queue             = isFinite(delay) ? delay * capacity / 3600 : Infinity
@@ -309,7 +323,7 @@ export function calculateVSS308(input: VSS308Input): VSS308Result {
       fromArmIndex: def.fromArmIndex,
       toArmIndex:   def.toArmIndex,
       movement:     def.movement,
-      roadType, Q, beta, scenario, yParallel, saturation, capacity,
+      roadType, Q, beta: beta * betaGegenNS, scenario, yParallel, saturation, capacity,
       utilizationDegree, delay, queue,
       levelOfService: computeLOS(delay),
     }
@@ -325,9 +339,12 @@ export function calculateVSS308(input: VSS308Input): VSS308Result {
     const validStreams = armStreams.filter(s => s.toArmIndex >= 0)
     const qFz         = validStreams.reduce((sum, s) => sum + s.Q, 0)
     const loaded      = validStreams.filter(s => s.Q > 0)
-    // Arm-Anzeige: HS-Arm als Rang 1, solange Geradeaus und Rechts keinen Fussgänger*innen
-    // Vortritt gewähren; der HS-Linksabbieger trägt seine Kapazität über L_i in x_Arm bei
-    const hsRank1 = validStreams.every(s => s.movement === 'left' || s.saturation === S_M1)
+    // HS-Arm als Rang 1 (C = 0,5), solange alle belasteten Ströme Rang 1 sind. C = 0,5 setzt eine feste Bedienzeit voraus, die «nicht von
+    // anderen Faktoren abhängig» ist (VSS 2011/308, Ziffer 4.2, S. 51). Wartet im selben Fahrstreifen ein nachrangiger Strom, etwa der
+    // Linksabbieger auf den Gegenverkehr, gilt das nicht mehr: dann C = 1 und S = 1650. Ohne Verkehr bleibt die Anzeige wie bisher.
+    const hsRank1 = loaded.length > 0
+      ? loaded.every(s => s.saturation === S_M1)
+      : validStreams.every(s => s.movement === 'left' || s.saturation === S_M1)
     const saturation = arm.roadType === 'NS' || (arm.roadType === 'HS' && !hsRank1) ? S_M2 : S_M1
     const C          = arm.roadType === 'HS' && hsRank1 ? 0.5 : 1.0
 

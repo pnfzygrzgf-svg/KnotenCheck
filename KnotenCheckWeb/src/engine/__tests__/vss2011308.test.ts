@@ -67,17 +67,18 @@ describe('Tab. 15 — Uster 2 (Überlast)', () => {
 
 // ── LOS-Klassierung ───────────────────────────────────────────────────────────
 
-describe('computeLOS', () => {
-  test('0s  → A', () => expect(computeLOS(0)).toBe('A'))
-  test('10s → A', () => expect(computeLOS(10)).toBe('A'))
-  test('11s → B', () => expect(computeLOS(11)).toBe('B'))
-  test('20s → B', () => expect(computeLOS(20)).toBe('B'))
-  test('25s → C', () => expect(computeLOS(25)).toBe('C'))
-  test('30s → C', () => expect(computeLOS(30)).toBe('C'))
-  test('40s → D', () => expect(computeLOS(40)).toBe('D'))
-  test('45s → D', () => expect(computeLOS(45)).toBe('D'))
-  test('46s → E', () => expect(computeLOS(46)).toBe('E'))
-  test('∞  → F', () => expect(computeLOS(Infinity)).toBe('F'))
+describe('computeLOS: Grenzen der SN 640 022, Tab. 3 (S. 10), auf die der Bericht verweist (S. 86)', () => {
+  test('0 s → A', () => expect(computeLOS(0)).toBe('A'))
+  test('9,9 s → A', () => expect(computeLOS(9.9)).toBe('A'))
+  test('10 s → B', () => expect(computeLOS(10)).toBe('B'))
+  test('14,9 s → B', () => expect(computeLOS(14.9)).toBe('B'))
+  test('15 s → C', () => expect(computeLOS(15)).toBe('C'))
+  test('18,1 s → C (Fz1 aus Tab. 26)', () => expect(computeLOS(18.1)).toBe('C'))
+  test('24,9 s → C', () => expect(computeLOS(24.9)).toBe('C'))
+  test('25 s → D', () => expect(computeLOS(25)).toBe('D'))
+  test('45 s → D', () => expect(computeLOS(45)).toBe('D'))
+  test('46 s → E', () => expect(computeLOS(46)).toBe('E'))
+  test('∞ → F', () => expect(computeLOS(Infinity)).toBe('F'))
 })
 
 // ── Gesamtberechnung — Kreuzung mit FG ───────────────────────────────────────
@@ -351,7 +352,10 @@ describe('calculateVSS308 — Szenario II (parallele Fg)', () => {
   test('B→A: L = S·y_par + S·(1−y_par)·β (Gl. 6)', () => {
     const s = rFgC.streams.find(s => s.id === 'B→A')!
     const yPar = 180 / 900
-    approx(s.capacity, 1650 * (yPar + (1 - yPar) * s.beta), 0.5)
+    // Seit der Normprüfung vom 11.11.2026 wartet der Linksabbieger auch auf Geradeaus und Rechts der Gegenseite (D rechts 80):
+    // Dieser Faktor steht ausserhalb der Klammer, weil der Fussgängerstreifen auf C den Verkehr von D nicht anhält
+    const betaGegen = (1 - 80 / 1650) ** 3
+    approx(s.capacity, betaGegen * 1650 * (yPar + (1 - yPar) * s.beta / betaGegen), 0.5)
   })
   test('B→A: Kapazität grösser als Szenario I (S·β)', () => {
     const s = rFgC.streams.find(s => s.id === 'B→A')!
