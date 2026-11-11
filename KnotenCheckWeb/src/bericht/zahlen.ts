@@ -1,6 +1,7 @@
 // Zahlen aus dem Text eines Druckblatts, für Vergleiche vor und nach einem Umbau
 export function zahlenAus(html: string): string[] {
   const text = html.replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;/g, ' ').replace(/\b\d{1,2}\.\d{1,2}\.\d{4}\b/g, ' ')   // Datum des Drucks
+    .replace(/v\d+\.\d+\.\d+/g, ' ')   // Version des Programms: ändert sich mit jeder Ausgabe
   return [...text.matchAll(/-?\d+(?:[.,]\d+)?/g)].map(m => m[0])
 }
 /** Zahlen der Referenz, die im neuen Text fehlen oder seltener vorkommen */
