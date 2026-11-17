@@ -9,6 +9,7 @@ import { EbenenFenster, EbenenZeile, Legende, useFensterLage } from '../kartenba
 import { AUSSCHNITT_HINWEIS, BAUZONEN, HALTESTELLEN_BAV, HALTESTELLEN_BERN, STRASSENKLASSEN_TLM, TRAMGLEISE_TLM, useBundEbenen, VERKEHRSMODELL_NPVM, type AusschnittEbene } from '../kartenbaustein/ebenenAusschnitt'
 import { BESCHRIFT_ZOOM, zeichneObjekte } from '../kartenbaustein/ebenenZeichnen'
 import { orthofotoBern } from '../kartenbaustein/hintergrund'
+import { messWerkzeug } from '../kartenbaustein/messwerkzeug'
 import { kartenHover } from '../kartenbaustein/hover'
 import type { KartenObjekt } from '../kartenbaustein/modell'
 import { lv95 } from '../kartenbaustein/projektion'
@@ -194,6 +195,8 @@ export default function KnotenKarte({ aktiv, breite, fokus, gewaehlt, linien, on
       return div
     }
     standortKnopf.addTo(map)
+    // Messwerkzeug (Kartenbaustein, 17.11.2026): Zwei Punkte, Ab AV-Kante, Ganze Fläche, Linienzug, Flächeninhalt; unter dem Standortknopf
+    messWerkzeug(map)
 
     const markerNachfuehren = (alle: OsmKnoten[]) => {
       const n = markerRef.current
